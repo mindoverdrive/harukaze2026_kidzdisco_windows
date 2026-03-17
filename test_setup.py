@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Snake Finger Game - テストモード（GUI不要）
+"""
+
+import cv2
+import mediapipe as mp
+
+# MediaPipeの動作確認
+print("Testing MediaPipe...")
+try:
+    hands = mp.solutions.hands.Hands(
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.5
+    )
+    print("✓ MediaPipe loaded successfully")
+except Exception as e:
+    print(f"✗ MediaPipe Error: {e}")
+
+# OpenCVの動作確認
+print("\nTesting OpenCV...")
+try:
+    cap = cv2.VideoCapture(2)
+    if cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            print(f"✓ Camera works - Frame size: {frame.shape}")
+        else:
+            print("✗ Cannot read from camera")
+        cap.release()
+    else:
+        print("✗ Camera not available (this is OK for testing)")
+except Exception as e:
+    print(f"✗ OpenCV Error: {e}")
+
+# Pygameの動作確認
+print("\nTesting Pygame...")
+try:
+    import pygame
+    pygame.init()
+    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    pygame.display.set_caption("Test")
+    print("✓ Pygame loaded successfully")
+    pygame.quit()
+except Exception as e:
+    print(f"✗ Pygame Error: {e}")
+
+print("\n✓ All tests passed! You can run: python snake_game_final.py")

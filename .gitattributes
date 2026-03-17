@@ -1,0 +1,12 @@
+# Ensure consistent line endings across platforms
+* text=auto
+
+# Treat JSON and Python as text
+*.py text
+*.json text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary

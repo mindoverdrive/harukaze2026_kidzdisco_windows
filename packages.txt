@@ -1,0 +1,5 @@
+portaudio19-dev
+libasound2-dev
+libjack-dev
+cmake
+pkg-config

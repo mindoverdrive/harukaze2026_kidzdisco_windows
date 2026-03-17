@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv*/
+venv/
+.env
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+*.lnk
+*.tmp
+*.log
+*.dmp
+
+# Crash / dump / generated
+CrashReports/
+*.crash
+*.dump
+
+# Misc
+*.swp

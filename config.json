@@ -1,0 +1,11 @@
+{
+  "SCENE_DIR": ".",
+  "PRELOAD_COUNT": 3,
+  "MIN_HAND_SIZE": 0.05,
+  "MAX_USERS": 3,
+  "CLAP_DIST_THRESHOLD": 0.15,
+  "CLAP_COOLDOWN": 0.5,
+  "TARGET_FPS": 30,
+  "BRIGHTNESS": 1.0,
+  "VIDEO_PATH": "../sozai/Spiral_Focus.mp4"
+}
