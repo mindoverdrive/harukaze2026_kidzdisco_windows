@@ -49,12 +49,14 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 import pygfx as gfx
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import pylinalg as la
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 FOV = 60
 
 # Model paths
@@ -410,7 +412,7 @@ class FlyShooingApp:
         self.fly_manager = FlyManager(self.scene)
         self.tracker = TrackingManager()
         
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 

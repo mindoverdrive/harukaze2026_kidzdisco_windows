@@ -45,13 +45,15 @@ import numpy as np
 import cv2
 import mediapipe as mp
 import pygame
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 BLOCK_SIZE = 3.0
 GRID_SIZE = 100
 INTERACTION_DISTANCE = 40.0 # Distance from camera to place blocks
@@ -310,7 +312,7 @@ class MinecraftApp:
         
         # Hand/Input
         self.gesture_manager = GestureManager()
-        self.cap = cv2.VideoCapture(2) # Default camera
+        self.cap = cv2.VideoCapture(3) # Default camera
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         

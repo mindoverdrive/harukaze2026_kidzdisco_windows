@@ -42,13 +42,15 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 960
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 NUM_PARTICLES = 15000
 WORLD_SCALE = 1000
 ATTRACTION_STRENGTH = 450000.0 # Force towards/away from hand
@@ -91,9 +93,9 @@ class ParticleStormApp:
         self.detector = vision.HandLandmarker.create_from_options(options)
 
         # 3. Camera Setup
-        self.cap = cv2.VideoCapture(2) # Default to 0, or 2 if user has setup
+        self.cap = cv2.VideoCapture(3) # Default to 0, or 2 if user has setup
         if not self.cap.isOpened():
-             self.cap = cv2.VideoCapture(2)
+             self.cap = cv2.VideoCapture(3)
              if not self.cap.isOpened():
                  print("Error: No camera found on index 0 or 2.")
         

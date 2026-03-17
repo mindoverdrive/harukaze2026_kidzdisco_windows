@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import pygame
+import display_utils
 import numpy as np
 import argparse
 import socket
@@ -19,7 +20,7 @@ args = parser.parse_args()
 pygame.init()
 info = pygame.display.Info()
 screen_width, screen_height = info.current_w, info.current_h
-screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE)
+screen, _pg_size = display_utils.setup_pygame_fullscreen()
 pygame.display.set_caption("Harukaze 2026 - Hands Shake")
 clock = pygame.time.Clock()
 
@@ -78,7 +79,7 @@ COLORS = [
 ]
 
 # OpenCVカメラの準備
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 if not cap.isOpened():
     print("Cannot open camera")
     exit()

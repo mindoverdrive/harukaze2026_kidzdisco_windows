@@ -43,14 +43,16 @@ import numpy as np
 import cv2
 import pygfx as gfx
 import pylinalg as la
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 # ==================== Configuration ====================
-WINDOW_WIDTH = 1200
-WINDOW_HEIGHT = 800
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 
 # Image URLs to fetch (Fallback if offline)
 IMAGE_URLS = [
@@ -191,10 +193,10 @@ class VisualMonitorApp:
         self.init_mediapipe()
         
         # 6. Camera Setup
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
             print("Warning: Camera 0 not found, trying 1")
-            self.cap = cv2.VideoCapture(2)
+            self.cap = cv2.VideoCapture(3)
             
         if self.cap.isOpened():
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)

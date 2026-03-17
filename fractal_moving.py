@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import math
 import colorsys
 import sys
@@ -191,7 +192,7 @@ def main():
     # 画面サイズの設定
     infoObject = pygame.display.Info()
     WIDTH, HEIGHT = infoObject.current_w * 4 // 5, infoObject.current_h * 4 // 5
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    screen, _pg_size = display_utils.setup_pygame_fullscreen()
     pygame.display.set_caption("4 Distinct Fractal Trails (Camera Control)")
     
     # マウスカーソルを非表示
@@ -207,7 +208,7 @@ def main():
     screen.fill((0, 0, 0))
     
     # --- MediaPipe カメラ設定 ---
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(3)
     mp_hands = mp.solutions.hands
     # 検出する手を最大4本に変更
     hands = mp_hands.Hands(

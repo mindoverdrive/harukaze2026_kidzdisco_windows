@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import cv2
+import display_utils
 import mediapipe as mp
 import numpy as np
 import random
@@ -48,10 +49,8 @@ def main():
     )
 
     # Initialize Webcam
-    cap = cv2.VideoCapture(2)
-    cv2.namedWindow('Skeleton Glitch', cv2.WND_PROP_FULLSCREEN)
-    cv2.setWindowProperty('Skeleton Glitch', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
+    cap = cv2.VideoCapture(3)
+    display_utils.setup_cv2_fullscreen('Skeleton Glitch')
     if not cap.isOpened():
         print("Error: Could not open webcam.")
         return

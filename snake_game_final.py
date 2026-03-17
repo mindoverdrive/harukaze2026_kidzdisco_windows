@@ -37,6 +37,7 @@ if __name__ == "__main__":
 # =============================================================================
 import cv2
 import pygame
+import display_utils
 import random
 import math
 import mediapipe as mp
@@ -448,7 +449,7 @@ class Button:
 class SnakeGame:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Snake Finger Game")
         self.clock = pygame.time.Clock()
         
@@ -470,7 +471,7 @@ class SnakeGame:
             self.hands = None
         
         # カメラ初期化
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
             print("カメラが開けません")
         

@@ -46,6 +46,7 @@ import math
 import cv2
 import numpy as np
 import pygfx as gfx
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import mediapipe as mp
 import pylinalg as la
@@ -70,9 +71,9 @@ GRID_SIZE = (160, 90)  # High resolution mesh for smooth deformation
 class PsychedelicApp:
     def __init__(self):
         # 1. Camera Setup
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(2) # Cascade to 0
+            self.cap = cv2.VideoCapture(3) # Cascade to 0
         
         # Increase resolution for better look
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)

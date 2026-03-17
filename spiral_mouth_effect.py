@@ -38,6 +38,7 @@ if __name__ == "__main__":
 
 import math
 import cv2
+import display_utils
 import numpy as np
 import time
 import random
@@ -206,8 +207,8 @@ def update_and_draw_smoke(img, particles, dt):
 
 
 def run(max_faces=5, camera_id=1):
-    cap = cv2.VideoCapture(2)
-    cv2.namedWindow('Spiral Mouth Effect (press q to quit)', cv2.WND_PROP_FULLSCREEN)
+    cap = cv2.VideoCapture(3)
+    display_utils.setup_cv2_fullscreen('Spiral Mouth Effect (press q to quit)')
     cv2.setWindowProperty('Spiral Mouth Effect (press q to quit)', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     if not cap.isOpened():

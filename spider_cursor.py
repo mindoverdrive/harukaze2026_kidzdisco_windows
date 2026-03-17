@@ -34,6 +34,7 @@ if __name__ == "__main__":
 # =============================================================================
 import cv2
 import pygame
+import display_utils
 import mediapipe as mp
 import numpy as np
 import math
@@ -417,12 +418,12 @@ class Spider:
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    screen, _pg_size = display_utils.setup_pygame_fullscreen()
     width, height = screen.get_size()
     pygame.display.set_caption("Spider Cursor")
     clock = pygame.time.Clock()
 
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(3)
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
         max_num_hands=2,

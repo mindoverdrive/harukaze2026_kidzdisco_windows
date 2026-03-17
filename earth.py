@@ -53,14 +53,16 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
 from PIL import Image
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 960
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 EARTH_RADIUS = 300
 GALAXY_RADIUS = 4000 # Large sphere for background
 
@@ -108,10 +110,10 @@ class EarthViewer3D:
                 loop.stop()
         
         # 4. Webcam
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
              print("Warning: Camera 2 failed, trying 0")
-             self.cap = cv2.VideoCapture(2)
+             self.cap = cv2.VideoCapture(3)
              
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)

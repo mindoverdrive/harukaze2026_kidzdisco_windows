@@ -42,14 +42,16 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
 import colorsys
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 960
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 GRID_W = 40
 GRID_H = 30
 FACE_GRID_W = 200
@@ -144,10 +146,10 @@ class PolygonVibesApp:
             self.segmentation_enabled = False
 
         # 3. Camera
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
              print("Camera 2 failed, trying 1...")
-             self.cap = cv2.VideoCapture(2)
+             self.cap = cv2.VideoCapture(3)
              
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)

@@ -40,10 +40,12 @@ import random
 import time
 import pygfx as gfx
 import colorsys
+import display_utils
 from rendercanvas.auto import RenderCanvas, loop
 
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+_DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
+WINDOW_WIDTH = _DU_W
+WINDOW_HEIGHT = _DU_H
 MAX_BASE_POINTS = 7500
 MAX_RED_POINTS = 35000
 
@@ -72,9 +74,9 @@ class FacePinch3DApp:
         )
 
         # ========== 3. Camera ==========
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(2)
+            self.cap = cv2.VideoCapture(3)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WINDOW_HEIGHT)
 

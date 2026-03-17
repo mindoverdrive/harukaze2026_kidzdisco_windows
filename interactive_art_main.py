@@ -44,6 +44,7 @@ mediapipe + pygame
 """
 
 import pygame
+import display_utils
 import numpy as np
 import cv2
 import mediapipe as mp
@@ -489,16 +490,16 @@ class EffectSystem:
 class InteractiveArtApp:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Magic Mirror Canvas")
         self.clock = pygame.time.Clock()
         self.running = True
 
         # Camera Setup
-        self.cap = cv2.VideoCapture(2) # Try 1 first (often external or OBS), if fails cascade to 0?
+        self.cap = cv2.VideoCapture(3) # Try 1 first (often external or OBS), if fails cascade to 0?
         if not self.cap.isOpened():
              print("Camera 1 failed, trying 0...")
-             self.cap = cv2.VideoCapture(2)
+             self.cap = cv2.VideoCapture(3)
         
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720) # Request 720p or similar
@@ -605,6 +606,8 @@ class InteractiveArtApp:
             
             
             # 3. Update Logic
+            mouth_ratio = 0.0
+            ripple_count = len(self.effect_system.ripples)
             
             # Hands
             lm_list_hands = []

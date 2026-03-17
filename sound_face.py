@@ -39,6 +39,7 @@ if __name__ == "__main__":
 # =========================
 
 import cv2
+import display_utils
 import numpy as np
 import time
 import math
@@ -188,10 +189,8 @@ def main():
         osc_cli = None
 
     # カメラ
-    cap = cv2.VideoCapture(2)
-    cv2.namedWindow('Face→Chord Controller', cv2.WND_PROP_FULLSCREEN)
-    cv2.setWindowProperty('Face→Chord Controller', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
+    cap = cv2.VideoCapture(3)
+    display_utils.setup_cv2_fullscreen('Face→Chord Controller')
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 

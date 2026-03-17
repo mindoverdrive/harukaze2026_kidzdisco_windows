@@ -296,9 +296,9 @@ class KaleidoscopeEffect:
 if __name__ == "__main__":
     # Test script in main
     video_source = 2
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(3)
     if not cap.isOpened():
-        cap = cv2.VideoCapture(2) # Try alternate
+        cap = cv2.VideoCapture(3) # Try alternate
         
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

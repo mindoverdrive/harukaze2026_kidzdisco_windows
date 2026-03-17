@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import math
 import cv2
 import mediapipe as mp
@@ -47,7 +48,7 @@ hands = mp_hands.Hands(
 )
 
 # Webcam の初期化
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 
 def get_fibonacci_sphere_points(samples=300):
     """球体上に均等に点を配置する（フィボナッチ球アルゴリズム）"""
@@ -79,7 +80,7 @@ def main():
     pygame.init()
     info = pygame.display.Info()
     w, h = info.current_w, info.current_h
-    screen = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
+    screen, _pg_size = display_utils.setup_pygame_fullscreen()
     pygame.display.set_caption("Colorful Dots Spheres")
     clock = pygame.time.Clock()
 

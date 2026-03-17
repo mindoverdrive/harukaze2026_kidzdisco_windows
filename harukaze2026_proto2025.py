@@ -37,6 +37,7 @@ if __name__ == "__main__":
 
 
 import cv2
+import display_utils
 import mediapipe as mp
 import numpy as np
 import math
@@ -80,11 +81,8 @@ def main():
         min_tracking_confidence=0.7,
         max_num_hands=2
     )
-    cap = cv2.VideoCapture(2)
-    cv2.namedWindow('Hand Drawing App', cv2.WND_PROP_FULLSCREEN)
-    cv2.setWindowProperty('Hand Drawing App', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
-    
+    cap = cv2.VideoCapture(3)
+    display_utils.setup_cv2_fullscreen('Hand Drawing App')
     # Canvas for drawing
     canvas = None
     

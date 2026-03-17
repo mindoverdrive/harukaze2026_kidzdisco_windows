@@ -34,6 +34,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import math
 import cv2
 import mediapipe as mp
@@ -42,7 +43,7 @@ import mediapipe as mp
 pygame.init()
 info = pygame.display.Info()
 W, H = info.current_w, info.current_h
-s = pygame.display.set_mode((W, H), pygame.FULLSCREEN)
+s, _pg_size = display_utils.setup_pygame_fullscreen()
 clock = pygame.time.Clock()
 
 # Initialize MediaPipe Hands
@@ -81,9 +82,9 @@ for i in range(len(P)):
         S.append([i, i + cols, spacing, True, 0])
 
 # Camera capture
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 if not cap.isOpened():
-   cap = cv2.VideoCapture(2)
+   cap = cv2.VideoCapture(3)
 if not cap.isOpened():
    raise IOError("Cannot open webcam")
 

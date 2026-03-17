@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import math
 import random
 import cv2
@@ -47,12 +48,12 @@ hands = mp_hands.Hands(
 )
 
 # Initialize Camera
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 
 pygame.init()
 info = pygame.display.Info()
 w, h = info.current_w, info.current_h
-screen = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
+screen, _pg_size = display_utils.setup_pygame_fullscreen()
 clock = pygame.time.Clock()
 
 # Separate canvas for drawing to avoid cursor trails

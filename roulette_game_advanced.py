@@ -42,6 +42,7 @@ mediapipe + pygame
 """
 
 import pygame
+import display_utils
 import numpy as np
 import cv2
 import mediapipe as mp
@@ -334,7 +335,7 @@ class RouletteGame:
         self.hand_velocities = deque(maxlen=5)
         
         # カメラ初期化 (ID:0がOBS等の仮想カメラになる場合があるため、1に変更)
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
@@ -362,7 +363,7 @@ class RouletteGame:
         
         # pygame初期化
         pygame.init()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Roulette Game - Hand Control")
         self.clock = pygame.time.Clock()
         self.font_large = pygame.font.Font(None, 100)

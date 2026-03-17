@@ -37,10 +37,10 @@ import pygame, math, cv2, mediapipe as mp
 # MediaPipeの初期化
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(max_num_hands=5, min_detection_confidence=0.7, min_tracking_confidence=0.5)
-cap = cv2.VideoCapture(2) # カメラIDは環境に合わせて調整（通常は0or1）
+cap = cv2.VideoCapture(3) # カメラIDは環境に合わせて調整（通常は0or1）
 
 pygame.init()
-screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+screen, _pg_size = display_utils.setup_pygame_fullscreen()
 W, H = screen.get_size()
 clock = pygame.time.Clock()
 

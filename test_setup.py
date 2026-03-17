@@ -23,7 +23,7 @@ except Exception as e:
 # OpenCVの動作確認
 print("\nTesting OpenCV...")
 try:
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(3)
     if cap.isOpened():
         ret, frame = cap.read()
         if ret:
@@ -40,8 +40,9 @@ except Exception as e:
 print("\nTesting Pygame...")
 try:
     import pygame
+import display_utils
     pygame.init()
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    screen, _pg_size = display_utils.setup_pygame_fullscreen()
     pygame.display.set_caption("Test")
     print("✓ Pygame loaded successfully")
     pygame.quit()

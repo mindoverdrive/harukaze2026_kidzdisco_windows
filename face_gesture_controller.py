@@ -42,6 +42,7 @@ Face Gesture Controller
 import cv2
 import mediapipe as mp
 import pygame
+import display_utils
 import numpy as np
 import time
 import math
@@ -108,13 +109,13 @@ class PersonData:
 class FaceGestureApp:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Face Gesture Interface")
         self.clock = pygame.time.Clock()
         self.running = True
 
         # Camera
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WINDOW_HEIGHT)
 

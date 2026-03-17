@@ -35,6 +35,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import cv2
 import numpy as np
 import random
@@ -286,7 +287,7 @@ class Otedama:
 class ModernOtedamaGame:
     def __init__(self):
         pygame.init()
-        self.raw_screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.raw_screen, _pg_size = display_utils.setup_pygame_fullscreen()
         self.game_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT)) 
         
         pygame.display.set_caption("OTEDAMA HYPER 2026")
@@ -298,7 +299,7 @@ class ModernOtedamaGame:
 
         # Use HandTracker Module
         self.tracker = HandTracker(max_num_hands=2, detection_conf=0.7, track_conf=0.5)
-        self.cap = cv2.VideoCapture(2) 
+        self.cap = cv2.VideoCapture(3) 
 
         self.state = STATE_TITLE
         self.score = 0

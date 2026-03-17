@@ -35,6 +35,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -214,7 +215,7 @@ class Otedama:
 class ModernOtedamaGame:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("OTEDAMA PSYCHEDELIC 2026")
         self.clock = pygame.time.Clock()
         
@@ -231,10 +232,10 @@ class ModernOtedamaGame:
         )
         
         # Camera
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         if not self.cap.isOpened():
              print("Warning: Default camera not found, trying index 1")
-             self.cap = cv2.VideoCapture(2)
+             self.cap = cv2.VideoCapture(3)
 
         # Game Data
         self.state = STATE_TITLE

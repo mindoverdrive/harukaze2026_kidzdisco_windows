@@ -9,13 +9,13 @@ for filename in os.listdir(directory):
     if filename.endswith(".py") and filename not in ['manager.py', 'replace_caps.py']:
         filepath = os.path.join(directory, filename)
         try:
-            with open(filepath, 'r') as file:
+            with open(filepath, 'r', encoding='utf-8') as file:
                 content = file.read()
             
-            new_content = pattern.sub('cv2.VideoCapture(2)', content)
+            new_content = pattern.sub('cv2.VideoCapture(3)', content)
             
             if new_content != content:
-                with open(filepath, 'w') as file:
+                with open(filepath, 'w', encoding='utf-8') as file:
                     file.write(new_content)
                 count += 1
                 print(f"Updated {filename}")

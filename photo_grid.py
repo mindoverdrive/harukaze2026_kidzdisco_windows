@@ -35,6 +35,7 @@ if __name__ == "__main__":
 import cv2
 import mediapipe as mp
 import pygame
+import display_utils
 import numpy as np
 import math
 import time
@@ -137,13 +138,13 @@ class FadingDottedRect:
 
 class PhotoGridApp:
     def __init__(self):
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Photo Grid MediaPipe")
         self.clock = pygame.time.Clock()
         self.running = True
 
         # Camera
-        self.cap = cv2.VideoCapture(2)
+        self.cap = cv2.VideoCapture(3)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WINDOW_HEIGHT)
         

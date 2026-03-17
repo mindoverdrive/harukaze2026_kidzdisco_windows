@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import cv2
+import display_utils
 import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
@@ -73,7 +74,7 @@ def main():
     HOOK_RADIUS = 0.08
 
     with vision.HandLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(2)
+        cap = cv2.VideoCapture(3)
         if not cap.isOpened():
             for i in [0, 1]:
                 cap = cv2.VideoCapture(i)
@@ -83,9 +84,7 @@ def main():
             print("Error: Could not open webcam.")
             return
 
-        cv2.namedWindow('True 3D Ayatori - Spatial String', cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty('True 3D Ayatori - Spatial String', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
+        display_utils.setup_cv2_fullscreen('True 3D Ayatori - Spatial String')
         print("True 3D Spatial Ayatori Mode.")
         
         while cap.isOpened():

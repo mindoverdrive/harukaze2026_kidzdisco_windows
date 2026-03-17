@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import pygame
+import display_utils
 import math
 import cv2
 import mediapipe as mp
@@ -46,13 +47,13 @@ hands = mp_hands.Hands(
 )
 
 # Webcam の初期化 (環境に合わせて 0, 1, 2 などを調整してください)
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(3)
 
 
 pygame.init()
 info = pygame.display.Info()
 w, h = info.current_w, info.current_h
-screen = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
+screen, _pg_size = display_utils.setup_pygame_fullscreen()
 clock = pygame.time.Clock()
 
 
