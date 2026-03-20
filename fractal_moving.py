@@ -208,10 +208,10 @@ def main():
     screen.fill((0, 0, 0))
     
     # --- MediaPipe カメラ設定 ---
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     mp_hands = mp.solutions.hands
     # 検出する手を最大4本に変更
-    hands = mp_hands.Hands(
+    hands = mp_hands.Hands(model_complexity=1, 
         max_num_hands=4,
         min_detection_confidence=0.7,
         min_tracking_confidence=0.5

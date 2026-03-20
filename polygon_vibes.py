@@ -59,6 +59,7 @@ class PolygonVibesApp:
     def __init__(self):
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Polygon Vibes 3D")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -81,47 +82,57 @@ class PolygonVibesApp:
         # 2. MediaPipe Tasks API Setup
         
         # Verify model paths
-        cwd = os.getcwd()
-        hand_model_path = os.path.join(cwd, "test/models/hand_landmarker.task")
-        seg_model_path = os.path.join(cwd, "test/models/selfie_segmenter.tflite")
+        hand_model_path = display_utils.resolve_model_path(
+            "models/hand_landmarker.task",
+            "test/models/hand_landmarker.task",
+        )
+        seg_model_path = display_utils.resolve_model_path(
+            "models/selfie_segmenter.tflite",
+            "test/models/selfie_segmenter.tflite",
+        )
         
-        if not os.path.exists(hand_model_path):
+        if not display_utils.is_valid_model_asset(hand_model_path):
             print(f"Warning: Hand model not found at {hand_model_path}")
-        if not os.path.exists(seg_model_path):
-            print(f"Warning: Segmentation model not found at {seg_model_path}")
+        if not display_utils.is_valid_model_asset(seg_model_path):
+            print(f"Warning: Segmentation model missing or invalid at {seg_model_path}")
 
         # Hands
-        base_options = python.BaseOptions(model_asset_path=hand_model_path)
-        options = vision.HandLandmarkerOptions(
-            base_options=base_options,
-            num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
-            running_mode=vision.RunningMode.VIDEO)
-        self.detector = vision.HandLandmarker.create_from_options(options)
+        self.detector = None
+        if display_utils.is_valid_model_asset(hand_model_path):
+            base_options = python.BaseOptions(model_asset_path=hand_model_path)
+            options = vision.HandLandmarkerOptions(
+                base_options=base_options,
+                num_hands=2,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+                running_mode=vision.RunningMode.VIDEO)
+            self.detector = vision.HandLandmarker.create_from_options(options)
         
         # Segmentation
         try:
-            seg_base_options = python.BaseOptions(model_asset_path=seg_model_path)
-            seg_options = vision.ImageSegmenterOptions(
-                base_options=seg_base_options,
-                running_mode=vision.RunningMode.VIDEO,
-                output_category_mask=True)
-            self.segmenter = vision.ImageSegmenter.create_from_options(seg_options)
-            self.segmentation_enabled = True
+            if display_utils.is_valid_model_asset(seg_model_path):
+                seg_base_options = python.BaseOptions(model_asset_path=seg_model_path)
+                seg_options = vision.ImageSegmenterOptions(
+                    base_options=seg_base_options,
+                    running_mode=vision.RunningMode.VIDEO,
+                    output_category_mask=True)
+                self.segmenter = vision.ImageSegmenter.create_from_options(seg_options)
+                self.segmentation_enabled = True
+            else:
+                self.segmenter = None
+                self.segmentation_enabled = False
         except Exception as e:
             print(f"Segmentation init failed: {e}")
             self.segmentation_enabled = False
 
         # 3. Camera
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
              print("Camera 2 failed, trying 0...")
-             self.cap = cv2.VideoCapture(3)
+             self.cap = display_utils.open_camera()
              
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.camera_frame_width, self.camera_frame_height = display_utils.get_camera_frame_size(self.cap)
         
         # 4. Create Scenes
         self.create_background_mesh()
@@ -182,24 +193,33 @@ class PolygonVibesApp:
 
         # UI Overlay Setup
         self.ui_scene = gfx.Scene()
-        self.ui_camera = gfx.OrthographicCamera(640, 480)
+        self.ui_camera = gfx.OrthographicCamera(self.camera_frame_width, self.camera_frame_height)
         
         # Texture for raw camera feed
-        self.raw_cam_tex = gfx.Texture(np.zeros((480, 640, 4), dtype=np.uint8), dim=2)
+        self.raw_cam_tex = gfx.Texture(
+            np.zeros((self.camera_frame_height, self.camera_frame_width, 4), dtype=np.uint8),
+            dim=2,
+        )
         self.ui_plane = gfx.Mesh(
-            gfx.plane_geometry(640, 480),
+            gfx.plane_geometry(self.camera_frame_width, self.camera_frame_height),
             gfx.MeshBasicMaterial(map=self.raw_cam_tex)
         )
         self.ui_scene.add(self.ui_plane)
 
     def create_foreground_plane(self):
-        self.fg_tex = gfx.Texture(np.zeros((480, 640, 4), dtype=np.uint8), dim=2)
+        self.fg_tex = gfx.Texture(
+            np.zeros((self.camera_frame_height, self.camera_frame_width, 4), dtype=np.uint8),
+            dim=2,
+        )
         material = gfx.MeshBasicMaterial(map=self.fg_tex)
-        self.fg_plane = gfx.Mesh(gfx.plane_geometry(1600, 1200), material)
+        fg_height = 1600 * (self.camera_frame_height / max(self.camera_frame_width, 1))
+        self.fg_plane = gfx.Mesh(gfx.plane_geometry(1600, fg_height), material)
         self.fg_plane.local.z = 100
         self.scene.add(self.fg_plane)
     
     def process_hands(self, mp_image, timestamp_ms):
+        if self.detector is None:
+            return 0.05, 0.0, None, []
         result = self.detector.detect_for_video(mp_image, timestamp_ms)
         
         shake_param = 0.05

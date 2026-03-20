@@ -67,7 +67,7 @@ import random
 from typing import Tuple, List, Optional
 import time
 from pyvidplayer2 import Video
-import test.spiral_mouth_effect as sme
+import spiral_mouth_effect as sme
 
 # ==================== Constants ====================
 WINDOW_WIDTH = 1280
@@ -323,7 +323,7 @@ class RouletteGame:
         
         # mediapipe初期化
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
+        self.hands = self.mp_hands.Hands(model_complexity=1, 
             static_image_mode=False,
             max_num_hands=2,
             min_detection_confidence=0.5,
@@ -335,7 +335,7 @@ class RouletteGame:
         self.hand_velocities = deque(maxlen=5)
         
         # カメラ初期化 (ID:0がOBS等の仮想カメラになる場合があるため、1に変更)
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         

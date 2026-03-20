@@ -55,24 +55,14 @@ from typing import List, Tuple, Dict
 import sys
 import os
 
-# Add test directory to path to import local modules if needed
-sys.path.append(os.path.join(os.path.dirname(__file__), 'test'))
-
 try:
-    # Try importing as if 'test' is in path (e.g. from inside test dir or if appended)
     from hand_tracker import HandTracker
     import spiral_mouth_effect as sme
     from kaleidoscope import KaleidoscopeEffect
-except ImportError:
-    try:
-        # Try importing as package from root
-        from test.hand_tracker import HandTracker
-        import test.spiral_mouth_effect as sme
-        from kaleidoscope import KaleidoscopeEffect
-    except ImportError as e:
-        print(f"Error importing modules: {e}")
-        print("Please ensure 'test/hand_tracker.py', 'test/spiral_mouth_effect.py', and 'kaleidoscope.py' exist.")
-        sys.exit(1)
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    print("Please ensure 'hand_tracker.py', 'spiral_mouth_effect.py', and 'kaleidoscope.py' exist.")
+    sys.exit(1)
 
 
 # ==================== Constants ====================
@@ -496,10 +486,10 @@ class InteractiveArtApp:
         self.running = True
 
         # Camera Setup
-        self.cap = cv2.VideoCapture(3) # Try 1 first (often external or OBS), if fails cascade to 0?
+        self.cap = display_utils.open_camera() # Try 1 first (often external or OBS), if fails cascade to 0?
         if not self.cap.isOpened():
              print("Camera 1 failed, trying 0...")
-             self.cap = cv2.VideoCapture(3)
+             self.cap = display_utils.open_camera()
         
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720) # Request 720p or similar

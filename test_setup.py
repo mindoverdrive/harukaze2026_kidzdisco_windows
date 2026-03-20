@@ -10,7 +10,7 @@ import mediapipe as mp
 # MediaPipeの動作確認
 print("Testing MediaPipe...")
 try:
-    hands = mp.solutions.hands.Hands(
+    hands = mp.solutions.hands.Hands(model_complexity=1, 
         static_image_mode=False,
         max_num_hands=1,
         min_detection_confidence=0.7,
@@ -23,7 +23,7 @@ except Exception as e:
 # OpenCVの動作確認
 print("\nTesting OpenCV...")
 try:
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     if cap.isOpened():
         ret, frame = cap.read()
         if ret:
@@ -40,7 +40,7 @@ except Exception as e:
 print("\nTesting Pygame...")
 try:
     import pygame
-import display_utils
+    import display_utils
     pygame.init()
     screen, _pg_size = display_utils.setup_pygame_fullscreen()
     pygame.display.set_caption("Test")

@@ -89,6 +89,7 @@ class PolygonVibesApp:
     def __init__(self):
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Polygon Vibes 3D (Face & Mouth Control)")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -109,50 +110,57 @@ class PolygonVibesApp:
         self.scene.add(self.point_light)
         
         # 2. MediaPipe Tasks API Setup
-        cwd = os.getcwd()
-        face_model_path = os.path.join(cwd, "test/models/face_landmarker.task")
-        seg_model_path = os.path.join(cwd, "test/models/selfie_segmenter.tflite")
+        face_model_path = display_utils.resolve_model_path("models/face_landmarker.task")
+        seg_model_path = display_utils.resolve_model_path(
+            "models/selfie_segmenter.tflite",
+            "test/models/selfie_segmenter.tflite",
+        )
         
-        if not os.path.exists(face_model_path):
+        self.detector = None
+        self.segmenter = None
+        self.segmentation_enabled = False
+
+        if not display_utils.is_valid_model_asset(face_model_path):
             print(f"Warning: Face model not found at {face_model_path}")
-        if not os.path.exists(seg_model_path):
-            print(f"Warning: Segmentation model not found at {seg_model_path}")
+        if not display_utils.is_valid_model_asset(seg_model_path):
+            print(f"Warning: Segmentation model missing or invalid at {seg_model_path}")
 
         # Faces (手の代わりに顔で検知)
-        try:
-            base_options = python.BaseOptions(model_asset_path=face_model_path)
-            options = vision.FaceLandmarkerOptions(
-                base_options=base_options,
-                num_faces=1,
-                min_face_detection_confidence=0.5,
-                min_face_presence_confidence=0.5,
-                min_tracking_confidence=0.5,
-                running_mode=vision.RunningMode.VIDEO)
-            self.detector = vision.FaceLandmarker.create_from_options(options)
-        except Exception as e:
-            print(f"Face landmarker init failed: {e}")
+        if display_utils.is_valid_model_asset(face_model_path):
+            try:
+                base_options = python.BaseOptions(model_asset_path=face_model_path)
+                options = vision.FaceLandmarkerOptions(
+                    base_options=base_options,
+                    num_faces=1,
+                    min_face_detection_confidence=0.5,
+                    min_face_presence_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                    running_mode=vision.RunningMode.VIDEO)
+                self.detector = vision.FaceLandmarker.create_from_options(options)
+            except Exception as e:
+                print(f"Face landmarker init failed: {e}")
 
         # Segmentation
-        try:
-            seg_base_options = python.BaseOptions(model_asset_path=seg_model_path)
-            seg_options = vision.ImageSegmenterOptions(
-                base_options=seg_base_options,
-                running_mode=vision.RunningMode.VIDEO,
-                output_category_mask=True)
-            self.segmenter = vision.ImageSegmenter.create_from_options(seg_options)
-            self.segmentation_enabled = True
-        except Exception as e:
-            print(f"Segmentation init failed: {e}")
-            self.segmentation_enabled = False
+        if display_utils.is_valid_model_asset(seg_model_path):
+            try:
+                seg_base_options = python.BaseOptions(model_asset_path=seg_model_path)
+                seg_options = vision.ImageSegmenterOptions(
+                    base_options=seg_base_options,
+                    running_mode=vision.RunningMode.VIDEO,
+                    output_category_mask=True)
+                self.segmenter = vision.ImageSegmenter.create_from_options(seg_options)
+                self.segmentation_enabled = True
+            except Exception as e:
+                print(f"Segmentation init failed: {e}")
+                self.segmentation_enabled = False
 
         # 3. Camera
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
              print("Camera 2 failed, trying 1...")
-             self.cap = cv2.VideoCapture(3)
+             self.cap = display_utils.open_camera()
              
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.camera_frame_width, self.camera_frame_height = display_utils.get_camera_frame_size(self.cap)
         
         # 4. Create Scenes
         self.create_background_mesh()
@@ -244,24 +252,34 @@ class PolygonVibesApp:
 
         # UI Overlay Setup
         self.ui_scene = gfx.Scene()
-        self.ui_camera = gfx.OrthographicCamera(640, 480)
+        self.ui_camera = gfx.OrthographicCamera(self.camera_frame_width, self.camera_frame_height)
         
         # Texture for raw camera feed
-        self.raw_cam_tex = gfx.Texture(np.zeros((480, 640, 4), dtype=np.uint8), dim=2)
+        self.raw_cam_tex = gfx.Texture(
+            np.zeros((self.camera_frame_height, self.camera_frame_width, 4), dtype=np.uint8),
+            dim=2,
+        )
         self.ui_plane = gfx.Mesh(
-            gfx.plane_geometry(640, 480),
+            gfx.plane_geometry(self.camera_frame_width, self.camera_frame_height),
             gfx.MeshBasicMaterial(map=self.raw_cam_tex)
         )
         self.ui_scene.add(self.ui_plane)
 
     def create_foreground_plane(self):
-        self.fg_tex = gfx.Texture(np.zeros((480, 640, 4), dtype=np.uint8), dim=2)
+        self.fg_tex = gfx.Texture(
+            np.zeros((self.camera_frame_height, self.camera_frame_width, 4), dtype=np.uint8),
+            dim=2,
+        )
         material = gfx.MeshBasicMaterial(map=self.fg_tex)
-        self.fg_plane = gfx.Mesh(gfx.plane_geometry(1600, 1200), material)
+        fg_height = 1600 * (self.camera_frame_height / max(self.camera_frame_width, 1))
+        self.fg_plane = gfx.Mesh(gfx.plane_geometry(1600, fg_height), material)
         self.fg_plane.local.z = 100
         self.scene.add(self.fg_plane)
     
     def process_face(self, mp_image, timestamp_ms):
+        if self.detector is None:
+            return 0.05, 0.0, None, [], np.array([0.0, 0.0], dtype=np.float32)
+            
         result = self.detector.detect_for_video(mp_image, timestamp_ms)
         
         shake_param = 0.05
@@ -343,7 +361,7 @@ class PolygonVibesApp:
         
         # 2. Process Segmentation
         mask = None
-        if self.segmentation_enabled:
+        if self.segmentation_enabled and self.segmenter is not None:
             seg_result = self.segmenter.segment_for_video(mp_image, timestamp_ms)
             if seg_result.category_mask:
                 mask_np = seg_result.category_mask.numpy_view()

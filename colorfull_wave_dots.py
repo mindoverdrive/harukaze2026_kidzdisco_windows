@@ -1,3 +1,4 @@
+import display_utils
 # =============================================================================
 # [AUTO-INJECTED] Scene Preload & Wait Logic
 # =============================================================================
@@ -36,8 +37,8 @@ import pygame, math, cv2, mediapipe as mp
 
 # MediaPipeの初期化
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(max_num_hands=5, min_detection_confidence=0.7, min_tracking_confidence=0.5)
-cap = cv2.VideoCapture(3) # カメラIDは環境に合わせて調整（通常は0or1）
+hands = mp_hands.Hands(model_complexity=1, max_num_hands=5, min_detection_confidence=0.7, min_tracking_confidence=0.5)
+cap = display_utils.open_camera() # カメラIDは環境に合わせて調整（通常は0or1）
 
 pygame.init()
 screen, _pg_size = display_utils.setup_pygame_fullscreen()

@@ -48,7 +48,7 @@ clock = pygame.time.Clock()
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(
+hands = mp_hands.Hands(model_complexity=1, 
     max_num_hands=5,  # Support 5 hands
     min_detection_confidence=0.7,
     min_tracking_confidence=0.7
@@ -82,9 +82,9 @@ for i in range(len(P)):
         S.append([i, i + cols, spacing, True, 0])
 
 # Camera capture
-cap = cv2.VideoCapture(3)
+cap = display_utils.open_camera()
 if not cap.isOpened():
-   cap = cv2.VideoCapture(3)
+   cap = display_utils.open_camera()
 if not cap.isOpened():
    raise IOError("Cannot open webcam")
 

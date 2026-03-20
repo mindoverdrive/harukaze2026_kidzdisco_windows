@@ -165,6 +165,7 @@ class VisualMonitorApp:
     def __init__(self):
         # 1. Setup RenderCanvas (replaces wgpu.gui.pygame)
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Interactive 3D Monitor")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         
         # Scene 1: Main 3D Scene
@@ -193,10 +194,10 @@ class VisualMonitorApp:
         self.init_mediapipe()
         
         # 6. Camera Setup
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
             print("Warning: Camera 0 not found, trying 1")
-            self.cap = cv2.VideoCapture(3)
+            self.cap = display_utils.open_camera()
             
         if self.cap.isOpened():
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -267,24 +268,17 @@ class VisualMonitorApp:
         self.scene.add(self.monitor_group)
 
     def init_mediapipe(self):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(script_dir, "models/hand_landmarker.task")
-        
-        if not os.path.exists(model_path):
-            print("Model not found in models/ ... attempting to find in test/models/ or ../models/")
-            # Fallback for different CWDs
-            alts = [
-                os.path.join(os.getcwd(), "test/models/hand_landmarker.task"),
-                os.path.join(os.getcwd(), "models/hand_landmarker.task"),
-                os.path.join(os.getcwd(), "../models/hand_landmarker.task")
-            ]
-            for p in alts:
-                if os.path.exists(p):
-                    model_path = p
-                    break
+        model_path = display_utils.resolve_model_path(
+            "models/hand_landmarker.task",
+            "test/models/hand_landmarker.task",
+        )
         
         print(f"Loading MediaPipe model from: {model_path}")
-        
+        if not display_utils.is_valid_model_asset(model_path):
+            print(f"Error initializing MediaPipe: invalid model asset at {model_path}")
+            self.detector = None
+            return
+
         base_options = python.BaseOptions(model_asset_path=model_path)
         options = vision.HandLandmarkerOptions(
             base_options=base_options,

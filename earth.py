@@ -71,6 +71,7 @@ class EarthViewer3D:
     def __init__(self):
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="3D Earth Viewer")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -91,7 +92,7 @@ class EarthViewer3D:
         self.hud_camera = gfx.OrthographicCamera(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.create_hud()
 
-        # 2. MediaPipe Hands (Tasks API)
+        # 2. MediaPipe Hands (model_complexity=1, Tasks API)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(script_dir, "models", "hand_landmarker.task")
         
@@ -110,13 +111,17 @@ class EarthViewer3D:
                 loop.stop()
         
         # 4. Webcam
-        self.cap = cv2.VideoCapture(3)
-        if not self.cap.isOpened():
-             print("Warning: Camera 2 failed, trying 0")
-             self.cap = cv2.VideoCapture(3)
-             
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap = display_utils.open_camera()
+        if not self.cap or not self.cap.isOpened():
+            print("Warning: Camera open failed, retrying with fallback")
+            self.cap = display_utils.open_camera(camera_index=1)
+
+        if self.cap and self.cap.isOpened():
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, display_utils.DEFAULT_CAMERA_WIDTH)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, display_utils.DEFAULT_CAMERA_HEIGHT)
+            self.cap.set(cv2.CAP_PROP_FPS, display_utils.DEFAULT_CAMERA_FPS)
+        else:
+            raise RuntimeError("Failed to open camera for EarthViewer3D")
         
         # 4. Create World
         self.create_galaxy()

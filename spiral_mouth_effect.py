@@ -207,7 +207,7 @@ def update_and_draw_smoke(img, particles, dt):
 
 
 def run(max_faces=5, camera_id=1):
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Spiral Mouth Effect (press q to quit)')
     cv2.setWindowProperty('Spiral Mouth Effect (press q to quit)', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 

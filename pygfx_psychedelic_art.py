@@ -51,17 +51,11 @@ from rendercanvas.auto import RenderCanvas, loop
 import mediapipe as mp
 import pylinalg as la
 
-# Local modules path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'test'))
-
 try:
     from hand_tracker import HandTracker
 except ImportError:
-    try:
-        from test.hand_tracker import HandTracker
-    except ImportError:
-        HandTracker = None
-        print("Warning: HandTracker not found. Interaction will be limited.")
+    HandTracker = None
+    print("Warning: HandTracker not found. Interaction will be limited.")
 
 # ==================== Configuration ====================
 WIDTH, HEIGHT = 1280, 720
@@ -71,9 +65,9 @@ GRID_SIZE = (160, 90)  # High resolution mesh for smooth deformation
 class PsychedelicApp:
     def __init__(self):
         # 1. Camera Setup
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(3) # Cascade to 0
+            self.cap = display_utils.open_camera() # Cascade to 0
         
         # Increase resolution for better look
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -81,6 +75,7 @@ class PsychedelicApp:
 
         # 2. Pygfx Setup
         self.canvas = RenderCanvas(size=(WIDTH, HEIGHT), title="Psychedelic pygfx Canvas")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
 

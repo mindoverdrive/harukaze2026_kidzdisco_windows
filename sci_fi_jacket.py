@@ -139,9 +139,9 @@ def main():
     mp_selfie_segmentation = mp.solutions.selfie_segmentation
     segmentation = mp_selfie_segmentation.SelfieSegmentation(model_selection=1)
 
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     if not cap.isOpened():
-        cap = cv2.VideoCapture(3)
+        cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Sci-Fi Jacket Effect')
     if not cap.isOpened():
         print("Camera not found.")

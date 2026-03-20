@@ -1,3 +1,4 @@
+import display_utils
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # =============================================================================
@@ -147,7 +148,7 @@ class Roulette3D:
 class HandDetector:
     def __init__(self):
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
+        self.hands = self.mp_hands.Hands(model_complexity=1, 
             static_image_mode=False,
             max_num_hands=2,
             min_detection_confidence=0.5,
@@ -155,7 +156,7 @@ class HandDetector:
         )
         
         self.hand_angles = deque(maxlen=15)
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     

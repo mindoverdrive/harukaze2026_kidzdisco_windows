@@ -58,7 +58,7 @@ if args.wait and args.port > 0:
 # MediaPipe Hand Landmarkerの準備
 mp_hands = mp.solutions.hands
 # max_num_handsを10(5人の両手)に設定
-hands = mp_hands.Hands(
+hands = mp_hands.Hands(model_complexity=1, 
     max_num_hands=10,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5)
@@ -79,7 +79,7 @@ COLORS = [
 ]
 
 # OpenCVカメラの準備
-cap = cv2.VideoCapture(3)
+cap = display_utils.open_camera()
 if not cap.isOpened():
     print("Cannot open camera")
     exit()

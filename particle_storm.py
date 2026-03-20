@@ -63,6 +63,7 @@ class ParticleStormApp:
     def __init__(self):
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Particle Storm 3D")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -74,28 +75,30 @@ class ParticleStormApp:
         self.scene.add(gfx.AmbientLight("#101010", 1.0))
 
         # 2. MediaPipe Setup
-        cwd = os.getcwd()
-        # Assuming models are in test/models based on previous file inspection
-        model_path = os.path.join(cwd, "test/models/hand_landmarker.task")
-        
-        if not os.path.exists(model_path):
-             print(f"Warning: Model not found at {model_path}")
-
-        base_options = python.BaseOptions(model_asset_path=model_path)
-        options = vision.HandLandmarkerOptions(
-            base_options=base_options,
-            num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
-            running_mode=vision.RunningMode.VIDEO
+        model_path = display_utils.resolve_model_path(
+            "models/hand_landmarker.task",
+            "test/models/hand_landmarker.task",
         )
-        self.detector = vision.HandLandmarker.create_from_options(options)
+        
+        if not display_utils.is_valid_model_asset(model_path):
+             print(f"Warning: Model not found at {model_path}")
+        self.detector = None
+        if display_utils.is_valid_model_asset(model_path):
+            base_options = python.BaseOptions(model_asset_path=model_path)
+            options = vision.HandLandmarkerOptions(
+                base_options=base_options,
+                num_hands=2,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+                running_mode=vision.RunningMode.VIDEO
+            )
+            self.detector = vision.HandLandmarker.create_from_options(options)
 
         # 3. Camera Setup
-        self.cap = cv2.VideoCapture(3) # Default to 0, or 2 if user has setup
+        self.cap = display_utils.open_camera() # Default to 0, or 2 if user has setup
         if not self.cap.isOpened():
-             self.cap = cv2.VideoCapture(3)
+             self.cap = display_utils.open_camera()
              if not self.cap.isOpened():
                  print("Error: No camera found on index 0 or 2.")
         
@@ -339,10 +342,11 @@ class ParticleStormApp:
             
             # Detect
             timestamp_ms = int(time.time() * 1000)
-            result = self.detector.detect_for_video(mp_img, timestamp_ms)
-            
-            # Analyze
-            self.analyze_hands(result)
+            if self.detector is not None:
+                result = self.detector.detect_for_video(mp_img, timestamp_ms)
+                self.analyze_hands(result)
+            else:
+                self.hand_data = []
             
             # PIP Texture Update
             # Resize frame to match cam_tex size (640, 480)

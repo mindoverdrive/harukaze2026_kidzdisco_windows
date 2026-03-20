@@ -189,7 +189,7 @@ def main():
         osc_cli = None
 
     # カメラ
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Face→Chord Controller')
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)

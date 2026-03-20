@@ -10,12 +10,12 @@ jax==0.8.0
 jaxlib==0.8.0
 kiwisolver==1.4.9
 matplotlib==3.10.7
+pygame==2.6.1
 mediapipe==0.10.14
 mido==1.3.3
 ml_dtypes==0.5.3
 numpy==2.2.6
 opencv-contrib-python==4.12.0.88
-opencv-python==4.12.0.88
 opt_einsum==3.4.0
 packaging<25.0
 pandas==2.3.3
@@ -33,6 +33,10 @@ sounddevice==0.5.3
 tzdata==2025.2
 streamlit==1.41.1
 streamlit-webrtc==0.47.9
-opencv-python-headless==4.10.0.84
+glfw==2.10.0
+PySide6==6.10.2
+screeninfo==0.8.1
 pygfx>=0.3.0
 wgpu>=0.9.0
+pygrabber==0.2
+pyvidplayer2==0.9.25

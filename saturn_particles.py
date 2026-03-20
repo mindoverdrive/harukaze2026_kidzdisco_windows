@@ -70,6 +70,7 @@ class SaturnParticlesApp:
     def __init__(self):
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Saturn Particle Interaction")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -78,27 +79,30 @@ class SaturnParticlesApp:
         self.camera.local.z = 1200
         
         # 2. MediaPipe Setup
-        cwd = os.getcwd()
-        model_path = os.path.join(cwd, "test/models/hand_landmarker.task")
-        
-        if not os.path.exists(model_path):
-            print(f"Warning: Model not found at {model_path}")
-
-        base_options = python.BaseOptions(model_asset_path=model_path)
-        options = vision.HandLandmarkerOptions(
-            base_options=base_options,
-            num_hands=2,
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
-            running_mode=vision.RunningMode.VIDEO
+        model_path = display_utils.resolve_model_path(
+            "models/hand_landmarker.task",
+            "test/models/hand_landmarker.task",
         )
-        self.detector = vision.HandLandmarker.create_from_options(options)
+        
+        if not display_utils.is_valid_model_asset(model_path):
+            print(f"Warning: Model not found at {model_path}")
+        self.detector = None
+        if display_utils.is_valid_model_asset(model_path):
+            base_options = python.BaseOptions(model_asset_path=model_path)
+            options = vision.HandLandmarkerOptions(
+                base_options=base_options,
+                num_hands=2,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+                running_mode=vision.RunningMode.VIDEO
+            )
+            self.detector = vision.HandLandmarker.create_from_options(options)
 
         # 3. Camera Setup
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(3)
+            self.cap = display_utils.open_camera()
         
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -335,6 +339,10 @@ class SaturnParticlesApp:
                 timestamp = self.last_timestamp + 1
             self.last_timestamp = timestamp
             
+            if self.detector is None:
+                self.hand_data_list = []
+                return
+
             result = self.detector.detect_for_video(mp_img, timestamp)
             
             # Reset

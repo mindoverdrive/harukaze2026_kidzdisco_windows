@@ -423,9 +423,9 @@ def main():
     pygame.display.set_caption("Spider Cursor")
     clock = pygame.time.Clock()
 
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(
+    hands = mp_hands.Hands(model_complexity=1, 
         max_num_hands=2,
         min_detection_confidence=0.7,
         min_tracking_confidence=0.7

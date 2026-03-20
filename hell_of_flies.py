@@ -391,6 +391,7 @@ class FlyManager:
 class FlyShooingApp:
     def __init__(self):
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Fly Shooing AR")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
 
@@ -412,7 +413,7 @@ class FlyShooingApp:
         self.fly_manager = FlyManager(self.scene)
         self.tracker = TrackingManager()
         
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 

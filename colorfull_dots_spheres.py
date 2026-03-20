@@ -41,14 +41,14 @@ import random
 
 # MediaPipe Hands の初期化
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(
+hands = mp_hands.Hands(model_complexity=1, 
     max_num_hands=6,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.5
 )
 
 # Webcam の初期化
-cap = cv2.VideoCapture(3)
+cap = display_utils.open_camera()
 
 def get_fibonacci_sphere_points(samples=300):
     """球体上に均等に点を配置する（フィボナッチ球アルゴリズム）"""

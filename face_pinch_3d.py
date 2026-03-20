@@ -52,10 +52,8 @@ MAX_RED_POINTS = 35000
 class FacePinch3DApp:
     def __init__(self):
         # ========== 1. Canvas & Renderer ==========
-        self.canvas = RenderCanvas(
-            size=(WINDOW_WIDTH, WINDOW_HEIGHT),
-            title="3D Face Pinch Fire"
-        )
+        self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="3D Face Pinch Fire")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
 
         # ========== 2. MediaPipe Setup ==========
@@ -67,16 +65,16 @@ class FacePinch3DApp:
             min_tracking_confidence=0.5
         )
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
+        self.hands = self.mp_hands.Hands(model_complexity=1, 
             max_num_hands=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
 
         # ========== 3. Camera ==========
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(3)
+            self.cap = display_utils.open_camera()
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WINDOW_HEIGHT)
 

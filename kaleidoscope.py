@@ -1,3 +1,4 @@
+import display_utils
 # =============================================================================
 # [AUTO-INJECTED] Scene Preload & Wait Logic
 # =============================================================================
@@ -296,9 +297,10 @@ class KaleidoscopeEffect:
 if __name__ == "__main__":
     # Test script in main
     video_source = 2
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     if not cap.isOpened():
-        cap = cv2.VideoCapture(3) # Try alternate
+        cap = display_utils.open_camera() # Try alternate
+    display_utils.setup_cv2_fullscreen("Kaleidoscope 2.0 Test")
         
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

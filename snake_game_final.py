@@ -460,7 +460,7 @@ class SnakeGame:
         
         # MediaPipe初期化
         try:
-            self.hands = mp.solutions.hands.Hands(
+            self.hands = mp.solutions.hands.Hands(model_complexity=1, 
                 static_image_mode=False,
                 max_num_hands=1,
                 min_detection_confidence=0.7,
@@ -471,7 +471,7 @@ class SnakeGame:
             self.hands = None
         
         # カメラ初期化
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
             print("カメラが開けません")
         

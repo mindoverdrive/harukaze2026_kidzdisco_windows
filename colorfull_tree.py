@@ -40,14 +40,14 @@ import mediapipe as mp
 
 # MediaPipe Hands の初期化
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(
+hands = mp_hands.Hands(model_complexity=1, 
     max_num_hands=2,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.5
 )
 
 # Webcam の初期化 (環境に合わせて 0, 1, 2 などを調整してください)
-cap = cv2.VideoCapture(3)
+cap = display_utils.open_camera()
 
 
 pygame.init()

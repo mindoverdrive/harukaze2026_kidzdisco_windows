@@ -74,7 +74,7 @@ def main():
     HOOK_RADIUS = 0.08
 
     with vision.HandLandmarker.create_from_options(options) as landmarker:
-        cap = cv2.VideoCapture(3)
+        cap = display_utils.open_camera()
         if not cap.isOpened():
             for i in [0, 1]:
                 cap = cv2.VideoCapture(i)

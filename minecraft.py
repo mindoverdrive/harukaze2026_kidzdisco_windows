@@ -94,7 +94,7 @@ class GestureManager:
         self.mp_hands = mp.solutions.hands
         self.mp_face_mesh = mp.solutions.face_mesh
         
-        self.hands = self.mp_hands.Hands(
+        self.hands = self.mp_hands.Hands(model_complexity=1, 
             max_num_hands=2,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.7
@@ -273,6 +273,7 @@ class MinecraftApp:
     def __init__(self):
         # Pygfx Setup
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Hand Gesture Minecraft")
+        display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -285,9 +286,15 @@ class MinecraftApp:
         light = gfx.DirectionalLight((1, 1, 1), 1.0)
         light.local.position = (50, 100, 50)
         self.scene.add(light)
+
+        self.cap = display_utils.open_camera()
+        self.camera_frame_width, self.camera_frame_height = display_utils.get_camera_frame_size(self.cap)
         
         # Camera Feed Background - using pygfx Background for guaranteed render order
-        self.bg_tex = gfx.Texture(np.zeros((480, 640, 4), dtype=np.uint8), dim=2)
+        self.bg_tex = gfx.Texture(
+            np.zeros((self.camera_frame_height, self.camera_frame_width, 4), dtype=np.uint8),
+            dim=2,
+        )
         bg_material = gfx.BackgroundImageMaterial(map=self.bg_tex)
         self.bg_plane = gfx.Background(None, bg_material)
         self.scene.add(self.bg_plane)
@@ -312,9 +319,6 @@ class MinecraftApp:
         
         # Hand/Input
         self.gesture_manager = GestureManager()
-        self.cap = cv2.VideoCapture(3) # Default camera
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
         # State
         self.camera_rot_x = 0

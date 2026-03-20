@@ -299,7 +299,7 @@ class ModernOtedamaGame:
 
         # Use HandTracker Module
         self.tracker = HandTracker(max_num_hands=2, detection_conf=0.7, track_conf=0.5)
-        self.cap = cv2.VideoCapture(3) 
+        self.cap = display_utils.open_camera() 
 
         self.state = STATE_TITLE
         self.score = 0

@@ -144,12 +144,12 @@ class PhotoGridApp:
         self.running = True
 
         # Camera
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, WINDOW_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WINDOW_HEIGHT)
         
         # Hands
-        self.hands = mp_hands.Hands(
+        self.hands = mp_hands.Hands(model_complexity=1, 
             static_image_mode=False,
             max_num_hands=2,
             min_detection_confidence=0.7,

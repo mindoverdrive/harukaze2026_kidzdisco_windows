@@ -45,11 +45,11 @@ def main():
     pose = mp_pose.Pose(
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
-        model_complexity=1
+        model_complexity=2
     )
 
     # Initialize Webcam
-    cap = cv2.VideoCapture(3)
+    cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Skeleton Glitch')
     if not cap.isOpened():
         print("Error: Could not open webcam.")

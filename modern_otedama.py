@@ -225,17 +225,17 @@ class ModernOtedamaGame:
 
         # MediaPipe
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
+        self.hands = self.mp_hands.Hands(model_complexity=1, 
             max_num_hands=2,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.5
         )
         
         # Camera
-        self.cap = cv2.VideoCapture(3)
+        self.cap = display_utils.open_camera()
         if not self.cap.isOpened():
              print("Warning: Default camera not found, trying index 1")
-             self.cap = cv2.VideoCapture(3)
+             self.cap = display_utils.open_camera()
 
         # Game Data
         self.state = STATE_TITLE
@@ -439,7 +439,7 @@ class ModernOtedamaGame:
         else:
             self.screen.fill(COLOR_BG_DARK)
             
-        # 2. Hands (Psychedelic Wireframe)
+        # 2. Hands (model_complexity=1, Psychedelic Wireframe)
         for hand in self.hand_colliders:
             hx, hy = hand['pos']
             hr = hand['radius']
