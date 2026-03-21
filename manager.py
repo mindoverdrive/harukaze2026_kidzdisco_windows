@@ -272,7 +272,6 @@ def main():
         fourcc=CONFIG.get("CAMERA_FOURCC", "MJPG"),
         diagnostic_seconds=CONFIG.get("CAMERA_DIAGNOSTIC_SECONDS", 2.0),
         strict_backend=CONFIG.get("CAMERA_STRICT_BACKEND", True),
-        brightness_gain=CONFIG.get("BRIGHTNESS", 1.0),
         backend_preference=CONFIG.get("CAMERA_BACKEND", "default"),
         fallback_to_default=CONFIG.get("CAMERA_ALLOW_FALLBACK", False),
         camera_name_hint=CONFIG.get("CAMERA_NAME_HINTS"),

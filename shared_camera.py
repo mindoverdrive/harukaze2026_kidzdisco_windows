@@ -21,24 +21,6 @@ ENV_FPS = "HARUKAZE_CAMERA_FPS"
 ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
 
 
-def _is_effectively_black(frame, mean_threshold=2.0, max_threshold=8):
-    if frame is None or frame.size == 0:
-        return True
-    try:
-        return float(frame.mean()) <= mean_threshold and int(frame.max()) <= max_threshold
-    except Exception:
-        return False
-
-
-def _apply_frame_adjustments(frame, brightness_gain=1.0):
-    if frame is None:
-        return frame
-    gain = float(brightness_gain or 1.0)
-    if abs(gain - 1.0) < 0.01:
-        return frame
-    return cv2.convertScaleAbs(frame, alpha=gain, beta=0)
-
-
 def enumerate_camera_devices():
     try:
         from pygrabber.dshow_graph import FilterGraph
@@ -294,42 +276,6 @@ class SharedMemoryCamera:
         return cls(shm_name=shm_name, width=width, height=height, channels=channels, fps=fps)
 
 
-class ProcessedCamera:
-    def __init__(self, source, brightness_gain=1.0):
-        self.source = source
-        self.brightness_gain = float(brightness_gain or 1.0)
-        self.last_good_frame = None
-
-    def isOpened(self):
-        return self.source is not None and self.source.isOpened()
-
-    def release(self):
-        if self.source is not None:
-            self.source.release()
-
-    def set(self, prop_id, value):
-        return self.source.set(prop_id, value)
-
-    def get(self, prop_id):
-        return self.source.get(prop_id)
-
-    def read(self):
-        ret, frame = self.source.read()
-        if not ret or frame is None:
-            if self.last_good_frame is not None:
-                return True, self.last_good_frame.copy()
-            return ret, frame
-
-        frame = _apply_frame_adjustments(frame, self.brightness_gain)
-        if _is_effectively_black(frame):
-            if self.last_good_frame is not None:
-                return True, self.last_good_frame.copy()
-            return True, frame
-
-        self.last_good_frame = frame.copy()
-        return True, frame
-
-
 class SharedCameraRelay:
     def __init__(
         self,
@@ -345,7 +291,6 @@ class SharedCameraRelay:
         fourcc="MJPG",
         diagnostic_seconds=2.0,
         strict_backend=True,
-        brightness_gain=1.0,
     ):
         self.requested_camera_index = int(camera_index)
         self.camera_index = choose_camera_index(
@@ -361,7 +306,6 @@ class SharedCameraRelay:
         self.fourcc = str(fourcc or "MJPG")
         self.diagnostic_seconds = float(diagnostic_seconds)
         self.strict_backend = bool(strict_backend)
-        self.brightness_gain = float(brightness_gain or 1.0)
         self.backend_preference = backend_preference
         self.fallback_to_default = fallback_to_default
         self.camera_name_hint = camera_name_hint
@@ -373,7 +317,6 @@ class SharedCameraRelay:
         self.thread = None
         self.lock = threading.Lock()
         self.latest_frame = None
-        self.last_good_frame = None
         self.frame_id = 0
         self.write_seq = 0
         self._write_header(status=0, timestamp=0.0)
@@ -436,15 +379,6 @@ class SharedCameraRelay:
             if frame.shape[1] != self.width or frame.shape[0] != self.height:
                 frame = cv2.resize(frame, (self.width, self.height))
 
-            frame = _apply_frame_adjustments(frame, self.brightness_gain)
-            if _is_effectively_black(frame):
-                if self.last_good_frame is None:
-                    time.sleep(0.005)
-                    continue
-                frame = self.last_good_frame.copy()
-            else:
-                self.last_good_frame = frame.copy()
-
             with self.lock:
                 self.latest_frame = frame.copy()
 
@@ -500,12 +434,11 @@ def open_camera_source(
     fourcc="MJPG",
     diagnostic_seconds=2.0,
     strict_backend=True,
-    brightness_gain=1.0,
 ):
     shared_cap = SharedMemoryCamera.from_env()
     if shared_cap is not None:
         print(f"[shared_camera] Attached to shared camera {shared_cap.shm_name}")
-        return ProcessedCamera(shared_cap, brightness_gain=brightness_gain)
+        return shared_cap
 
     resolved_index = choose_camera_index(
         camera_index,
@@ -522,11 +455,10 @@ def open_camera_source(
         fourcc=fourcc,
         diagnostic_seconds=diagnostic_seconds,
         strict_backend=strict_backend,
-        brightness_gain=brightness_gain,
         backend_preference=backend_preference,
         fallback_to_default=fallback_to_default,
     )
     if cap is None:
         print(f"[shared_camera] Error: Could not open camera {resolved_index}")
         return None
-    return ProcessedCamera(cap, brightness_gain=brightness_gain)
+    return cap

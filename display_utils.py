@@ -179,7 +179,6 @@ def open_camera(
             fourcc=_DISPLAY_CFG.get("CAMERA_FOURCC", DEFAULT_CAMERA_FOURCC),
             diagnostic_seconds=_DISPLAY_CFG.get("CAMERA_DIAGNOSTIC_SECONDS", DEFAULT_CAMERA_DIAGNOSTIC_SECONDS),
             strict_backend=_DISPLAY_CFG.get("CAMERA_STRICT_BACKEND", DEFAULT_CAMERA_STRICT_BACKEND),
-            brightness_gain=_DISPLAY_CFG.get("BRIGHTNESS", 1.0),
             backend_preference=_DISPLAY_CFG.get("CAMERA_BACKEND", DEFAULT_CAMERA_BACKEND),
             fallback_to_default=fallback_to_default,
             camera_name_hint=_DISPLAY_CFG.get("CAMERA_NAME_HINTS", DEFAULT_CAMERA_NAME_HINTS),
