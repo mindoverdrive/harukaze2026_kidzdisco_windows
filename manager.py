@@ -116,6 +116,7 @@ class SceneManager:
             "shared_camera.py",
             "hand_tracker.py",
             "visual_monitor_3d.py"
+            "sakura_transition.py"
         }
         ignore_prefixes = (
             "test_",
@@ -268,6 +269,10 @@ def main():
         width=CONFIG["CAMERA_WIDTH"],
         height=CONFIG["CAMERA_HEIGHT"],
         fps=CONFIG["CAMERA_FPS"],
+        fourcc=CONFIG.get("CAMERA_FOURCC", "MJPG"),
+        diagnostic_seconds=CONFIG.get("CAMERA_DIAGNOSTIC_SECONDS", 2.0),
+        strict_backend=CONFIG.get("CAMERA_STRICT_BACKEND", True),
+        brightness_gain=CONFIG.get("BRIGHTNESS", 1.0),
         backend_preference=CONFIG.get("CAMERA_BACKEND", "default"),
         fallback_to_default=CONFIG.get("CAMERA_ALLOW_FALLBACK", False),
         camera_name_hint=CONFIG.get("CAMERA_NAME_HINTS"),
@@ -285,6 +290,9 @@ def main():
     print(
         f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
         f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
+        f"fourcc={CONFIG.get('CAMERA_FOURCC', 'MJPG')} "
+        f"diag={CONFIG.get('CAMERA_DIAGNOSTIC_SECONDS', 2.0)}s "
+        f"strict_backend={CONFIG.get('CAMERA_STRICT_BACKEND', True)} "
         f"backend={CONFIG.get('CAMERA_BACKEND', 'default')} "
         f"shared={CONFIG.get('SHARED_CAMERA_ENABLED', True)}"
     )

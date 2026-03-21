@@ -18,6 +18,25 @@ ENV_WIDTH = "HARUKAZE_CAMERA_WIDTH"
 ENV_HEIGHT = "HARUKAZE_CAMERA_HEIGHT"
 ENV_CHANNELS = "HARUKAZE_CAMERA_CHANNELS"
 ENV_FPS = "HARUKAZE_CAMERA_FPS"
+ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
+
+
+def _is_effectively_black(frame, mean_threshold=2.0, max_threshold=8):
+    if frame is None or frame.size == 0:
+        return True
+    try:
+        return float(frame.mean()) <= mean_threshold and int(frame.max()) <= max_threshold
+    except Exception:
+        return False
+
+
+def _apply_frame_adjustments(frame, brightness_gain=1.0):
+    if frame is None:
+        return frame
+    gain = float(brightness_gain or 1.0)
+    if abs(gain - 1.0) < 0.01:
+        return frame
+    return cv2.convertScaleAbs(frame, alpha=gain, beta=0)
 
 
 def enumerate_camera_devices():
@@ -70,8 +89,13 @@ def _backend_from_name(name):
     return mapping.get(str(name).lower(), None)
 
 
-def _backend_order(preference):
+def _backend_order(preference, strict_backend=False):
     key = str(preference or "default").lower()
+    if strict_backend:
+        backend = _backend_from_name(key)
+        if backend is None:
+            return [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+        return [backend]
     if key == "dshow":
         return [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
     if key == "msmf":
@@ -82,13 +106,68 @@ def _backend_order(preference):
     return [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
 
 
-def _open_with_backends(camera_index, width, height, fps, backend_preference, fallback_to_default):
+def _decode_fourcc(value):
+    try:
+        packed = struct.pack("<I", int(value))
+        return packed.decode("ascii", errors="ignore").strip("\x00")
+    except Exception:
+        return str(value)
+
+
+def _normalize_fourcc(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"auto", "default", "none"}:
+        return None
+    return text[:4]
+
+
+def _measure_capture_fps(cap, sample_seconds=2.0):
+    sample_seconds = max(float(sample_seconds), 0.25)
+    frames = 0
+    first_ts = None
+    last_ts = None
+    deadline = time.perf_counter() + sample_seconds
+
+    while time.perf_counter() < deadline:
+        ret, _frame = cap.read()
+        if not ret:
+            continue
+        now = time.perf_counter()
+        if first_ts is None:
+            first_ts = now
+        last_ts = now
+        frames += 1
+
+    if first_ts is None or last_ts is None or last_ts <= first_ts:
+        return 0.0, frames
+
+    elapsed = last_ts - first_ts
+    return frames / elapsed, frames
+
+
+def _open_with_backends(
+    camera_index,
+    width,
+    height,
+    fps,
+    fourcc,
+    backend_preference,
+    fallback_to_default,
+    strict_backend=False,
+):
     def _setup_props(cap):
+        normalized_fourcc = _normalize_fourcc(fourcc)
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if normalized_fourcc:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*normalized_fourcc))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
 
-    for backend in _backend_order(backend_preference):
+    for backend in _backend_order(backend_preference, strict_backend=strict_backend):
         try:
             if backend is None:
                 backend_label = "default"
@@ -103,7 +182,11 @@ def _open_with_backends(camera_index, width, height, fps, backend_preference, fa
             continue
         if cap.isOpened():
             _setup_props(cap)
-            print(f"[shared_camera] Opened physical camera index={camera_index} backend={backend_label}")
+            actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
+            print(
+                f"[shared_camera] Opened physical camera index={camera_index} "
+                f"backend={backend_label} fourcc={actual_fourcc}"
+            )
             return cap
         cap.release()
 
@@ -111,7 +194,7 @@ def _open_with_backends(camera_index, width, height, fps, backend_preference, fa
         for idx in [0, 1, 2]:
             if idx == camera_index:
                 continue
-            for backend in _backend_order(backend_preference):
+            for backend in _backend_order(backend_preference, strict_backend=strict_backend):
                 try:
                     if backend is None:
                         backend_label = "default"
@@ -126,9 +209,10 @@ def _open_with_backends(camera_index, width, height, fps, backend_preference, fa
                     continue
                 if cap.isOpened():
                     _setup_props(cap)
+                    actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
                     print(
                         f"[shared_camera] Warning: camera_index={camera_index} failed, "
-                        f"opened fallback camera={idx} backend={backend_label}"
+                        f"opened fallback camera={idx} backend={backend_label} fourcc={actual_fourcc}"
                     )
                     return cap
                 cap.release()
@@ -210,6 +294,42 @@ class SharedMemoryCamera:
         return cls(shm_name=shm_name, width=width, height=height, channels=channels, fps=fps)
 
 
+class ProcessedCamera:
+    def __init__(self, source, brightness_gain=1.0):
+        self.source = source
+        self.brightness_gain = float(brightness_gain or 1.0)
+        self.last_good_frame = None
+
+    def isOpened(self):
+        return self.source is not None and self.source.isOpened()
+
+    def release(self):
+        if self.source is not None:
+            self.source.release()
+
+    def set(self, prop_id, value):
+        return self.source.set(prop_id, value)
+
+    def get(self, prop_id):
+        return self.source.get(prop_id)
+
+    def read(self):
+        ret, frame = self.source.read()
+        if not ret or frame is None:
+            if self.last_good_frame is not None:
+                return True, self.last_good_frame.copy()
+            return ret, frame
+
+        frame = _apply_frame_adjustments(frame, self.brightness_gain)
+        if _is_effectively_black(frame):
+            if self.last_good_frame is not None:
+                return True, self.last_good_frame.copy()
+            return True, frame
+
+        self.last_good_frame = frame.copy()
+        return True, frame
+
+
 class SharedCameraRelay:
     def __init__(
         self,
@@ -222,6 +342,10 @@ class SharedCameraRelay:
         camera_name_hint=None,
         exclude_name_hints=None,
         explicit_index=None,
+        fourcc="MJPG",
+        diagnostic_seconds=2.0,
+        strict_backend=True,
+        brightness_gain=1.0,
     ):
         self.requested_camera_index = int(camera_index)
         self.camera_index = choose_camera_index(
@@ -234,6 +358,10 @@ class SharedCameraRelay:
         self.height = int(height)
         self.channels = 3
         self.fps = float(fps)
+        self.fourcc = str(fourcc or "MJPG")
+        self.diagnostic_seconds = float(diagnostic_seconds)
+        self.strict_backend = bool(strict_backend)
+        self.brightness_gain = float(brightness_gain or 1.0)
         self.backend_preference = backend_preference
         self.fallback_to_default = fallback_to_default
         self.camera_name_hint = camera_name_hint
@@ -245,6 +373,7 @@ class SharedCameraRelay:
         self.thread = None
         self.lock = threading.Lock()
         self.latest_frame = None
+        self.last_good_frame = None
         self.frame_id = 0
         self.write_seq = 0
         self._write_header(status=0, timestamp=0.0)
@@ -270,11 +399,26 @@ class SharedCameraRelay:
             width=self.width,
             height=self.height,
             fps=self.fps,
+            fourcc=self.fourcc,
             backend_preference=self.backend_preference,
             fallback_to_default=self.fallback_to_default,
+            strict_backend=self.strict_backend,
         )
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError(f"Could not open physical camera index={self.camera_index}")
+
+        actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        actual_fourcc = _decode_fourcc(self.cap.get(cv2.CAP_PROP_FOURCC))
+        measured_fps, measured_frames = _measure_capture_fps(self.cap, self.diagnostic_seconds)
+        print(
+            "[shared_camera] Camera diagnostic "
+            f"requested={self.width}x{self.height}@{self.fps:.0f} fourcc={self.fourcc} "
+            f"actual={actual_width:.0f}x{actual_height:.0f}@{actual_fps:.2f} fourcc={actual_fourcc} "
+            f"measured_fps={measured_fps:.2f} frames={measured_frames} "
+            f"sample_seconds={self.diagnostic_seconds:.2f}"
+        )
 
         self.running = True
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -291,6 +435,15 @@ class SharedCameraRelay:
 
             if frame.shape[1] != self.width or frame.shape[0] != self.height:
                 frame = cv2.resize(frame, (self.width, self.height))
+
+            frame = _apply_frame_adjustments(frame, self.brightness_gain)
+            if _is_effectively_black(frame):
+                if self.last_good_frame is None:
+                    time.sleep(0.005)
+                    continue
+                frame = self.last_good_frame.copy()
+            else:
+                self.last_good_frame = frame.copy()
 
             with self.lock:
                 self.latest_frame = frame.copy()
@@ -318,6 +471,7 @@ class SharedCameraRelay:
             ENV_HEIGHT: str(self.height),
             ENV_CHANNELS: str(self.channels),
             ENV_FPS: str(int(self.fps)),
+            ENV_FOURCC: self.fourcc,
         }
 
     def close(self):
@@ -343,11 +497,15 @@ def open_camera_source(
     camera_name_hint=None,
     exclude_name_hints=None,
     explicit_index=None,
+    fourcc="MJPG",
+    diagnostic_seconds=2.0,
+    strict_backend=True,
+    brightness_gain=1.0,
 ):
     shared_cap = SharedMemoryCamera.from_env()
     if shared_cap is not None:
         print(f"[shared_camera] Attached to shared camera {shared_cap.shm_name}")
-        return shared_cap
+        return ProcessedCamera(shared_cap, brightness_gain=brightness_gain)
 
     resolved_index = choose_camera_index(
         camera_index,
@@ -361,9 +519,14 @@ def open_camera_source(
         width=width,
         height=height,
         fps=fps,
+        fourcc=fourcc,
+        diagnostic_seconds=diagnostic_seconds,
+        strict_backend=strict_backend,
+        brightness_gain=brightness_gain,
         backend_preference=backend_preference,
         fallback_to_default=fallback_to_default,
     )
     if cap is None:
         print(f"[shared_camera] Error: Could not open camera {resolved_index}")
-    return cap
+        return None
+    return ProcessedCamera(cap, brightness_gain=brightness_gain)
