@@ -258,6 +258,7 @@ def main():
                 running = False
         pygame.display.flip()
 
+    hands.close()
     cap.release()
     pygame.quit()
 

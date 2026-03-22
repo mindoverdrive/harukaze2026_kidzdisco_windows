@@ -429,6 +429,22 @@ class VisualMonitorApp:
         self.canvas.request_draw(self.animate)
         loop.run()
 
+    def cleanup(self):
+        if getattr(self, "cap", None) is not None:
+            self.cap.release()
+        detector = getattr(self, "detector", None)
+        if detector is not None and hasattr(detector, "close"):
+            detector.close()
+        tex_manager = getattr(self, "tex_manager", None)
+        if tex_manager is not None:
+            tex_manager.stop_loading = True
+            if getattr(tex_manager, "loading_thread", None):
+                tex_manager.loading_thread.join(timeout=1)
+        cv2.destroyAllWindows()
+
 if __name__ == "__main__":
     app = VisualMonitorApp()
-    app.run()
+    try:
+        app.run()
+    finally:
+        app.cleanup()

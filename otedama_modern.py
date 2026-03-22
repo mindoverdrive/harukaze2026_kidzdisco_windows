@@ -565,6 +565,8 @@ class ModernOtedamaGame:
             self.update()
             self.draw()
             self.clock.tick(FPS)
+        if hasattr(self.tracker, "hands") and self.tracker.hands is not None:
+            self.tracker.hands.close()
         self.cap.release()
         pygame.quit()
         sys.exit()

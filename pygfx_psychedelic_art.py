@@ -315,7 +315,11 @@ class PsychedelicApp:
         self.canvas.request_draw(self.animate)
         loop.run()
         # Cleanup
+        if self.hand_tracker and hasattr(self.hand_tracker, "hands") and self.hand_tracker.hands is not None:
+            self.hand_tracker.hands.close()
+        self.face_mesh.close()
         self.cap.release()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     app = PsychedelicApp()

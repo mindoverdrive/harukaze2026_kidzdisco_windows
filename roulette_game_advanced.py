@@ -1153,6 +1153,8 @@ class RouletteGame:
         """リソースのクリーンアップ"""
         if self.video:
             self.video.close()
+        self.hands.close()
+        self.face_mesh.close()
         self.cap.release()
         cv2.destroyAllWindows()
         pygame.quit()

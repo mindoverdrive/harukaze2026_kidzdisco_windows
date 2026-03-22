@@ -460,6 +460,9 @@ def main():
         cv2.imshow('Hand Drawing App', display)
         if cv2.waitKey(5) & 0xFF == ord('q'):
             break
+    hands.close()
+    if face_mesh is not None:
+        face_mesh.close()
     cap.release()
     cv2.destroyAllWindows()
 if __name__ == "__main__":

@@ -457,6 +457,8 @@ class FaceGestureApp:
             self.process()
             self.clock.tick(FPS)
 
+        self.hands.close()
+        self.face_mesh.close()
         self.cap.release()
         pygame.quit()
 

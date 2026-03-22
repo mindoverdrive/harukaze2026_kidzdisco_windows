@@ -457,7 +457,10 @@ class FlyShooingApp:
             loop.stop()
 
     def cleanup(self):
+        self.tracker.hand_landmarker.close()
+        self.tracker.face_landmarker.close()
         self.cap.release()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

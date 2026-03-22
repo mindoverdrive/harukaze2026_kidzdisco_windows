@@ -629,7 +629,10 @@ class MinecraftApp:
         loop.run()
         
     def cleanup(self):
+        self.gesture_manager.hands.close()
+        self.gesture_manager.face_mesh.close()
         self.cap.release()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     app = MinecraftApp()

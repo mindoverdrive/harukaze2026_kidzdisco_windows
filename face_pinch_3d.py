@@ -369,7 +369,21 @@ class FacePinch3DApp:
         self.canvas.request_draw(self.animate)
         loop.run()
 
+    def cleanup(self):
+        if getattr(self, "cap", None) is not None:
+            self.cap.release()
+        hands = getattr(self, "hands", None)
+        if hands is not None and hasattr(hands, "close"):
+            hands.close()
+        face_mesh = getattr(self, "face_mesh", None)
+        if face_mesh is not None and hasattr(face_mesh, "close"):
+            face_mesh.close()
+        cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     app = FacePinch3DApp()
-    app.run()
+    try:
+        app.run()
+    finally:
+        app.cleanup()

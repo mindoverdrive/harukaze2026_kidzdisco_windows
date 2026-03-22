@@ -443,6 +443,17 @@ class SaturnParticlesApp:
         self.canvas.request_draw(self.animate)
         loop.run()
 
+    def cleanup(self):
+        if getattr(self, "cap", None) is not None:
+            self.cap.release()
+        detector = getattr(self, "detector", None)
+        if detector is not None and hasattr(detector, "close"):
+            detector.close()
+        cv2.destroyAllWindows()
+
 if __name__ == "__main__":
     app = SaturnParticlesApp()
-    app.run()
+    try:
+        app.run()
+    finally:
+        app.cleanup()

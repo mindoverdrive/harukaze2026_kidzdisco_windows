@@ -880,6 +880,9 @@ class InteractiveArtApp:
             self.clock.tick(FPS)
 
         # Cleanup
+        if hasattr(self.hand_tracker, "hands") and self.hand_tracker.hands is not None:
+            self.hand_tracker.hands.close()
+        self.face_mesh.close()
         self.cap.release()
         cv2.destroyAllWindows()
         pygame.quit()

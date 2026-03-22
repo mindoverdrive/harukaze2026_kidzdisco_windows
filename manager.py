@@ -121,6 +121,8 @@ class SceneManager:
             "hand_tracker.py",
             "visual_monitor_3d.py",
             "sakura_transition.py",
+            "sitecustomize.py",
+            "visual_monitor.py",
         }
         ignore_prefixes = (
             "test_",

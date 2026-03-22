@@ -622,6 +622,7 @@ class PhotoGridApp:
                 
             pygame.display.flip()
         
+        self.hands.close()
         self.cap.release()
         pygame.quit()
 

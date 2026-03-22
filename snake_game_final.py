@@ -1021,6 +1021,7 @@ class SnakeGame:
                 self.draw()
                 self.clock.tick(FPS)
         finally:
+            self.hands.close()
             self.cap.release()
             pygame.quit()
             cv2.destroyAllWindows()

@@ -527,6 +527,7 @@ class ModernOtedamaGame:
         self.cleanup()
 
     def cleanup(self):
+        self.hands.close()
         self.cap.release()
         pygame.quit()
         sys.exit()

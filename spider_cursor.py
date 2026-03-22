@@ -497,6 +497,7 @@ def main():
         pygame.display.flip()
         clock.tick(60)
 
+    hands.close()
     cap.release()
     pygame.quit()
 
