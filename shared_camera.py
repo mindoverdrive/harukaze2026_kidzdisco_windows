@@ -1,4 +1,5 @@
 import os
+import json
 import struct
 import threading
 import time
@@ -19,6 +20,7 @@ ENV_HEIGHT = "HARUKAZE_CAMERA_HEIGHT"
 ENV_CHANNELS = "HARUKAZE_CAMERA_CHANNELS"
 ENV_FPS = "HARUKAZE_CAMERA_FPS"
 ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
+SESSION_INFO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".shared_camera_session.json")
 
 
 def enumerate_camera_devices():
@@ -275,6 +277,24 @@ class SharedMemoryCamera:
             return None
         return cls(shm_name=shm_name, width=width, height=height, channels=channels, fps=fps)
 
+    @classmethod
+    def from_session_file(cls):
+        try:
+            with open(SESSION_INFO_PATH, "r", encoding="utf-8") as f:
+                session = json.load(f)
+        except Exception:
+            return None
+
+        try:
+            shm_name = session["shm_name"]
+            width = session["width"]
+            height = session["height"]
+            channels = session.get("channels", 3)
+            fps = session.get("fps", 60)
+            return cls(shm_name=shm_name, width=width, height=height, channels=channels, fps=fps)
+        except Exception:
+            return None
+
 
 class SharedCameraRelay:
     def __init__(
@@ -362,6 +382,7 @@ class SharedCameraRelay:
             f"measured_fps={measured_fps:.2f} frames={measured_frames} "
             f"sample_seconds={self.diagnostic_seconds:.2f}"
         )
+        self.write_session_file()
 
         self.running = True
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -408,6 +429,22 @@ class SharedCameraRelay:
             ENV_FOURCC: self.fourcc,
         }
 
+    def write_session_file(self):
+        payload = {
+            "shm_name": self.shm_name,
+            "width": self.width,
+            "height": self.height,
+            "channels": self.channels,
+            "fps": self.fps,
+            "fourcc": self.fourcc,
+            "pid": os.getpid(),
+        }
+        try:
+            with open(SESSION_INFO_PATH, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+        except Exception as exc:
+            print(f"[shared_camera] Warning: could not write session file: {exc}")
+
     def close(self):
         self.running = False
         if self.thread:
@@ -418,6 +455,11 @@ class SharedCameraRelay:
         try:
             self.shm.unlink()
         except FileNotFoundError:
+            pass
+        try:
+            if os.path.exists(SESSION_INFO_PATH):
+                os.remove(SESSION_INFO_PATH)
+        except Exception:
             pass
 
 
@@ -438,6 +480,11 @@ def open_camera_source(
     shared_cap = SharedMemoryCamera.from_env()
     if shared_cap is not None:
         print(f"[shared_camera] Attached to shared camera {shared_cap.shm_name}")
+        return shared_cap
+
+    shared_cap = SharedMemoryCamera.from_session_file()
+    if shared_cap is not None:
+        print(f"[shared_camera] Attached to manager shared camera {shared_cap.shm_name}")
         return shared_cap
 
     resolved_index = choose_camera_index(

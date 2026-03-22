@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import argparse
 
 import cv2
 import numpy as np
@@ -115,8 +116,8 @@ class SceneManager:
             "display_utils.py",
             "shared_camera.py",
             "hand_tracker.py",
-            "visual_monitor_3d.py"
-            "sakura_transition.py"
+            "visual_monitor_3d.py",
+            "sakura_transition.py",
         }
         ignore_prefixes = (
             "test_",
@@ -263,6 +264,14 @@ class HeadClapMonitor:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--camera-only",
+        action="store_true",
+        help="Start only the shared camera relay for manual scene editing.",
+    )
+    args, _ = parser.parse_known_args()
+
     manager_window_available = True
     camera_relay = SharedCameraRelay(
         camera_index=CONFIG["CAMERA_INDEX"],
@@ -280,12 +289,6 @@ def main():
     ).start()
 
     camera_env = camera_relay.export_env() if CONFIG.get("SHARED_CAMERA_ENABLED", True) else {}
-    manager = SceneManager(camera_env=camera_env)
-    if not manager.all_scenes:
-        print("[Manager] Error: No scene files found.")
-        camera_relay.close()
-        return
-
     print(
         f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
         f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
@@ -296,14 +299,25 @@ def main():
         f"shared={CONFIG.get('SHARED_CAMERA_ENABLED', True)}"
     )
 
+    manager = None
+    if not args.camera_only:
+        manager = SceneManager(camera_env=camera_env)
+        if not manager.all_scenes:
+            print("[Manager] Error: No scene files found.")
+            camera_relay.close()
+            return
+
     monitor = None
-    if CONFIG.get("CLAP_MONITOR_ENABLED", True):
+    if not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True):
         monitor = HeadClapMonitor(frame_source=camera_relay)
         monitor.start()
+    elif args.camera_only:
+        print("[Manager] Camera-only mode enabled. Scene launching is disabled.")
     else:
         print("[Manager] Clap monitor disabled by config.")
 
-    manager.switch_scene()
+    if manager is not None:
+        manager.switch_scene()
     try:
         cv2.namedWindow("Manager Control", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("Manager Control", 440, 120)
@@ -313,11 +327,11 @@ def main():
 
     try:
         while True:
-            if monitor and monitor.consume_clap():
+            if monitor and monitor.consume_clap() and manager is not None:
                 print("[Manager] Head clap detected. Switching scene.")
                 manager.switch_scene()
 
-            if not manager.is_scene_running():
+            if manager is not None and not manager.is_scene_running():
                 print(f"[Manager] Scene '{manager.current_scene_name}' exited. Launching next...")
                 time.sleep(0.5)
                 manager.switch_scene()
@@ -325,7 +339,8 @@ def main():
             key = -1
             if manager_window_available:
                 control_img = np.zeros((120, 440, 3), dtype=np.uint8)
-                cv2.putText(control_img, f"Scene: {manager.current_scene_name}", (10, 35),
+                scene_name = manager.current_scene_name if manager is not None else "camera-only"
+                cv2.putText(control_img, f"Scene: {scene_name}", (10, 35),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.putText(control_img, f"Camera: {CONFIG['CAMERA_INDEX']} / {CONFIG.get('CAMERA_BACKEND', 'default')}", (10, 60),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 200, 0), 1)
@@ -343,7 +358,7 @@ def main():
 
             if key == ord("q"):
                 break
-            if key == ord("n"):
+            if key == ord("n") and manager is not None:
                 print("[Manager] Keyboard next scene")
                 manager.switch_scene()
 
@@ -353,7 +368,8 @@ def main():
         print("[Manager] Shutting down...")
         if monitor:
             monitor.stop()
-        manager.cleanup()
+        if manager is not None:
+            manager.cleanup()
         camera_relay.close()
         cv2.destroyAllWindows()
 
