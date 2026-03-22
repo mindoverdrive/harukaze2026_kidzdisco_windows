@@ -51,7 +51,7 @@ import pylinalg as la
 _DU_W, _DU_H, _DU_X, _DU_Y = display_utils.get_second_monitor_size()
 WINDOW_WIDTH = _DU_W
 WINDOW_HEIGHT = _DU_H
-NUM_PARTICLES = 15000
+NUM_PARTICLES = 40000
 WORLD_SCALE = 1000
 ATTRACTION_STRENGTH = 450000.0 # Force towards/away from hand
 DAMPING = 0.95                 # Velocity damping

@@ -21,6 +21,7 @@ ENV_CHANNELS = "HARUKAZE_CAMERA_CHANNELS"
 ENV_FPS = "HARUKAZE_CAMERA_FPS"
 ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
 SESSION_INFO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".shared_camera_session.json")
+DEFAULT_READ_FAILURE_REOPEN_THRESHOLD = 30
 
 
 def enumerate_camera_devices():
@@ -339,6 +340,7 @@ class SharedCameraRelay:
         self.latest_frame = None
         self.frame_id = 0
         self.write_seq = 0
+        self.read_failures = 0
         self._write_header(status=0, timestamp=0.0)
 
     def _write_header(self, status, timestamp):
@@ -357,16 +359,7 @@ class SharedCameraRelay:
         )
 
     def start(self):
-        self.cap = _open_with_backends(
-            camera_index=self.camera_index,
-            width=self.width,
-            height=self.height,
-            fps=self.fps,
-            fourcc=self.fourcc,
-            backend_preference=self.backend_preference,
-            fallback_to_default=self.fallback_to_default,
-            strict_backend=self.strict_backend,
-        )
+        self.cap = self._create_capture()
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError(f"Could not open physical camera index={self.camera_index}")
 
@@ -389,13 +382,42 @@ class SharedCameraRelay:
         self.thread.start()
         return self
 
+    def _create_capture(self):
+        return _open_with_backends(
+            camera_index=self.camera_index,
+            width=self.width,
+            height=self.height,
+            fps=self.fps,
+            fourcc=self.fourcc,
+            backend_preference=self.backend_preference,
+            fallback_to_default=self.fallback_to_default,
+            strict_backend=self.strict_backend,
+        )
+
+    def _reopen_capture(self):
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+        self.cap = self._create_capture()
+        self.read_failures = 0
+        return self.cap is not None and self.cap.isOpened()
+
     def _capture_loop(self):
         target_sleep = 1.0 / max(self.fps, 1.0)
         while self.running:
             ret, frame = self.cap.read()
             if not ret:
+                self.read_failures += 1
+                if self.read_failures >= DEFAULT_READ_FAILURE_REOPEN_THRESHOLD:
+                    print("[shared_camera] Warning: consecutive read failures detected. Reopening capture.")
+                    if not self._reopen_capture():
+                        time.sleep(0.1)
+                        continue
                 time.sleep(0.01)
                 continue
+            self.read_failures = 0
 
             if frame.shape[1] != self.width or frame.shape[0] != self.height:
                 frame = cv2.resize(frame, (self.width, self.height))
@@ -500,10 +522,9 @@ def open_camera_source(
         height=height,
         fps=fps,
         fourcc=fourcc,
-        diagnostic_seconds=diagnostic_seconds,
-        strict_backend=strict_backend,
         backend_preference=backend_preference,
         fallback_to_default=fallback_to_default,
+        strict_backend=strict_backend,
     )
     if cap is None:
         print(f"[shared_camera] Error: Could not open camera {resolved_index}")

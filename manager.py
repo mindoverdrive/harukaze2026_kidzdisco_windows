@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import argparse
+import gc
 
 import cv2
 import numpy as np
@@ -36,6 +37,8 @@ DEFAULT_CONFIG = {
     "CLAP_DIST_THRESHOLD": 0.15,
     "CLAP_COOLDOWN": 0.5,
     "TARGET_FPS": 60,
+    "SCENE_TERMINATE_TIMEOUT": 3.0,
+    "SCENE_SWITCH_DELAY": 0.2,
 }
 
 
@@ -156,14 +159,24 @@ class SceneManager:
 
     def kill_current(self):
         if self.running_process and self.running_process.poll() is None:
+            proc = self.running_process
             print(f"[Manager] Killing scene: {self.current_scene_name}")
-            self.running_process.terminate()
+            proc.terminate()
             try:
-                self.running_process.wait(timeout=3)
+                proc.wait(timeout=float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0)))
             except subprocess.TimeoutExpired:
-                self.running_process.kill()
-                self.running_process.wait()
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+                else:
+                    proc.kill()
+                proc.wait()
             self.running_process = None
+            gc.collect()
 
     def launch_scene(self, scene_path):
         self.current_scene_name = os.path.basename(scene_path)
@@ -172,10 +185,14 @@ class SceneManager:
         env = os.environ.copy()
         env["WGPU_BACKEND"] = env.get("WGPU_BACKEND", "dx12")
         env.update(self.camera_env)
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
         self.running_process = subprocess.Popen(
             [sys.executable, scene_path],
             cwd=os.path.dirname(scene_path),
             env=env,
+            creationflags=creationflags,
         )
 
     def switch_scene(self):
@@ -185,7 +202,7 @@ class SceneManager:
         self.kill_current()
         scene_path = self.all_scenes[self.scene_index % len(self.all_scenes)]
         self.scene_index += 1
-        time.sleep(0.2)
+        time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
         self.launch_scene(scene_path)
 
     def is_scene_running(self):
