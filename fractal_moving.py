@@ -189,10 +189,8 @@ class Pointer:
 def main():
     pygame.init()
     
-    # 画面サイズの設定
-    infoObject = pygame.display.Info()
-    WIDTH, HEIGHT = infoObject.current_w * 4 // 5, infoObject.current_h * 4 // 5
     screen, _pg_size = display_utils.setup_pygame_fullscreen()
+    WIDTH, HEIGHT = screen.get_size()
     pygame.display.set_caption("4 Distinct Fractal Trails (Camera Control)")
     
     # マウスカーソルを非表示

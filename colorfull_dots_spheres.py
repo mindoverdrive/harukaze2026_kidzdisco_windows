@@ -78,9 +78,8 @@ def rotate_3d(x, y, z, ax, ay, az):
 
 def main():
     pygame.init()
-    info = pygame.display.Info()
-    w, h = info.current_w, info.current_h
     screen, _pg_size = display_utils.setup_pygame_fullscreen()
+    w, h = screen.get_size()
     pygame.display.set_caption("Colorful Dots Spheres")
     clock = pygame.time.Clock()
 
@@ -102,8 +101,8 @@ def main():
     fov = min(w, h) * 0.8
     viewer_distance = 800.0
 
-    # 同期ロジック: 30秒 × 60fps = 1800フレームで全球体が同じ向きに戻る
-    SYNC_FRAMES = 1800
+    # 同期ロジック: 30秒 × 30fps = 900フレームで全球体が同じ向きに戻る
+    SYNC_FRAMES = 900
     BASE = (2.0 * math.pi) / SYNC_FRAMES
 
     # 10パターンの回転定義（各球体に独立した回転方向）

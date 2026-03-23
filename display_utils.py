@@ -6,6 +6,7 @@ import json
 import os
 
 import cv2
+import numpy as np
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -110,7 +111,7 @@ class CameraResizingProxy:
         if target_w and target_h:
             src_h, src_w = frame.shape[:2]
             if src_w != target_w or src_h != target_h:
-                frame = cv2.resize(frame, (int(target_w), int(target_h)), interpolation=cv2.INTER_LINEAR)
+                frame = fit_frame_to_size(frame, int(target_w), int(target_h))
         return ok, frame
 
     def set(self, prop_id, value):
@@ -137,6 +138,54 @@ class CameraResizingProxy:
 
     def __getattr__(self, name):
         return getattr(self._source, name)
+
+
+def get_stage_size():
+    monitor = get_second_monitor()
+    if monitor:
+        _x, _y, w, h = monitor
+        return w, h
+    return DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT
+
+
+def get_uniform_layout(base_width, base_height, stage_width=None, stage_height=None):
+    if stage_width is None or stage_height is None:
+        stage_width, stage_height = get_stage_size()
+    scale = min(stage_width / float(base_width), stage_height / float(base_height))
+    scaled_width = max(1, int(round(base_width * scale)))
+    scaled_height = max(1, int(round(base_height * scale)))
+    offset_x = (stage_width - scaled_width) // 2
+    offset_y = (stage_height - scaled_height) // 2
+    return {
+        "base_width": int(base_width),
+        "base_height": int(base_height),
+        "stage_width": int(stage_width),
+        "stage_height": int(stage_height),
+        "scaled_width": int(scaled_width),
+        "scaled_height": int(scaled_height),
+        "offset_x": int(offset_x),
+        "offset_y": int(offset_y),
+        "scale": float(scale),
+    }
+
+
+def fit_frame_to_size(frame, target_width, target_height, pad_color=(0, 0, 0)):
+    src_h, src_w = frame.shape[:2]
+    if src_w == target_width and src_h == target_height:
+        return frame
+    layout = get_uniform_layout(src_w, src_h, target_width, target_height)
+    resized = cv2.resize(
+        frame,
+        (layout["scaled_width"], layout["scaled_height"]),
+        interpolation=cv2.INTER_LINEAR,
+    )
+    canvas = np.zeros((target_height, target_width, frame.shape[2]), dtype=frame.dtype)
+    if pad_color != (0, 0, 0):
+        canvas[:] = pad_color
+    ox = layout["offset_x"]
+    oy = layout["offset_y"]
+    canvas[oy : oy + layout["scaled_height"], ox : ox + layout["scaled_width"]] = resized
+    return canvas
 
 
 def setup_cv2_fullscreen(window_name):
@@ -166,6 +215,27 @@ def setup_pygame_fullscreen():
     os.environ["SDL_VIDEO_WINDOW_POS"] = f"{x},{y}"
     screen = pygame.display.set_mode((w, h), pygame.NOFRAME)
     return screen, (w, h)
+
+
+def setup_pygame_scaled_fullscreen(base_width, base_height):
+    import pygame
+
+    window_screen, (stage_width, stage_height) = setup_pygame_fullscreen()
+    layout = get_uniform_layout(base_width, base_height, stage_width, stage_height)
+    scene_surface = pygame.Surface((int(base_width), int(base_height))).convert()
+    return window_screen, scene_surface, layout
+
+
+def present_pygame_scaled(window_screen, scene_surface, layout):
+    import pygame
+
+    scaled = pygame.transform.smoothscale(
+        scene_surface,
+        (layout["scaled_width"], layout["scaled_height"]),
+    )
+    window_screen.fill((0, 0, 0))
+    window_screen.blit(scaled, (layout["offset_x"], layout["offset_y"]))
+    pygame.display.flip()
 
 
 def get_second_monitor_size():

@@ -215,7 +215,10 @@ class Otedama:
 class ModernOtedamaGame:
     def __init__(self):
         pygame.init()
-        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
+        self.window_screen, self.screen, self.display_layout = display_utils.setup_pygame_scaled_fullscreen(
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        )
         pygame.display.set_caption("OTEDAMA PSYCHEDELIC 2026")
         self.clock = pygame.time.Clock()
         
@@ -468,7 +471,7 @@ class ModernOtedamaGame:
         # 6. UI
         self.draw_ui()
 
-        pygame.display.flip()
+        display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
 
     def draw_ui(self):
         # Unified Glitch Text Function

@@ -480,7 +480,10 @@ class EffectSystem:
 class InteractiveArtApp:
     def __init__(self):
         pygame.init()
-        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
+        self.window_screen, self.screen, self.display_layout = display_utils.setup_pygame_scaled_fullscreen(
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        )
         pygame.display.set_caption("Magic Mirror Canvas")
         self.clock = pygame.time.Clock()
         self.running = True
@@ -876,7 +879,7 @@ class InteractiveArtApp:
             except:
                 pass
 
-            pygame.display.flip()
+            display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
             self.clock.tick(FPS)
 
         # Cleanup

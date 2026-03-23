@@ -408,7 +408,7 @@ class MinecraftApp:
         # Tan(FOV/2) * depth * aspectRatio
         fov = self.camera.fov * (math.pi / 180)
         h_world = 2 * math.tan(fov / 2) * depth
-        w_world = h_world * (self.camera.width / self.camera.height)
+        w_world = h_world * (WINDOW_WIDTH / WINDOW_HEIGHT)
         
         # Local camera space coordinates
         # Adjust for "hand pointing" feeling
@@ -531,7 +531,7 @@ class MinecraftApp:
         # Let's Orbit around (0,0,0)
         
         target_rot_y = (lx - 0.5) * -3.0 # Yaw
-        target_rot_x = (ly - 0.5) * -2.0 # Pitch
+        target_rot_x = (ly - 0.5) * 2.0 # Pitch
         
         # Smooth interpolation
         self.camera_rot_y += (target_rot_y - self.camera_rot_y) * 0.1
@@ -621,7 +621,12 @@ class MinecraftApp:
 
         # Render
         # Render
-        self.renderer.render(self.scene, self.camera)
+        try:
+            self.renderer.render(self.scene, self.camera)
+        except RuntimeError as exc:
+            print(f"[minecraft] Render stopped: {exc}")
+            loop.stop()
+            return
         self.canvas.request_draw()
 
     def run(self):

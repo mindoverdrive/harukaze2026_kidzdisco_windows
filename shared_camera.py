@@ -405,7 +405,6 @@ class SharedCameraRelay:
         return self.cap is not None and self.cap.isOpened()
 
     def _capture_loop(self):
-        target_sleep = 1.0 / max(self.fps, 1.0)
         while self.running:
             ret, frame = self.cap.read()
             if not ret:
@@ -420,7 +419,9 @@ class SharedCameraRelay:
             self.read_failures = 0
 
             if frame.shape[1] != self.width or frame.shape[0] != self.height:
-                frame = cv2.resize(frame, (self.width, self.height))
+                frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+
+            frame = np.ascontiguousarray(frame)
 
             with self.lock:
                 self.latest_frame = frame.copy()
@@ -432,7 +433,6 @@ class SharedCameraRelay:
             self.frame_id += 1
             self.write_seq += 1
             self._write_header(status=2, timestamp=now)
-            time.sleep(target_sleep)
 
     def read(self):
         with self.lock:

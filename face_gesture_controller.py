@@ -109,7 +109,10 @@ class PersonData:
 class FaceGestureApp:
     def __init__(self):
         pygame.init()
-        self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
+        self.window_screen, self.screen, self.display_layout = display_utils.setup_pygame_scaled_fullscreen(
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        )
         pygame.display.set_caption("Face Gesture Interface")
         self.clock = pygame.time.Clock()
         self.running = True
@@ -443,7 +446,7 @@ class FaceGestureApp:
         fps_text = self.font.render(f"FPS: {fps}", True, (0, 255, 0))
         self.screen.blit(fps_text, (10, 10))
         
-        pygame.display.flip()
+        display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
 
     def run(self):
         while self.running:

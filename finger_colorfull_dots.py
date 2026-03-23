@@ -32,6 +32,7 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
 import pygame
 import display_utils
 import math
@@ -49,10 +50,27 @@ hands = mp_hands.Hands(model_complexity=1,
 # Initialize Webcam
 cap = display_utils.open_camera()
 
+
+def _cleanup():
+    try:
+        hands.close()
+    except Exception:
+        pass
+    try:
+        cap.release()
+    except Exception:
+        pass
+    try:
+        pygame.quit()
+    except Exception:
+        pass
+
+
+atexit.register(_cleanup)
+
 pygame.init()
-info = pygame.display.Info()
-w, h = info.current_w, info.current_h
 screen, _pg_size = display_utils.setup_pygame_fullscreen()
+w, h = screen.get_size()
 clock = pygame.time.Clock()
 
 cols = 40
@@ -125,7 +143,3 @@ while running:
 
     pygame.display.flip()
     clock.tick(60)
-
-    hands.close()
-    cap.release()
-    pygame.quit()

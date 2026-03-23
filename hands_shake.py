@@ -18,9 +18,8 @@ args = parser.parse_args()
 
 # --- 初期設定 ---
 pygame.init()
-info = pygame.display.Info()
-screen_width, screen_height = info.current_w, info.current_h
 screen, _pg_size = display_utils.setup_pygame_fullscreen()
+screen_width, screen_height = screen.get_size()
 pygame.display.set_caption("Harukaze 2026 - Hands Shake")
 clock = pygame.time.Clock()
 

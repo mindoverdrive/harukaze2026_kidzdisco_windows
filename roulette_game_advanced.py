@@ -67,8 +67,10 @@ import time
 import spiral_mouth_effect as sme
 
 # ==================== Constants ====================
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 960
+BASE_WINDOW_WIDTH = 1280
+BASE_WINDOW_HEIGHT = 960
+WINDOW_WIDTH, WINDOW_HEIGHT = display_utils.get_stage_size()
+UI_SCALE = min(WINDOW_WIDTH / BASE_WINDOW_WIDTH, WINDOW_HEIGHT / BASE_WINDOW_HEIGHT)
 FPS = 60
 NUM_SECTORS = 16
 
@@ -94,8 +96,8 @@ COLORS = [
 
 # Roulette settings
 ROULETTE_CENTER = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-ROULETTE_RADIUS = 375
-MARKER_Y = 100  # Top marker position
+ROULETTE_RADIUS = max(180, int(375 * UI_SCALE))
+MARKER_Y = max(40, int(100 * WINDOW_HEIGHT / BASE_WINDOW_HEIGHT))  # Top marker position
 
 
 # ==================== Enums ====================
@@ -363,9 +365,9 @@ class RouletteGame:
         self.screen, _pg_size = display_utils.setup_pygame_fullscreen()
         pygame.display.set_caption("Roulette Game - Hand Control")
         self.clock = pygame.time.Clock()
-        self.font_large = pygame.font.Font(None, 100)
-        self.font_medium = pygame.font.Font(None, 50)
-        self.font_small = pygame.font.Font(None, 24)
+        self.font_large = pygame.font.Font(None, max(48, int(100 * UI_SCALE)))
+        self.font_medium = pygame.font.Font(None, max(28, int(50 * UI_SCALE)))
+        self.font_small = pygame.font.Font(None, max(18, int(24 * UI_SCALE)))
 
         # 背景動画は Windows 実運用では使わない
         self.video = None

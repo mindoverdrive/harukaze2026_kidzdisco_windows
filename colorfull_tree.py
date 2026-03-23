@@ -68,9 +68,8 @@ atexit.register(_cleanup)
 
 
 pygame.init()
-info = pygame.display.Info()
-w, h = info.current_w, info.current_h
 screen, _pg_size = display_utils.setup_pygame_fullscreen()
+w, h = screen.get_size()
 clock = pygame.time.Clock()
 
 

@@ -42,9 +42,8 @@ import mediapipe as mp
 
 # Initialize Pygame
 pygame.init()
-info = pygame.display.Info()
-W, H = info.current_w, info.current_h
 s, _pg_size = display_utils.setup_pygame_fullscreen()
+W, H = s.get_size()
 clock = pygame.time.Clock()
 
 # Initialize MediaPipe Hands
