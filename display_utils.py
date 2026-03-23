@@ -5,6 +5,8 @@ Display and camera helpers shared by scene scripts.
 import json
 import os
 
+import cv2
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -93,10 +95,51 @@ def get_second_monitor():
         print(f"[display_utils] Warning: Could not detect monitors: {exc}")
         return None
 
+class CameraResizingProxy:
+    def __init__(self, source):
+        self._source = source
+        self._target_width = None
+        self._target_height = None
+
+    def read(self):
+        ok, frame = self._source.read()
+        if not ok or frame is None:
+            return ok, frame
+        target_w = self._target_width
+        target_h = self._target_height
+        if target_w and target_h:
+            src_h, src_w = frame.shape[:2]
+            if src_w != target_w or src_h != target_h:
+                frame = cv2.resize(frame, (int(target_w), int(target_h)), interpolation=cv2.INTER_LINEAR)
+        return ok, frame
+
+    def set(self, prop_id, value):
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
+            self._target_width = int(value)
+            return True
+        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            self._target_height = int(value)
+            return True
+        return self._source.set(prop_id, value)
+
+    def get(self, prop_id):
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH and self._target_width:
+            return float(self._target_width)
+        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT and self._target_height:
+            return float(self._target_height)
+        return self._source.get(prop_id)
+
+    def isOpened(self):
+        return self._source.isOpened()
+
+    def release(self):
+        return self._source.release()
+
+    def __getattr__(self, name):
+        return getattr(self._source, name)
+
 
 def setup_cv2_fullscreen(window_name):
-    import cv2
-
     monitor = get_second_monitor()
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
@@ -171,7 +214,7 @@ def open_camera(
     try:
         from shared_camera import open_camera_source
 
-        return open_camera_source(
+        cap = open_camera_source(
             camera_index=camera_index,
             width=width,
             height=height,
@@ -185,6 +228,7 @@ def open_camera(
             exclude_name_hints=_DISPLAY_CFG.get("CAMERA_EXCLUDE_HINTS", DEFAULT_CAMERA_EXCLUDE_HINTS),
             explicit_index=_DISPLAY_CFG.get("CAMERA_OPENCV_INDEX", DEFAULT_CAMERA_OPENCV_INDEX),
         )
+        return CameraResizingProxy(cap) if cap is not None else None
     except Exception as exc:
         print(f"[display_utils] Error: camera open failed: {exc}")
         return None

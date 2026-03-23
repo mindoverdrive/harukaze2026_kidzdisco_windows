@@ -33,6 +33,7 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
 import pygame
 import display_utils
 import math
@@ -83,6 +84,22 @@ for i in range(len(P)):
 
 # Camera capture
 cap = display_utils.open_camera()
+def _cleanup():
+    try:
+        hands.close()
+    except Exception:
+        pass
+    try:
+        cap.release()
+    except Exception:
+        pass
+    try:
+        pygame.quit()
+    except Exception:
+        pass
+
+
+atexit.register(_cleanup)
 if not cap.isOpened():
    cap = display_utils.open_camera()
 if not cap.isOpened():
@@ -360,6 +377,3 @@ while running:
     pygame.display.flip()
     clock.tick(60)
 
-    hands.close()
-    cap.release()
-    pygame.quit()

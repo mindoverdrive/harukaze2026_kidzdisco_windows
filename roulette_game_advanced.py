@@ -60,13 +60,10 @@ if os.path.exists(CONFIG_PATH):
         config = json.load(f)
 else:
     config = {}
-VIDEO_PATH = config.get("VIDEO_PATH", "../sozai/Spiral_Focus.mp4")
-
 import math
 import random
 from typing import Tuple, List, Optional
 import time
-from pyvidplayer2 import Video
 import spiral_mouth_effect as sme
 
 # ==================== Constants ====================
@@ -370,18 +367,8 @@ class RouletteGame:
         self.font_medium = pygame.font.Font(None, 50)
         self.font_small = pygame.font.Font(None, 24)
 
-        # 背景動画の初期化
-        self.video_path = VIDEO_PATH
-        try:
-            # 引数エラーを避けるため、一旦引数なしで試行し、読み込み後にボリューム調整
-            self.video = Video(self.video_path)
-            try:
-                self.video.set_volume(0)
-            except:
-                pass
-        except Exception as e:
-            print(f"動画の読み込みに失敗しました: {e}")
-            self.video = None
+        # 背景動画は Windows 実運用では使わない
+        self.video = None
 
         # 背景演出用のカウンタと方向
         self.bg_timer = 0
@@ -742,9 +729,6 @@ class RouletteGame:
         self.melt_timer = 0
         self.melt_strips = []
         self.particles = []
-        if self.video:
-            self.video.restart()
-
 
 
     def draw_winning_effect(self, surface):
@@ -1151,8 +1135,6 @@ class RouletteGame:
 
     def cleanup(self):
         """リソースのクリーンアップ"""
-        if self.video:
-            self.video.close()
         self.hands.close()
         self.face_mesh.close()
         self.cap.release()

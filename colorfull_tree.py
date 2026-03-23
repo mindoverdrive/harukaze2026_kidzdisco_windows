@@ -32,6 +32,7 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
 import pygame
 import display_utils
 import math
@@ -48,6 +49,22 @@ hands = mp_hands.Hands(model_complexity=1,
 
 # Webcam の初期化 (環境に合わせて 0, 1, 2 などを調整してください)
 cap = display_utils.open_camera()
+def _cleanup():
+    try:
+        hands.close()
+    except Exception:
+        pass
+    try:
+        cap.release()
+    except Exception:
+        pass
+    try:
+        pygame.quit()
+    except Exception:
+        pass
+
+
+atexit.register(_cleanup)
 
 
 pygame.init()
@@ -338,6 +355,3 @@ while running:
     pygame.display.flip()
     clock.tick(60)
 
-    hands.close()
-    cap.release()
-    pygame.quit()

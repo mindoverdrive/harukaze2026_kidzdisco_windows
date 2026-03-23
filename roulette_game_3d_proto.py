@@ -44,6 +44,7 @@ import numpy as np
 import cv2
 import mediapipe as mp
 import pygfx as gfx
+import pylinalg as la
 from collections import deque
 import time
 
@@ -135,13 +136,10 @@ class Roulette3D:
             self.rotation_x += (tx - self.rotation_x) * 0.1
             self.rotation_y += (ty - self.rotation_y) * 0.1
         
-        # ワールド回転を直接設定（クォータニオンではなくオイラー角で）
-        # 各メッシュに回転を適用
+        rotation = la.quat_from_euler((self.rotation_x, self.rotation_y, self.rotation_z), order="XYZ")
         for mesh in self.world.children:
-            euler = [self.rotation_x, self.rotation_y, self.rotation_z]
-            from_euler = getattr(mesh.rotation, 'set_from_euler', None)
-            if from_euler:
-                mesh.rotation.set_from_euler(euler)
+            if hasattr(mesh, "local"):
+                mesh.local.rotation = rotation
 
 
 # ==================== Hand Detector ====================
