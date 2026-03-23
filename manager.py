@@ -123,6 +123,7 @@ class SceneManager:
             "sakura_transition.py",
             "sitecustomize.py",
             "visual_monitor.py",
+            "process_sakura.py"
         }
         ignore_prefixes = (
             "test_",
