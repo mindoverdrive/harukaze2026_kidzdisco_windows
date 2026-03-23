@@ -101,8 +101,8 @@ def main():
     fov = min(w, h) * 0.8
     viewer_distance = 800.0
 
-    # 同期ロジック: 30秒 × 30fps = 900フレームで全球体が同じ向きに戻る
-    SYNC_FRAMES = 900
+    # 同期ロジック: 50秒 × 30fps = 1500フレームで全球体が同じ向きに戻る
+    SYNC_FRAMES = 1500
     BASE = (2.0 * math.pi) / SYNC_FRAMES
 
     # 10パターンの回転定義（各球体に独立した回転方向）
@@ -130,7 +130,7 @@ def main():
 
     # 人差し指によるプルプルエフェクト
     finger_positions = []
-    INTERACTION_RADIUS = 70.0
+    INTERACTION_RADIUS = 95.0
 
     cam_surface = pygame.Surface((w, h)).convert_alpha()
 

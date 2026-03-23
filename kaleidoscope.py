@@ -350,10 +350,6 @@ if __name__ == "__main__":
         out = kaleido.process(frame)
         out = kaleido.apply_flashy_effects(out, intensity=0.6)
         
-        # UI
-        mode_text = f"Mode: {kaleido.projection_mode}"
-        cv2.putText(out, mode_text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        
         cv2.imshow("Kaleidoscope 2.0 Test", out)
         
         key = cv2.waitKey(1) & 0xFF

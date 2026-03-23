@@ -83,14 +83,15 @@ while running:
         results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # 人差し指の先端 (ID: 8)
+                fingertip_ids = [4, 8, 12, 16, 20]
                 index_tip = hand_landmarks.landmark[8]
-                hx, hy = int(index_tip.x * W), int(index_tip.y * H)
-                # 親指の先端 (ID: 4) との距離でクリックをシミュレート
                 thumb_tip = hand_landmarks.landmark[4]
                 dist_click = math.hypot(index_tip.x - thumb_tip.x, index_tip.y - thumb_tip.y)
                 h_down = dist_click < 0.05 # 距離が近い場合にTrue
-                active_hands.append({'x': hx, 'y': hy, 'down': h_down})
+                for tip_id in fingertip_ids:
+                    fingertip = hand_landmarks.landmark[tip_id]
+                    hx, hy = int(fingertip.x * W), int(fingertip.y * H)
+                    active_hands.append({'x': hx, 'y': hy, 'down': h_down})
 
     screen.fill((0, 0, 0))
     for p in particles:

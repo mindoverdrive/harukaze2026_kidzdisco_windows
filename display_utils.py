@@ -111,7 +111,11 @@ class CameraResizingProxy:
         if target_w and target_h:
             src_h, src_w = frame.shape[:2]
             if src_w != target_w or src_h != target_h:
-                frame = fit_frame_to_size(frame, int(target_w), int(target_h))
+                frame = cv2.resize(
+                    frame,
+                    (int(target_w), int(target_h)),
+                    interpolation=cv2.INTER_LINEAR,
+                )
         return ok, frame
 
     def set(self, prop_id, value):
@@ -271,13 +275,19 @@ def setup_rendercanvas_fullscreen(canvas):
 
 def open_camera(
     camera_index=None,
-    width=DEFAULT_CAMERA_WIDTH,
-    height=DEFAULT_CAMERA_HEIGHT,
-    fps=DEFAULT_CAMERA_FPS,
+    width=None,
+    height=None,
+    fps=None,
     fallback_to_default=None,
 ):
     if camera_index is None:
         camera_index = _DISPLAY_CFG.get("CAMERA_INDEX", DEFAULT_CAMERA_INDEX)
+    if width is None:
+        width = _DISPLAY_CFG.get("CAMERA_WIDTH", DEFAULT_CAMERA_WIDTH)
+    if height is None:
+        height = _DISPLAY_CFG.get("CAMERA_HEIGHT", DEFAULT_CAMERA_HEIGHT)
+    if fps is None:
+        fps = _DISPLAY_CFG.get("CAMERA_FPS", DEFAULT_CAMERA_FPS)
     if fallback_to_default is None:
         fallback_to_default = _DISPLAY_CFG.get("CAMERA_ALLOW_FALLBACK", DEFAULT_CAMERA_ALLOW_FALLBACK)
 

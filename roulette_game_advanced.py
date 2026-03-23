@@ -324,7 +324,7 @@ class RouletteGame:
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(model_complexity=1, 
             static_image_mode=False,
-            max_num_hands=2,
+            max_num_hands=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
@@ -357,7 +357,7 @@ class RouletteGame:
         self.emit_interval = 0.08
         self.face_prev_time = time.time()
         
-        # 2本の手が検出された際の情報
+        # 片手操作前提のため、距離情報は使わない
         self.hand_distance_info = None
         
         # pygame初期化
@@ -411,7 +411,6 @@ class RouletteGame:
         results = self.hand_results
         
         velocity = 0.0
-        hand_center = None
         
         if results.multi_hand_landmarks and results.multi_handedness:
             hand_landmarks = results.multi_hand_landmarks[0]
@@ -424,11 +423,6 @@ class RouletteGame:
             h, w, c = frame.shape
             mid_x, mid_y = int(mid_finger.x * w), int(mid_finger.y * h)
             idx_x, idx_y = int(index_finger.x * w), int(index_finger.y * h)
-            
-            # 手の中心
-            hand_center_x = (mid_x + idx_x) / 2
-            hand_center_y = (mid_y + idx_y) / 2
-            hand_center = np.array([hand_center_x / w - 0.5, hand_center_y / h - 0.5])
             
             # 現在の角度
             current_angle = np.arctan2(mid_y - idx_y, mid_x - idx_x)
@@ -447,36 +441,8 @@ class RouletteGame:
                 velocity = -angle_diff * 0.8  # スケール調整（逆回転に設定）
                 self.hand_velocities.append(velocity)
 
-        # 2本の手が検出された場合の距離計算
         self.hand_distance_info = None
-        if results.multi_hand_landmarks and len(results.multi_hand_landmarks) >= 2:
-            h, w, c = frame.shape
-            hand1 = results.multi_hand_landmarks[0]
-            hand2 = results.multi_hand_landmarks[1]
-            
-            # 各指の先端座標（4, 8, 12, 16, 20）
-            tips = [4, 8, 12, 16, 20]
-            distances = []
-            for tip_idx in tips:
-                p1 = hand1.landmark[tip_idx]
-                p2 = hand2.landmark[tip_idx]
-                
-                pos1 = (int(p1.x * w), int(p1.y * h))
-                pos2 = (int(p2.x * w), int(p2.y * h))
-                dist = math.hypot(pos1[0] - pos2[0], pos1[1] - pos2[1])
-                distances.append({
-                    'pos1': pos1,
-                    'pos2': pos2,
-                    'dist': dist
-                })
-            
-            self.hand_distance_info = distances
-        
-        # 中心軸の動きを更新
-        if hand_center is not None:
-            self.center_target = hand_center * 50  # スケール調整
-        else:
-            self.center_target = np.array([0.0, 0.0])
+        self.center_target = np.array([0.0, 0.0])
         
         return velocity
 
@@ -586,7 +552,18 @@ class RouletteGame:
         self.current_frame = self.process_face_effect(frame)
         
         # 中心軸の動き（なめらかに）
-        self.center_offset += (self.center_target - self.center_offset) * self.center_smooth
+        self.center_offset[:] = 0.0
+        
+        # 手が動いている場合は回転速度を更新
+        if abs(hand_velocity) > 0.005:
+            self.rotation_velocity = hand_velocity
+        else:
+            self.rotation_velocity *= self.rotation_friction
+        
+        # ルーレットの回転を更新
+        self.rotation += self.rotation_velocity
+        self.rotation %= (2 * np.pi)
+        
         
         # 手が動いている場合は回転速度を更新
         if abs(hand_velocity) > 0.005:
@@ -605,9 +582,8 @@ class RouletteGame:
         
         # ゲーム状態に応じた更新
         if self.state == GameState.PLAYING:
-            # 速度が十分に低下したら当選判定
-            if abs(self.rotation_velocity) < 0.002 and abs(hand_velocity) < 0.002:
-                self._on_winning()
+            # ゲーム終了の概念をなくすために当選判定を削除
+            pass
         
         elif self.state == GameState.WINNING:
             self.effect_timer += 1
@@ -759,16 +735,6 @@ class RouletteGame:
                 glow_color = tuple(int(c * (0.5 + alpha * 0.5)) for c in self.winning_color)
                 shape_draw_func(surface, int(effect_x), int(effect_y), glow, glow_color)
             
-            # テキスト
-            if self.effect_timer > 20:
-                congratulations = self.font_large.render("おめでとう！", True, (255, 255, 100))
-                rect = congratulations.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
-                
-                # テキストの輝き効果
-                shadow = self.font_large.render("おめでとう！", True, (200, 150, 50))
-                surface.blit(shadow, (rect.x + 3, rect.y + 3))
-                surface.blit(congratulations, rect)
-
     def draw_melt_effect(self, surface):
         """溶け効果の描画"""
         if self.state == GameState.MELTING:
@@ -1073,27 +1039,8 @@ class RouletteGame:
         self.draw_camera_frame(surface)
         self.draw_cli_window(surface)
         
-        # 手の距離情報の描画
-        if self.hand_distance_info:
-            for info in self.hand_distance_info:
-                p1 = info['pos1']
-                p2 = info['pos2']
-                dist = info['dist']
-                # 画面の中央にマッピングが必要かもしれないが、今は物理カメラ座標のまま
-                # draw_camera_frame でプレビューは 240x180 だが、座標は 640x480 (cap size)
-                # 画面全体 (WINDOW_WIDTH x WINDOW_HEIGHT) にマッピングする
-                scale_x = WINDOW_WIDTH / 640
-                scale_y = WINDOW_HEIGHT / 480
-                scr_p1 = (int(p1[0] * scale_x), int(p1[1] * scale_y))
-                scr_p2 = (int(p2[0] * scale_x), int(p2[1] * scale_y))
-                
-                pygame.draw.line(surface, (255, 255, 255), scr_p1, scr_p2, 2)
-                mid_p = ((scr_p1[0] + scr_p2[0]) // 2, (scr_p1[1] + scr_p2[1]) // 2)
-                dist_text = self.font_small.render(f"{dist:.1f}", True, (255, 255, 255))
-                surface.blit(dist_text, mid_p)
-
         # 情報表示
-        info_text = f"Velocity: {self.rotation_velocity:.4f} | State: {self.state.name} | Press R to reset"
+        info_text = f"Velocity: {self.rotation_velocity:.4f} | State: {self.state.name}"
         info = self.font_small.render(info_text, True, (255, 255, 255))
         surface.blit(info, (10, 10))
         
@@ -1113,13 +1060,13 @@ class RouletteGame:
                     elif event.key == pygame.K_r:
                         self._reset_game()
                     elif event.key == pygame.K_SPACE:
-                        # テスト用：スペースキーで当選
-                        self._on_winning()
+                        pass
             
             # フレーム取得
             ret, frame = self.cap.read()
             if not ret:
-                break
+                self.clock.tick(FPS)
+                continue
             
             # フレームを水平反転（鏡像）
             frame = cv2.flip(frame, 1)

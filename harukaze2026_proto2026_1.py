@@ -108,7 +108,7 @@ def main():
     cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Hand Drawing App')
     # Canvas for drawing
-    canvas = None
+    canvas_layers = {"Left": None, "Right": None}
     
     # State variables
     prev_index_finger_pos = {} # per-hand previous index finger pos, keyed by label
@@ -125,7 +125,7 @@ def main():
     # Canvas scroll speed (pixels per second to move left)
     CANVAS_SPEED_PX_PER_SEC = 160.0
     # Flow angle (degrees) and angular speed (deg/sec) — direction of flow rotates slowly
-    flow_angle = 0.0
+    flow_angles = {"Left": 0.0, "Right": 180.0}
     FLOW_ROTATION_DEG_PER_SEC = 10.0
     
     # Constants
@@ -150,20 +150,22 @@ def main():
         dt = now - last_time
         last_time = now
         
-        # Initialize canvas if not created (or if size changes)
-        if canvas is None or canvas.shape != image.shape:
-             canvas = np.zeros_like(image)
-        # Shift canvas along rotating direction to create flowing effect
-        flow_angle += FLOW_ROTATION_DEG_PER_SEC * dt
-        theta = math.radians(flow_angle % 360.0)
-        dx_f = CANVAS_SPEED_PX_PER_SEC * dt * math.cos(theta)
-        dy_f = CANVAS_SPEED_PX_PER_SEC * dt * math.sin(theta)
-        shift_x = int(round(dx_f))
-        shift_y = int(round(dy_f))
-        if shift_x != 0 or shift_y != 0:
-            # roll by (-shift_y, -shift_x) because rolling moves pixels opposite to perceived flow
-            canvas = np.roll(canvas, shift=(-shift_y, -shift_x), axis=(0,1))
-            # clear newly exposed strips
+        # Initialize per-hand canvases if not created (or if size changes)
+        for label in ("Left", "Right"):
+            if canvas_layers[label] is None or canvas_layers[label].shape != image.shape:
+                canvas_layers[label] = np.zeros_like(image)
+        # Shift each hand canvas in an opposite direction and rotation
+        for label, direction in (("Left", 1.0), ("Right", -1.0)):
+            flow_angles[label] = (flow_angles[label] + FLOW_ROTATION_DEG_PER_SEC * dt * direction) % 360.0
+            theta = math.radians(flow_angles[label])
+            dx_f = CANVAS_SPEED_PX_PER_SEC * dt * math.cos(theta) * direction
+            dy_f = CANVAS_SPEED_PX_PER_SEC * dt * math.sin(theta) * direction
+            shift_x = int(round(dx_f))
+            shift_y = int(round(dy_f))
+            if shift_x == 0 and shift_y == 0:
+                continue
+            canvas = canvas_layers[label]
+            canvas = np.roll(canvas, shift=(-shift_y, -shift_x), axis=(0, 1))
             if shift_x > 0:
                 canvas[:, w-shift_x:] = 0
             elif shift_x < 0:
@@ -172,6 +174,7 @@ def main():
                 canvas[h-shift_y:, :] = 0
             elif shift_y < 0:
                 canvas[: -shift_y, :] = 0
+            canvas_layers[label] = canvas
         # To improve performance, optionally mark the image as not writeable to
         # pass by reference.
         image.flags.writeable = False
@@ -218,6 +221,7 @@ def main():
             if fingers and fingers > 0:
                 draw_color = COLOR_MAP.get(fingers, (0, 255, 255))
                 prev_pos = prev_index_finger_pos.get(label)
+                canvas = canvas_layers.get(label)
                 if prev_pos:
                     cv2.line(canvas, prev_pos, pos, draw_color, THICKNESS)
                 prev_index_finger_pos[label] = pos
@@ -231,6 +235,7 @@ def main():
             prev_cnt = prev_finger_count.get(label)
             # Reset only when a single hand's raised fingers transition from 0 to 5
             if prev_cnt is not None and prev_cnt == 0 and cnt == 5:
+                canvas = np.maximum(canvas_layers["Left"], canvas_layers["Right"])
                 gray_canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
                 _, mask_full = cv2.threshold(gray_canvas, 10, 255, cv2.THRESH_BINARY)
                 ys, xs = np.where(mask_full > 0)
@@ -277,7 +282,8 @@ def main():
                         'axes': (random.randint(6,14), random.randint(3,8))
                     })
                 if num_pixels > 0:
-                    canvas[mask_full > 0] = 0
+                    for canvas_layer in canvas_layers.values():
+                        canvas_layer[mask_full > 0] = 0
                 print(f"Reset ({label}): spawned", len(particles), "particles")
             prev_finger_count[label] = cnt
         # remove prev_finger_count entries for hands lost
@@ -288,6 +294,7 @@ def main():
         # Setup display
         # Combine image and canvas
         # Create mask of drawn area to overlay color
+        canvas = np.maximum(canvas_layers["Left"], canvas_layers["Right"])
         gray_canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray_canvas, 10, 255, cv2.THRESH_BINARY)
         

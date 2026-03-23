@@ -163,7 +163,7 @@ class PhotoGridApp:
         
         # Trash Bin
         try:
-            self.trash_icon = pygame.image.load("test/trashbin.png")
+            self.trash_icon = pygame.image.load("c:\\Users\\go\\.gemini\\antigravity\\scratch\\harukaze2026_kidzdisco_windows\\trashbin.png")
             self.trash_icon = pygame.transform.scale(self.trash_icon, (100, 100))
             self.trash_icon.set_colorkey(WHITE) # Make white transparent
         except:
@@ -177,7 +177,7 @@ class PhotoGridApp:
         
         # Reset Button Icon
         try:
-            self.reset_icon = pygame.image.load("test/reset.png")
+            self.reset_icon = pygame.image.load("c:\\Users\\go\\.gemini\\antigravity\\scratch\\harukaze2026_kidzdisco_windows\\reset.png")
             self.reset_icon = pygame.transform.scale(self.reset_icon, (100, 100))
             self.reset_icon.set_colorkey(WHITE) # Make white transparent
         except:
@@ -190,7 +190,7 @@ class PhotoGridApp:
         
         # Undo Icon
         try:
-            self.undo_icon = pygame.image.load("test/undo.jpg")
+            self.undo_icon = pygame.image.load("c:\\Users\\go\\.gemini\\antigravity\\scratch\\harukaze2026_kidzdisco_windows\\undo.jpg")
             self.undo_icon = pygame.transform.scale(self.undo_icon, (100, 100))
             self.undo_icon.set_colorkey(WHITE)
         except:
