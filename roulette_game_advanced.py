@@ -438,8 +438,15 @@ class RouletteGame:
                 elif angle_diff < -np.pi:
                     angle_diff += 2 * np.pi
                 
-                velocity = -angle_diff * 0.8  # スケール調整（逆回転に設定）
-                self.hand_velocities.append(velocity)
+                inst_velocity = -angle_diff * 1.2  # スケール調整（逆回転に設定）
+                self.hand_velocities.append(inst_velocity)
+            
+            # 過去フレームの平均を用いてジッターを平滑化
+            if len(self.hand_velocities) > 0:
+                velocity = sum(self.hand_velocities) / len(self.hand_velocities)
+        else:
+            # 検出されない場合は直近履歴をクリアして0を返す
+            self.hand_velocities.clear()
 
         self.hand_distance_info = None
         self.center_target = np.array([0.0, 0.0])
@@ -556,18 +563,8 @@ class RouletteGame:
         
         # 手が動いている場合は回転速度を更新
         if abs(hand_velocity) > 0.005:
-            self.rotation_velocity = hand_velocity
-        else:
-            self.rotation_velocity *= self.rotation_friction
-        
-        # ルーレットの回転を更新
-        self.rotation += self.rotation_velocity
-        self.rotation %= (2 * np.pi)
-        
-        
-        # 手が動いている場合は回転速度を更新
-        if abs(hand_velocity) > 0.005:
-            self.rotation_velocity = hand_velocity
+            # カクつきを抑えるためlerp(線形補間)して滑らかに速度を近づける
+            self.rotation_velocity = self.rotation_velocity * 0.8 + hand_velocity * 0.2
         else:
             self.rotation_velocity *= self.rotation_friction
         
@@ -961,14 +958,7 @@ class RouletteGame:
         center_color = self.winning_color if self.state != GameState.PLAYING else (200, 200, 200)
         pygame.draw.circle(self.roulette_surface, (*center_color, roulette_alpha), center, 15, 0)
         
-        # 上部マーカー
-        marker_x = ROULETTE_CENTER[0]
-        marker_y = MARKER_Y
-        pygame.draw.polygon(self.roulette_surface, (255, 0, 0, 220), [
-            (marker_x - 15, marker_y),
-            (marker_x + 15, marker_y),
-            (marker_x, marker_y + 25)
-        ])
+        # 上方の赤い逆三角形マーカーは削除されました（変更前：pygame.draw.polygon）
 
     def draw_cli_window(self, surface):
         """CLIウィンドウの描画"""
