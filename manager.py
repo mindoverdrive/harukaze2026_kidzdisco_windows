@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import socket
 import subprocess
 import sys
 import threading
@@ -37,8 +38,16 @@ DEFAULT_CONFIG = {
     "CLAP_DIST_THRESHOLD": 0.15,
     "CLAP_COOLDOWN": 0.5,
     "TARGET_FPS": 60,
+    "PRELOAD_COUNT": 1,
     "SCENE_TERMINATE_TIMEOUT": 3.0,
     "SCENE_SWITCH_DELAY": 0.2,
+    "SCENE_PRELOAD_START_GRACE": 0.25,
+    "TRANSITION_ENABLED": True,
+    "TRANSITION_SCRIPT": "sakura_transition.py",
+    "TRANSITION_TOTAL_DURATION": 5.0,
+    "TRANSITION_PHASE1_END": 1.5,
+    "TRANSITION_PHASE2_END": 2.5,
+    "TRANSITION_COVER_DELAY": 1.5,
 }
 
 
@@ -104,9 +113,16 @@ class GestureInterpreter:
 class SceneManager:
     def __init__(self, camera_env=None):
         self.running_process = None
+        self.running_scene_path = None
         self.current_scene_name = "None"
         self.scene_index = 0
         self.camera_env = dict(camera_env or {})
+        self.preloaded_process = None
+        self.preloaded_scene_path = None
+        self.preloaded_scene_name = None
+        self.preloaded_port = None
+        self.transition_process = None
+        self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
         self.all_scenes = self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
 
@@ -123,7 +139,8 @@ class SceneManager:
             "sakura_transition.py",
             "sitecustomize.py",
             "visual_monitor.py",
-            "process_sakura.py"
+            "process_sakura.py",
+            "sound_face.py",
         }
         ignore_prefixes = (
             "test_",
@@ -160,10 +177,64 @@ class SceneManager:
             scenes.insert(0, earth_path)
         return scenes
 
-    def kill_current(self):
-        if self.running_process and self.running_process.poll() is None:
-            proc = self.running_process
-            print(f"[Manager] Killing scene: {self.current_scene_name}")
+    def _creationflags(self):
+        if os.name == "nt":
+            return subprocess.CREATE_NEW_PROCESS_GROUP
+        return 0
+
+    def _scene_env(self):
+        env = os.environ.copy()
+        env["WGPU_BACKEND"] = env.get("WGPU_BACKEND", "dx12")
+        env.update(self.camera_env)
+        return env
+
+    def _spawn_process(self, argv, cwd):
+        return subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=self._scene_env(),
+            creationflags=self._creationflags(),
+        )
+
+    def _stage_geometry(self):
+        return (
+            int(CONFIG.get("DISPLAY_X", 0)),
+            int(CONFIG.get("DISPLAY_Y", 0)),
+            int(CONFIG.get("DISPLAY_WIDTH", 1360)),
+            int(CONFIG.get("DISPLAY_HEIGHT", 800)),
+        )
+
+    def _reserve_udp_port(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        return port
+
+    def _send_scene_command(self, port, cmd):
+        if not port:
+            return
+        payload = json.dumps({"cmd": cmd}).encode("utf-8")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.sendto(payload, ("127.0.0.1", int(port)))
+
+    def _announce_launch(self, scene_name, mode="launching"):
+        label = "PRELOADING" if mode == "preload" else "LAUNCHING"
+        print(f"\n[Manager] >>> {label}: {scene_name} <<<\n")
+
+    def _next_scene_path(self):
+        return self.all_scenes[self.scene_index % len(self.all_scenes)]
+
+    def _launch_scene_process(self, scene_path, wait=False, port=None):
+        argv = [sys.executable, scene_path]
+        if wait and port:
+            argv.extend(["--wait", "--port", str(port)])
+        proc = self._spawn_process(argv, cwd=os.path.dirname(scene_path))
+        return proc
+
+    def _kill_process(self, proc, scene_name):
+        if proc and proc.poll() is None:
+            print(f"[Manager] Killing scene: {scene_name}")
             proc.terminate()
             try:
                 proc.wait(timeout=float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0)))
@@ -178,35 +249,155 @@ class SceneManager:
                 else:
                     proc.kill()
                 proc.wait()
-            self.running_process = None
-            gc.collect()
+        gc.collect()
+
+    def kill_current(self):
+        self._kill_process(self.running_process, self.current_scene_name)
+        self.running_process = None
+        self.running_scene_path = None
+
+    def _clear_preloaded(self):
+        self.preloaded_process = None
+        self.preloaded_scene_path = None
+        self.preloaded_scene_name = None
+        self.preloaded_port = None
+
+    def _discard_preloaded(self):
+        if self.preloaded_process is not None:
+            self._kill_process(self.preloaded_process, self.preloaded_scene_name or "preloaded")
+        self._clear_preloaded()
+
+    def _start_transition_overlay(self):
+        if not CONFIG.get("TRANSITION_ENABLED", True):
+            return None
+        transition_name = CONFIG.get("TRANSITION_SCRIPT", "sakura_transition.py")
+        transition_path = os.path.join(CONFIG["SCENE_DIR"], transition_name)
+        if not os.path.exists(transition_path):
+            print(f"[Manager] Warning: transition script not found: {transition_path}")
+            return None
+
+        x, y, w, h = self._stage_geometry()
+        argv = [
+            sys.executable,
+            transition_path,
+            "--x", str(x),
+            "--y", str(y),
+            "--width", str(w),
+            "--height", str(h),
+            "--total-duration", str(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0)),
+            "--phase1-end", str(CONFIG.get("TRANSITION_PHASE1_END", 1.5)),
+            "--phase2-end", str(CONFIG.get("TRANSITION_PHASE2_END", 2.5)),
+        ]
+        self.transition_process = self._spawn_process(argv, cwd=os.path.dirname(transition_path))
+        return self.transition_process
+
+    def _wait_for_transition_finish(self, proc, cover_delay):
+        if proc is None:
+            return
+        total_duration = float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0))
+        remaining = max(0.0, total_duration - cover_delay) + 1.0
+        try:
+            proc.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            self._kill_process(proc, "sakura_transition")
+        finally:
+            self.transition_process = None
+
+    def _ensure_preloaded_scene(self):
+        if not self.preload_enabled or not self.all_scenes:
+            return
+        if self.preloaded_process is not None:
+            if self.preloaded_process.poll() is None:
+                return
+            print(f"[Manager] Warning: preloaded scene exited early: {self.preloaded_scene_name}")
+            self._clear_preloaded()
+
+        scene_path = self._next_scene_path()
+        self.preloaded_port = self._reserve_udp_port()
+        self.preloaded_scene_path = scene_path
+        self.preloaded_scene_name = os.path.basename(scene_path)
+        self._announce_launch(self.preloaded_scene_name, mode="preload")
+        self.preloaded_process = self._launch_scene_process(
+            scene_path,
+            wait=True,
+            port=self.preloaded_port,
+        )
+
+    def _activate_preloaded_scene(self, send_start=True):
+        if self.preloaded_process is None:
+            return False
+        if self.preloaded_process.poll() is not None:
+            print(f"[Manager] Warning: preloaded scene failed before START: {self.preloaded_scene_name}")
+            self._clear_preloaded()
+            return False
+
+        self._announce_launch(self.preloaded_scene_name, mode="launch")
+        if send_start:
+            self._send_scene_command(self.preloaded_port, "START")
+        self.running_process = self.preloaded_process
+        self.running_scene_path = self.preloaded_scene_path
+        self.current_scene_name = self.preloaded_scene_name or "None"
+        self.scene_index += 1
+        self._clear_preloaded()
+        return True
 
     def launch_scene(self, scene_path):
         self.current_scene_name = os.path.basename(scene_path)
-        print(f"\n[Manager] >>> LAUNCHING: {self.current_scene_name} <<<\n")
-
-        env = os.environ.copy()
-        env["WGPU_BACKEND"] = env.get("WGPU_BACKEND", "dx12")
-        env.update(self.camera_env)
-        creationflags = 0
-        if os.name == "nt":
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-        self.running_process = subprocess.Popen(
-            [sys.executable, scene_path],
-            cwd=os.path.dirname(scene_path),
-            env=env,
-            creationflags=creationflags,
-        )
+        self.running_scene_path = scene_path
+        self._announce_launch(self.current_scene_name, mode="launch")
+        self.running_process = self._launch_scene_process(scene_path)
 
     def switch_scene(self):
         if not self.all_scenes:
             print("[Manager] No scenes available.")
             return
-        self.kill_current()
-        scene_path = self.all_scenes[self.scene_index % len(self.all_scenes)]
-        self.scene_index += 1
-        time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
-        self.launch_scene(scene_path)
+
+        if self.running_process is None:
+            if self.preload_enabled:
+                self._ensure_preloaded_scene()
+                if not self._activate_preloaded_scene():
+                    scene_path = self._next_scene_path()
+                    self.scene_index += 1
+                    self.launch_scene(scene_path)
+            else:
+                scene_path = self._next_scene_path()
+                self.scene_index += 1
+                self.launch_scene(scene_path)
+            time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
+            self._ensure_preloaded_scene()
+            return
+
+        if self.preload_enabled:
+            self._ensure_preloaded_scene()
+
+        cover_delay = float(
+            CONFIG.get(
+                "TRANSITION_COVER_DELAY",
+                CONFIG.get("TRANSITION_PHASE1_END", 1.5),
+            )
+        )
+        transition_proc = self._start_transition_overlay()
+        if transition_proc is not None:
+            time.sleep(max(0.0, cover_delay))
+
+        activated_preloaded = False
+        if self.preload_enabled and self.preloaded_process is not None:
+            self._send_scene_command(self.preloaded_port, "START")
+            time.sleep(float(CONFIG.get("SCENE_PRELOAD_START_GRACE", 0.25)))
+            self._kill_process(self.running_process, self.current_scene_name)
+            self.running_process = None
+            self.running_scene_path = None
+            activated_preloaded = self._activate_preloaded_scene(send_start=False)
+
+        if not activated_preloaded:
+            self.kill_current()
+            scene_path = self._next_scene_path()
+            self.scene_index += 1
+            time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
+            self.launch_scene(scene_path)
+
+        self._wait_for_transition_finish(transition_proc, cover_delay)
+        self._ensure_preloaded_scene()
 
     def is_scene_running(self):
         if self.running_process is None:
@@ -214,7 +405,11 @@ class SceneManager:
         return self.running_process.poll() is None
 
     def cleanup(self):
+        self._discard_preloaded()
         self.kill_current()
+        if self.transition_process is not None:
+            self._kill_process(self.transition_process, "sakura_transition")
+            self.transition_process = None
 
 
 class HeadClapMonitor:

@@ -40,3 +40,4 @@ pygfx>=0.3.0
 wgpu>=0.9.0
 pygrabber==0.2
 pyvidplayer2==0.9.25
+pywin32==310

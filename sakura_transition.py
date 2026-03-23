@@ -4,6 +4,9 @@ import math
 import sys
 import time
 import os
+import argparse
+
+import display_utils
 
 try:
     import win32api
@@ -26,7 +29,8 @@ PHASE2_END = 2.5      # さらに桜の花が現れる（この間に裏でシ�
 # PHASE3 (2.5〜5.0): 桜が花びらになって散っていく
 
 # 透明キーカラー（この色で塗った部分がOSレベルで透明になる）
-TRANSPARENT_COLOR = (0, 0, 0)
+# マゼンタを使うことで黒ずみ（フリンジ）を防ぎます
+TRANSPARENT_COLOR = (255, 0, 128)
 
 # ==========================================
 # 画像ロードと生成
@@ -78,7 +82,8 @@ class Flower:
         self.y = random.uniform(0, HEIGHT)
         self.angle = random.uniform(0, 360)
         self.spawn_time = spawn_time
-        self.target_scale = random.uniform(0.6, 1.4)
+        # スケールを巨大化して、画面を物理的に覆い尽くすようにする
+        self.target_scale = random.uniform(1.5, 4.0)
         
     def draw(self, surface, current_time):
         age = current_time - self.spawn_time
@@ -148,7 +153,7 @@ class Petal:
 # ==========================================
 # メインループ
 # ==========================================
-def set_window_transparency():
+def set_window_transparency(x, y, width, height):
     """WindowsのAPIを使って、（黒）を透過色とし、クリックを貫通させる"""
     if HAS_WIN32:
         hwnd = pygame.display.get_wm_info()["window"]
@@ -157,13 +162,54 @@ def set_window_transparency():
         win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT)
         # 透過色の設定 (0,0,0) を透明に
         win32gui.SetLayeredWindowAttributes(hwnd, win32api.RGB(*TRANSPARENT_COLOR), 0, win32con.LWA_COLORKEY)
+        win32gui.SetWindowPos(
+            hwnd,
+            win32con.HWND_TOPMOST,
+            int(x),
+            int(y),
+            int(width),
+            int(height),
+            win32con.SWP_SHOWWINDOW,
+        )
+    else:
+        print("[sakura_transition] Warning: pywin32 not available. Overlay may not stay topmost/click-through.")
 
 def main():
+    global WIDTH, HEIGHT, TOTAL_DURATION, PHASE1_END, PHASE2_END
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--x", type=int, default=None)
+    parser.add_argument("--y", type=int, default=None)
+    parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--height", type=int, default=None)
+    parser.add_argument("--total-duration", type=float, default=5.0)
+    parser.add_argument("--phase1-end", type=float, default=1.5)
+    parser.add_argument("--phase2-end", type=float, default=2.5)
+    args, _ = parser.parse_known_args()
+
+    monitor = display_utils.get_second_monitor()
+    if monitor:
+        mon_x, mon_y, mon_w, mon_h = monitor
+    else:
+        mon_x, mon_y, mon_w, mon_h = 0, 0, WIDTH, HEIGHT
+
+    x = mon_x if args.x is None else int(args.x)
+    y = mon_y if args.y is None else int(args.y)
+    width = mon_w if args.width is None else int(args.width)
+    height = mon_h if args.height is None else int(args.height)
+
+    WIDTH = width
+    HEIGHT = height
+    TOTAL_DURATION = float(args.total_duration)
+    PHASE1_END = float(args.phase1_end)
+    PHASE2_END = float(args.phase2_end)
+
+    os.environ["SDL_VIDEO_WINDOW_POS"] = f"{x},{y}"
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.NOFRAME)
     pygame.display.set_caption("Sakura Transition")
     
-    set_window_transparency()
+    set_window_transparency(x, y, WIDTH, HEIGHT)
     
     clock = pygame.time.Clock()
 
@@ -195,35 +241,18 @@ def main():
         # --- 画面のクリア (透過色で塗りつぶすことで下のウィンドウが透ける) ---
         screen.fill(TRANSPARENT_COLOR)
         
-        # --- 背景の桜色レイヤーの不透明度（Alpha）計算 ---
-        cover_alpha = 0
-        if elapsed <= PHASE1_END:
-            # 0〜1.5秒: ピンクに染まる
-            cover_alpha = int((elapsed / PHASE1_END) * 255)
-        elif elapsed <= PHASE2_END:
-            # 1.5〜2.5秒: 完全なピンク（ここで裏側でシーンが切り替わっている）
-            cover_alpha = 255
-        else:
-            # 2.5〜5.0秒: ピンクが晴れていき、次のシーンが見える
-            fade_out_progress = (elapsed - PHASE2_END) / (TOTAL_DURATION - PHASE2_END)
-            cover_alpha = int(255 - (fade_out_progress * 255))
-            if cover_alpha < 0: cover_alpha = 0
-
-        if cover_alpha > 0:
-            # 完全に透過させず、ピンクの色で覆うためのサーフェス
-            cover_surface = pygame.Surface((WIDTH, HEIGHT))
-            cover_surface.fill((255, 183, 197))
-            cover_surface.set_alpha(cover_alpha)
-            screen.blit(cover_surface, (0, 0))
+        # --- 背景の桜色レイヤー(半透明)の廃止 ---
+        # カラーキー透過方式の場合、半透明（アルファブレンド）のピンクを描画するとOSには単なる暗い不透明ピクセルと認識され、下の画面が透けません。
+        # 従って、ピンクで画面をフェードして覆うのではなく、ここではアルファ無しで桜を大量描画することで「画面を物理的に覆い尽くす」アプローチを取ります。
 
         # --- フェーズごとのロジック ---
         if elapsed <= PHASE2_END:
             # PHASE 1 & 2: 桜の花がポンポン現れる
             # フレームレートに依存せず一定頻度で花を出す
-            spawn_interval = 0.05 if elapsed <= PHASE1_END else 0.02 # フェーズ2はさらに激しく
+            spawn_interval = 0.04 if elapsed <= PHASE1_END else 0.01 # フェーズ2は超激しくして画面を埋め尽くす
             if current_time - last_spawn_time > spawn_interval:
-                # 1回のスパウンで複数個出す
-                count = 5 if elapsed <= PHASE1_END else 15
+                # 1回のスパウンで出し、物理的に画面を完全に覆う
+                count = 10 if elapsed <= PHASE1_END else 40
                 for _ in range(count):
                     flowers.append(Flower(flower_img, current_time))
                 last_spawn_time = current_time
@@ -238,9 +267,11 @@ def main():
                 phase3_triggered = True
                 for f in flowers:
                     # それぞれの花から3〜5枚の花びらを生成
-                    num_petals_from_flower = random.randint(3, 5)
-                    for _ in range(num_petals_from_flower):
-                        petals.append(Petal(petal_images, f.x, f.y))
+                    # 大量の花が存在するため、生成される花びらが多すぎないように確率で絞る
+                    if random.random() < 0.3:
+                        num_petals_from_flower = random.randint(2, 4)
+                        for _ in range(num_petals_from_flower):
+                            petals.append(Petal(petal_images, f.x, f.y))
                 # メモリ解放・非表示にするため花のリストを空に
                 flowers.clear()
                 
