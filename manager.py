@@ -97,7 +97,11 @@ class GestureInterpreter:
             self.hands_were_apart = False
             time_diff = current_time - self.last_clap_time
 
-            if time_diff < CONFIG["CLAP_COOLDOWN"]:
+            # Prevent single-clap double triggering
+            if time_diff < 0.15:
+                pass
+            # Allow up to 1.5 seconds between claps
+            elif time_diff <= 1.5:
                 self.clap_count += 1
             else:
                 self.clap_count = 1
@@ -464,10 +468,8 @@ class HeadClapMonitor:
 
             if results.pose_landmarks:
                 nose = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.NOSE]
-            if results.left_hand_landmarks:
-                left_hand = results.left_hand_landmarks.landmark[mp_holistic.HandLandmark.WRIST]
-            if results.right_hand_landmarks:
-                right_hand = results.right_hand_landmarks.landmark[mp_holistic.HandLandmark.WRIST]
+                left_hand = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.LEFT_WRIST]
+                right_hand = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.RIGHT_WRIST]
 
             if self.interpreter.check_head_clap(left_hand, right_hand, nose):
                 print("[Monitor] HEAD CLAP DETECTED!")
