@@ -74,24 +74,7 @@ def count_fingers(hand_landmarks, label):
             count += 1
     return count
 
-def animate_wipe_left_to_right(canvas_img, ref_img, duration=0.3):
-    """Animate clearing the canvas from left to right over `duration` seconds."""
-    h, w, _ = canvas_img.shape
-    steps = max(6, int(duration * 60))
-    delay_ms = max(1, int((duration / steps) * 1000))
-    for i in range(1, steps + 1):
-        wipe_x = int(w * (i / steps))
-        temp = canvas_img.copy()
-        if wipe_x > 0:
-            temp[:, :wipe_x] = 0
-        gray_temp = cv2.cvtColor(temp, cv2.COLOR_BGR2GRAY)
-        _, mask_temp = cv2.threshold(gray_temp, 10, 255, cv2.THRESH_BINARY)
-        display = ref_img.copy()
-        display[mask_temp > 0] = temp[mask_temp > 0]
-        cv2.imshow('Hand Drawing App', display)
-        if cv2.waitKey(delay_ms) & 0xFF == ord('q'):
-            break
-    canvas_img[:] = 0
+# The slow blocking wipe function was removed to prevent camera feed freezes
 def main():
     # Initialize Hands
     hands = mp_hands.Hands(
@@ -103,21 +86,32 @@ def main():
     cap = display_utils.open_camera()
     display_utils.setup_cv2_fullscreen('Hand Drawing App')
     # Canvas for drawing
-    canvas = None
+    active_canvas = None
+    melting_canvas = None
     
     # State variables
     prev_index_finger_pos = None # For Right Hand drawing
     prev_left_hand_x = None      # For Left Hand swipe detection
     prev_left_finger_count = None # For Left Hand 5-finger reset detection
+    melt_frames = 0              # For melting erase effect
     
     # Constants
     SWIPE_THRESHOLD = 0.15 # Normalized coordinate distance per frame for swipe
-    DRAW_COLOR = (0, 255, 255) # Yellow
     THICKNESS = 5
     print("Controls:")
     print("  Right Hand Index Finger: Draw")
     print("  Left Hand Swipe: Clear Canvas")
     print("  'q': Quit")
+    
+    # Precompute Surface Tension LUT for Viscous Melt Effect
+    # Adjusted for a slightly slower 3-second visible fade
+    fluid_lut = np.zeros((256, 1), dtype=np.uint8)
+    for i in range(256):
+        if i < 25: # Slightly lower threshold to keep pixels alive longer
+            fluid_lut[i] = 0
+        else:
+            fluid_lut[i] = min(255, int((i - 12) * 1.08)) 
+
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -127,9 +121,11 @@ def main():
         image = cv2.flip(image, 1)
         h, w, c = image.shape
         
-        # Initialize canvas if not created (or if size changes)
-        if canvas is None or canvas.shape != image.shape:
-             canvas = np.zeros_like(image)
+        # Initialize canvases if not created (or if size changes)
+        if active_canvas is None or active_canvas.shape != image.shape:
+             active_canvas = np.zeros_like(image)
+        if melting_canvas is None or melting_canvas.shape != image.shape:
+             melting_canvas = np.zeros_like(image)
         # To improve performance, optionally mark the image as not writeable to
         # pass by reference.
         image.flags.writeable = False
@@ -192,19 +188,23 @@ def main():
         if current_right_index_pos and current_right_finger_count and current_right_finger_count > 0:
             draw_color = COLOR_MAP.get(current_right_finger_count, (0, 255, 255))
             if prev_index_finger_pos:
-                cv2.line(canvas, prev_index_finger_pos, current_right_index_pos, draw_color, THICKNESS)
+                cv2.line(active_canvas, prev_index_finger_pos, current_right_index_pos, draw_color, THICKNESS)
             prev_index_finger_pos = current_right_index_pos
         else:
             prev_index_finger_pos = None
         # Process Clearing
-        # Swipe-based clear (existing behavior)
+        # Swipe-based clear
         if current_left_hand_x is not None and prev_left_hand_x is not None:
             # Check delta
             delta_x = current_left_hand_x - prev_left_hand_x
             # Simple swipe detection: fast horizontal movement
             if abs(delta_x) > SWIPE_THRESHOLD:
-                animate_wipe_left_to_right(canvas, image, duration=1.0)
-                print("Canvas Cleared by swipe!")
+                if melt_frames == 0:
+                    # Transfer current drawing to melting layer
+                    melting_canvas = cv2.add(melting_canvas, active_canvas)
+                    active_canvas[:] = 0
+                    melt_frames = 90 # 3 seconds at 30 fps
+                print("Canvas melting by swipe!")
 
         if current_left_hand_x is not None:
              prev_left_hand_x = current_left_hand_x
@@ -214,23 +214,43 @@ def main():
         # Left-hand 5-finger reset: only trigger when left hand count changes from a different number to 5
         if current_left_finger_count is not None:
             if prev_left_finger_count is not None and prev_left_finger_count != 5 and current_left_finger_count == 5:
-                animate_wipe_left_to_right(canvas, image, duration=1.0)
-                print("Canvas reset: Left hand changed to 5 fingers")
+                if melt_frames == 0:
+                    # Transfer current drawing to melting layer
+                    melting_canvas = cv2.add(melting_canvas, active_canvas)
+                    active_canvas[:] = 0
+                    melt_frames = 90
+                print("Canvas melting: Left hand changed to 5 fingers")
             prev_left_finger_count = current_left_finger_count
         else:
             prev_left_finger_count = None
+            
+        # --- Apply Melting Effect (Viscous Fluid Simulation) ---
+        if melt_frames > 0:
+            # 1. Gravity: Accelerating downward shift
+            # Slightly slower acceleration to make it last full 3s
+            shift_dist = int(1 + (90 - melt_frames) * 0.12)
+            melting_canvas = np.roll(melting_canvas, shift_dist, axis=0)
+            melting_canvas[:shift_dist, :] = 0
+            
+            # 2. Viscosity and Mixing
+            melting_canvas = cv2.GaussianBlur(melting_canvas, (11, 11), 0)
+            
+            # 3. Surface Tension and Dripping
+            melting_canvas = cv2.LUT(melting_canvas, fluid_lut)
+            
+            melt_frames -= 1
+            if melt_frames <= 0:
+                melt_frames = 0
+                melting_canvas[:] = 0
+                
         # Setup display
-        # Combine image and canvas
-        # Create mask of drawn area to overlay color
-        gray_canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
-        _, mask = cv2.threshold(gray_canvas, 10, 255, cv2.THRESH_BINARY)
+        # Combine image and both canvases
+        # Use combined mask for display
+        combined_canvas = cv2.add(melting_canvas, active_canvas)
+        gray_canvas = cv2.cvtColor(combined_canvas, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray_canvas, 1, 255, cv2.THRESH_BINARY)
         
-        # Copy canvas color to image where mask is set
-        # Alternatively, just addWeighted usually works well for black background
-        # image = cv2.addWeighted(image, 1.0, canvas, 1.0, 0) # This makes colors blend.
-        
-        # For solid drawing:
-        image[mask > 0] = canvas[mask > 0]
+        image[mask > 0] = combined_canvas[mask > 0]
         cv2.imshow('Hand Drawing App', image)
         if cv2.waitKey(5) & 0xFF == ord('q'):
             break
