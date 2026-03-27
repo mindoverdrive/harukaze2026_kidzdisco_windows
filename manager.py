@@ -145,6 +145,9 @@ class SceneManager:
             "visual_monitor.py",
             "process_sakura.py",
             "sound_face.py",
+            "harukaze2026_proto2025.py",
+            "harukaze2026proto2026_1.py",
+            "hand_drawing_app.py",
         }
         ignore_prefixes = (
             "test_",
