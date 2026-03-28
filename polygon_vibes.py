@@ -364,7 +364,10 @@ class PolygonVibesApp:
         
         # 5. Render
         # Main Scene (full clear default)
-        self.renderer.render(self.scene, self.camera, flush=False)
+        try:
+            self.renderer.render(self.scene, self.camera, flush=False)
+        except RuntimeError:
+            pass
         
         # UI Overlay
         ui_w, ui_h = 320, 240
@@ -374,7 +377,10 @@ class PolygonVibesApp:
         y = padding
         
         # Draw overlay on top without clearing color
-        self.renderer.render(self.ui_scene, self.ui_camera, rect=(x, y, ui_w, ui_h), clear=False)
+        try:
+            self.renderer.render(self.ui_scene, self.ui_camera, rect=(x, y, ui_w, ui_h), clear=False)
+        except RuntimeError:
+            pass
         
         self.canvas.request_draw()
 

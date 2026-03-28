@@ -444,7 +444,10 @@ class FlyShooingApp:
 
         self.fly_manager.update(dt, np.array([0, 0, 0]), self.tracker.hands)
 
-        self.renderer.render(self.scene, self.camera)
+        try:
+            self.renderer.render(self.scene, self.camera)
+        except RuntimeError:
+            pass
         self.canvas.request_draw()
 
     def run(self):

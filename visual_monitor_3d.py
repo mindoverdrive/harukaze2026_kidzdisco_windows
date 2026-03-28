@@ -410,7 +410,10 @@ class VisualMonitorApp:
 
         # Build Viewport Rects
         # 1. Main Scene: Full Window
-        self.renderer.render(self.scene, self.camera, flush=False)
+        try:
+            self.renderer.render(self.scene, self.camera, flush=False)
+        except RuntimeError:
+            pass
         
         # 2. HUD: Bottom Right (or Top Right)
         # Using logical coordinates.
@@ -420,7 +423,10 @@ class VisualMonitorApp:
         # rendercanvas/wgpu coordinates often have (0,0) at top-left.
         # Let's try to verify visually. Logic: rect=(x, y, w, h)
         
-        self.renderer.render(self.hud_scene, self.hud_camera, rect=(w - hud_w, h - hud_h, hud_w, hud_h), clear=False, flush=True)
+        try:
+            self.renderer.render(self.hud_scene, self.hud_camera, rect=(w - hud_w, h - hud_h, hud_w, hud_h), clear=False, flush=True)
+        except RuntimeError:
+            pass
         
         # Request next frame
         self.canvas.request_draw()

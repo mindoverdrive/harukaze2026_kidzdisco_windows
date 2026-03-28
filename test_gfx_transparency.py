@@ -60,7 +60,10 @@ mesh2.local.z = 0
 scene.add(mesh2)
 
 def animate():
-    renderer.render(scene, camera)
+    try:
+        renderer.render(scene, camera)
+    except RuntimeError:
+        pass
     canvas.request_draw()
     loop.stop()
 

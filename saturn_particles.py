@@ -424,15 +424,21 @@ class SaturnParticlesApp:
             self.detect_hands()
             self.update_physics(dt)
             
-            self.renderer.render(self.scene, self.camera, flush=False)
+            try:
+                self.renderer.render(self.scene, self.camera, flush=False)
+            except RuntimeError:
+                pass
             
             # UI PIP
             pip_w, pip_h = 320, 240
-            self.renderer.render(
-                self.ui_scene, self.ui_camera,
-                rect=(WINDOW_WIDTH - pip_w, 0, pip_w, pip_h),
-                clear=False
-            )
+            try:
+                self.renderer.render(
+                    self.ui_scene, self.ui_camera,
+                    rect=(WINDOW_WIDTH - pip_w, 0, pip_w, pip_h),
+                    clear=False
+                )
+            except RuntimeError:
+                pass
             
             self.canvas.request_draw()
         except Exception as e:

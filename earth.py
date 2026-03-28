@@ -358,9 +358,15 @@ class EarthViewer3D:
         self.galaxy_mesh.local.rotation = la.quat_from_euler((self.curr_galaxy_rot_x, self.curr_galaxy_rot_y, 0))
 
         # Render Main Scene (flush=False to allow HUD overlay)
-        self.renderer.render(self.scene, self.camera, flush=False)
+        try:
+            self.renderer.render(self.scene, self.camera, flush=False)
+        except RuntimeError:
+            pass
         # Render HUD Scene
-        self.renderer.render(self.hud_scene, self.hud_camera)
+        try:
+            self.renderer.render(self.hud_scene, self.hud_camera)
+        except RuntimeError:
+            pass
         
         self.canvas.request_draw()
 

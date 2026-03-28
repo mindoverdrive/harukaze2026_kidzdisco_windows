@@ -622,10 +622,13 @@ class MinecraftApp:
         # Render
         # Render
         try:
-            self.renderer.render(self.scene, self.camera)
+            try:
+                self.renderer.render(self.scene, self.camera)
+            except RuntimeError:
+                pass
         except RuntimeError as exc:
-            print(f"[minecraft] Render stopped: {exc}")
-            loop.stop()
+            print(f"[minecraft] Render skipped: {exc}")
+            # loop.stop() # Removed to prevent DX12 surface loss crash
             return
         self.canvas.request_draw()
 

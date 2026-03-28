@@ -308,7 +308,10 @@ class PsychedelicApp:
         ))
 
         # Render
-        self.renderer.render(self.scene, self.camera)
+        try:
+            self.renderer.render(self.scene, self.camera)
+        except RuntimeError:
+            pass
         self.canvas.request_draw()
 
     def run(self):

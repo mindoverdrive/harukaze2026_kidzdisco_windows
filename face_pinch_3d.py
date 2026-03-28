@@ -360,8 +360,14 @@ class FacePinch3DApp:
         self.red_geo.sizes.update_range()
 
         # ---- Render ----
-        self.renderer.render(self.bg_scene, self.bg_camera, flush=False)
-        self.renderer.render(self.scene, self.camera, clear=False)
+        try:
+            self.renderer.render(self.bg_scene, self.bg_camera, flush=False)
+        except RuntimeError:
+            pass
+        try:
+            self.renderer.render(self.scene, self.camera, clear=False)
+        except RuntimeError:
+            pass
         self.canvas.request_draw()
 
     # ------------------------------------------------------------------

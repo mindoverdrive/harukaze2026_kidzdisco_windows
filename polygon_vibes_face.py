@@ -479,14 +479,20 @@ class PolygonVibesApp:
         self.face_geo.colors.update_range()
 
         # 5. Render
-        self.renderer.render(self.scene, self.camera, flush=False)
+        try:
+            self.renderer.render(self.scene, self.camera, flush=False)
+        except RuntimeError:
+            pass
         
         ui_w, ui_h = 320, 240
         padding = 0
         x = WINDOW_WIDTH - ui_w - padding
         y = padding
         
-        self.renderer.render(self.ui_scene, self.ui_camera, rect=(x, y, ui_w, ui_h), clear=False)
+        try:
+            self.renderer.render(self.ui_scene, self.ui_camera, rect=(x, y, ui_w, ui_h), clear=False)
+        except RuntimeError:
+            pass
         
         self.canvas.request_draw()
 

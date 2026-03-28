@@ -75,41 +75,79 @@ CONFIG = load_config()
 
 class GestureInterpreter:
     def __init__(self):
-        self.last_clap_time = 0.0
-        self.clap_count = 0
-        self.hands_were_apart = True
+        self.last_state = None
+        self.switch_count = 0
+        self.last_switch_time = 0.0
 
-    def check_head_clap(self, left_hand, right_hand, nose):
-        if not (left_hand and right_hand and nose):
-            return False
+    def get_hand_state(self, hand_landmarks):
+        if not hand_landmarks:
+            return "none"
+        
+        wrist = hand_landmarks.landmark[0]
+        extended_count = 0
+        
+        # Check index (8, 6), middle (12, 10), ring (16, 14), pinky (20, 18)
+        # We consider a finger extended if the tip is further from the wrist than the PIP joint.
+        for tip_idx, pip_idx in [(8, 6), (12, 10), (16, 14), (20, 18)]:
+            tip = hand_landmarks.landmark[tip_idx]
+            pip = hand_landmarks.landmark[pip_idx]
+            
+            dist_tip = math.sqrt((tip.x - wrist.x)**2 + (tip.y - wrist.y)**2)
+            dist_pip = math.sqrt((pip.x - wrist.x)**2 + (pip.y - wrist.y)**2)
+            
+            # Simple heuristic for finger extension
+            if dist_tip > dist_pip * 1.1:
+                extended_count += 1
+                
+        if extended_count >= 3:
+            return "paper"
+        elif extended_count <= 1:
+            return "rock"
+        return "other"
 
-        if left_hand.y > nose.y + 0.1 or right_hand.y > nose.y + 0.1:
-            return False
+    def check_gesture(self, left_hand_landmarks, right_hand_landmarks):
+        left_state = self.get_hand_state(left_hand_landmarks)
+        right_state = self.get_hand_state(right_hand_landmarks)
 
-        dist = math.sqrt((left_hand.x - right_hand.x) ** 2 + (left_hand.y - right_hand.y) ** 2)
         current_time = time.time()
 
-        if dist > CONFIG["CLAP_DIST_THRESHOLD"] * 1.5:
-            self.hands_were_apart = True
+        if left_state in ("none", "other") or right_state in ("none", "other") or left_state == right_state:
+            # If states are invalid or hands show the same gesture, check if we've timed out
+            if current_time - self.last_switch_time > 1.5:
+                self.switch_count = 0
+                self.last_state = None
             return False
 
-        if dist < CONFIG["CLAP_DIST_THRESHOLD"] and self.hands_were_apart:
-            self.hands_were_apart = False
-            time_diff = current_time - self.last_clap_time
+        # Now we know left and right states are definitely ("rock", "paper") or ("paper", "rock")
+        current_combo = (left_state, right_state)
+        
+        if self.last_state is None:
+            self.last_state = current_combo
+            self.switch_count = 0
+            self.last_switch_time = current_time
+            return False
 
-            # Prevent single-clap double triggering
-            if time_diff < 0.15:
-                pass
-            # Allow up to 1.5 seconds between claps
-            elif time_diff <= 1.5:
-                self.clap_count += 1
-            else:
-                self.clap_count = 1
-
-            self.last_clap_time = current_time
-            if self.clap_count >= 2:
-                self.clap_count = 0
-                return True
+        if current_combo != self.last_state:
+            # A valid switch happened!
+            time_diff = current_time - self.last_switch_time
+            
+            # Allow between 0.05s and 1.5s for a switch
+            if 0.05 < time_diff < 1.5:
+                self.switch_count += 1
+                self.last_state = current_combo
+                self.last_switch_time = current_time
+                print(f"[Gesture] Switch detected! Count: {self.switch_count}/5")
+                
+                # We need alternating states 5 times
+                if self.switch_count >= 5:
+                    self.switch_count = 0
+                    self.last_state = None
+                    return True
+            elif time_diff >= 1.5:
+                # Took too long, restart counting from 1
+                self.switch_count = 1
+                self.last_state = current_combo
+                self.last_switch_time = current_time
 
         return False
 
@@ -465,17 +503,11 @@ class HeadClapMonitor:
             image.flags.writeable = False
             results = holistic.process(image)
 
-            left_hand = None
-            right_hand = None
-            nose = None
+            left_hand_landmarks = results.left_hand_landmarks
+            right_hand_landmarks = results.right_hand_landmarks
 
-            if results.pose_landmarks:
-                nose = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.NOSE]
-                left_hand = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.LEFT_WRIST]
-                right_hand = results.pose_landmarks.landmark[mp_holistic.PoseLandmark.RIGHT_WRIST]
-
-            if self.interpreter.check_head_clap(left_hand, right_hand, nose):
-                print("[Monitor] HEAD CLAP DETECTED!")
+            if self.interpreter.check_gesture(left_hand_landmarks, right_hand_landmarks):
+                print("[Monitor] GUPAR DETECTED! (Alternating Rock/Paper 5x)")
                 self.clap_detected = True
 
             time.sleep(1.0 / max(CONFIG["TARGET_FPS"], 1))

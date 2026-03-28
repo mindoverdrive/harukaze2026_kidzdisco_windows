@@ -359,12 +359,18 @@ class ParticleStormApp:
         self.update_physics(dt)
         
         # Render
-        self.renderer.render(self.scene, self.camera, flush=False)
+        try:
+            self.renderer.render(self.scene, self.camera, flush=False)
+        except RuntimeError:
+            pass
         
         # Draw PIP (Top Right)
         # Viewport: x, y, w, h
         pip_w, pip_h = 320, 240
-        self.renderer.render(self.ui_scene, self.ui_camera, rect=(WINDOW_WIDTH - pip_w, 0, pip_w, pip_h), clear=False)
+        try:
+            self.renderer.render(self.ui_scene, self.ui_camera, rect=(WINDOW_WIDTH - pip_w, 0, pip_w, pip_h), clear=False)
+        except RuntimeError:
+            pass
         
         self.canvas.request_draw()
 
