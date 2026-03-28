@@ -26,6 +26,11 @@ DEFAULT_CAMERA_BACKEND = "dshow"
 DEFAULT_CAMERA_OPENCV_INDEX = None
 DEFAULT_CAMERA_NAME_HINTS = ["c922", "pro stream webcam"]
 DEFAULT_CAMERA_EXCLUDE_HINTS = ["nizima", "virtual", "logi capture"]
+ENV_PREFIX = "KIDZDISCO_"
+
+
+def _parse_bool_env(value):
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_display_config():
@@ -54,6 +59,30 @@ def _load_display_config():
                 cfg.update(user_cfg)
         except Exception:
             pass
+    env_overrides = {
+        "DISPLAY_TARGET": str,
+        "DISPLAY_INDEX": int,
+        "DISPLAY_X": int,
+        "DISPLAY_Y": int,
+        "DISPLAY_WIDTH": int,
+        "DISPLAY_HEIGHT": int,
+        "CAMERA_INDEX": int,
+        "CAMERA_WIDTH": int,
+        "CAMERA_HEIGHT": int,
+        "CAMERA_FPS": int,
+        "CAMERA_FOURCC": str,
+        "CAMERA_BACKEND": str,
+        "CAMERA_STRICT_BACKEND": _parse_bool_env,
+        "CAMERA_ALLOW_FALLBACK": _parse_bool_env,
+        "CAMERA_OPENCV_INDEX": int,
+    }
+    for key, caster in env_overrides.items():
+        env_key = f"{ENV_PREFIX}{key}"
+        if env_key in os.environ and os.environ[env_key] != "":
+            try:
+                cfg[key] = caster(os.environ[env_key])
+            except Exception:
+                pass
     return cfg
 
 
@@ -61,6 +90,19 @@ _DISPLAY_CFG = _load_display_config()
 
 
 def get_second_monitor():
+    display_target = str(_DISPLAY_CFG.get("DISPLAY_TARGET", "")).strip().lower()
+    if display_target == "primary":
+        try:
+            from screeninfo import get_monitors
+
+            monitors = get_monitors()
+            primary = next((m for m in monitors if getattr(m, "is_primary", False)), monitors[0])
+            print(f"[display_utils] Using primary monitor: {primary.name} ({primary.width}x{primary.height} at {primary.x},{primary.y})")
+            return (primary.x, primary.y, primary.width, primary.height)
+        except Exception as exc:
+            print(f"[display_utils] Warning: Could not detect primary monitor: {exc}")
+            return (0, 0, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
+
     if all(k in _DISPLAY_CFG for k in ("DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT")):
         x = int(_DISPLAY_CFG["DISPLAY_X"])
         y = int(_DISPLAY_CFG["DISPLAY_Y"])
@@ -190,6 +232,26 @@ def fit_frame_to_size(frame, target_width, target_height, pad_color=(0, 0, 0)):
     oy = layout["offset_y"]
     canvas[oy : oy + layout["scaled_height"], ox : ox + layout["scaled_width"]] = resized
     return canvas
+
+
+def prepare_camera_frame(frame, stage_width, stage_height, mirror=True, pad_color=(0, 0, 0)):
+    if frame is None:
+        return None, None, None
+    camera_frame = cv2.flip(frame, 1) if mirror else frame
+    frame_h, frame_w = camera_frame.shape[:2]
+    layout = get_uniform_layout(frame_w, frame_h, stage_width, stage_height)
+    stage_frame = fit_frame_to_size(camera_frame, stage_width, stage_height, pad_color=pad_color)
+    return camera_frame, stage_frame, layout
+
+
+def normalized_to_stage(norm_x, norm_y, layout):
+    if layout is None:
+        return int(norm_x), int(norm_y)
+    nx = max(0.0, min(1.0, float(norm_x)))
+    ny = max(0.0, min(1.0, float(norm_y)))
+    x = layout["offset_x"] + nx * layout["scaled_width"]
+    y = layout["offset_y"] + ny * layout["scaled_height"]
+    return int(round(x)), int(round(y))
 
 
 def setup_cv2_fullscreen(window_name):
