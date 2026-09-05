@@ -4,6 +4,7 @@
 import json
 import math
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import threading
 import time
 import argparse
 import gc
+import traceback
 
 import cv2
 import numpy as np
@@ -53,6 +55,7 @@ DEFAULT_CONFIG = {
     "CLAP_COOLDOWN": 0.5,
     "TARGET_FPS": 60,
     "PRELOAD_COUNT": 1,
+    "SCENE_GRACEFUL_TIMEOUT": 2.0,
     "SCENE_TERMINATE_TIMEOUT": 3.0,
     "SCENE_SWITCH_DELAY": 0.2,
     "SCENE_PRELOAD_START_GRACE": 0.25,
@@ -282,12 +285,38 @@ class SceneManager:
         return proc
 
     def _kill_process(self, proc, scene_name):
-        if proc and proc.poll() is None:
-            print(f"[Manager] Killing scene: {scene_name}")
-            proc.terminate()
+        if proc is None:
+            return True
+
+        graceful_timeout = float(CONFIG.get("SCENE_GRACEFUL_TIMEOUT", 2.0))
+        terminate_timeout = float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0))
+        try:
+            if proc.poll() is not None:
+                return True
+
+            print(f"[Manager] Stopping scene: {scene_name}")
             try:
-                proc.wait(timeout=float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0)))
+                if os.name == "nt" and hasattr(signal, "CTRL_BREAK_EVENT"):
+                    proc.send_signal(signal.CTRL_BREAK_EVENT)
+                else:
+                    proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=graceful_timeout)
+                return True
             except subprocess.TimeoutExpired:
+                print(f"[Manager] Warning: graceful stop timed out: {scene_name}")
+            except Exception as exc:
+                print(f"[Manager] Warning: graceful stop failed for {scene_name}: {exc}")
+
+            try:
+                proc.terminate()
+                proc.wait(timeout=terminate_timeout)
+                return True
+            except subprocess.TimeoutExpired:
+                print(f"[Manager] Warning: terminate timed out: {scene_name}")
+            except Exception as exc:
+                print(f"[Manager] Warning: terminate failed for {scene_name}: {exc}")
+
+            try:
                 if os.name == "nt":
                     subprocess.run(
                         ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
@@ -297,13 +326,20 @@ class SceneManager:
                     )
                 else:
                     proc.kill()
-                proc.wait()
-        gc.collect()
+                proc.wait(timeout=terminate_timeout)
+            except Exception as exc:
+                print(f"[Manager] Error: force stop failed for {scene_name}: {exc}")
+                return False
+            return proc.poll() is not None
+        finally:
+            gc.collect()
 
     def kill_current(self):
-        self._kill_process(self.running_process, self.current_scene_name)
-        self.running_process = None
-        self.running_scene_path = None
+        stopped = self._kill_process(self.running_process, self.current_scene_name)
+        if stopped:
+            self.running_process = None
+            self.running_scene_path = None
+        return stopped
 
     def _clear_preloaded(self):
         self.preloaded_process = None
@@ -312,9 +348,15 @@ class SceneManager:
         self.preloaded_port = None
 
     def _discard_preloaded(self):
+        stopped = True
         if self.preloaded_process is not None:
-            self._kill_process(self.preloaded_process, self.preloaded_scene_name or "preloaded")
-        self._clear_preloaded()
+            stopped = self._kill_process(
+                self.preloaded_process,
+                self.preloaded_scene_name or "preloaded",
+            )
+        if stopped:
+            self._clear_preloaded()
+        return stopped
 
     def _start_transition_overlay(self):
         if not CONFIG.get("TRANSITION_ENABLED", True):
@@ -342,15 +384,21 @@ class SceneManager:
 
     def _wait_for_transition_finish(self, proc, cover_delay):
         if proc is None:
-            return
+            return True
         total_duration = float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0))
         remaining = max(0.0, total_duration - cover_delay) + 1.0
+        stopped = False
         try:
             proc.wait(timeout=remaining)
+            stopped = True
         except subprocess.TimeoutExpired:
-            self._kill_process(proc, "sakura_transition")
+            stopped = self._kill_process(proc, "sakura_transition")
+        except Exception as exc:
+            print(f"[Manager] Transition wait failed: {exc}")
         finally:
-            self.transition_process = None
+            if stopped and self.transition_process is proc:
+                self.transition_process = None
+        return stopped
 
     def _ensure_preloaded_scene(self):
         if not self.preload_enabled or not self.all_scenes:
@@ -399,7 +447,7 @@ class SceneManager:
     def switch_scene(self):
         if not self.all_scenes:
             print("[Manager] No scenes available.")
-            return
+            return False
 
         if self.running_process is None:
             if self.preload_enabled:
@@ -414,7 +462,7 @@ class SceneManager:
                 self.launch_scene(scene_path)
             time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
             self._ensure_preloaded_scene()
-            return
+            return True
 
         if self.preload_enabled:
             self._ensure_preloaded_scene()
@@ -433,13 +481,24 @@ class SceneManager:
         if self.preload_enabled and self.preloaded_process is not None:
             self._send_scene_command(self.preloaded_port, "START")
             time.sleep(float(CONFIG.get("SCENE_PRELOAD_START_GRACE", 0.25)))
-            self._kill_process(self.running_process, self.current_scene_name)
-            self.running_process = None
-            self.running_scene_path = None
+            if not self.kill_current():
+                print(
+                    f"[Manager] Error: current scene is still running; "
+                    f"aborting switch from {self.current_scene_name}"
+                )
+                self._discard_preloaded()
+                self._wait_for_transition_finish(transition_proc, cover_delay)
+                return False
             activated_preloaded = self._activate_preloaded_scene(send_start=False)
 
         if not activated_preloaded:
-            self.kill_current()
+            if not self.kill_current():
+                print(
+                    f"[Manager] Error: current scene is still running; "
+                    f"not launching another scene"
+                )
+                self._wait_for_transition_finish(transition_proc, cover_delay)
+                return False
             scene_path = self._next_scene_path()
             self.scene_index += 1
             time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
@@ -447,6 +506,7 @@ class SceneManager:
 
         self._wait_for_transition_finish(transition_proc, cover_delay)
         self._ensure_preloaded_scene()
+        return True
 
     def is_scene_running(self):
         if self.running_process is None:
@@ -454,11 +514,35 @@ class SceneManager:
         return self.running_process.poll() is None
 
     def cleanup(self):
-        self._discard_preloaded()
-        self.kill_current()
-        if self.transition_process is not None:
-            self._kill_process(self.transition_process, "sakura_transition")
-            self.transition_process = None
+        errors = []
+
+        def run_step(label, action):
+            try:
+                result = action()
+                if result is False:
+                    errors.append(f"{label}: resource still running")
+                    return False
+                return True
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+                print(f"[Manager] Cleanup error ({label}): {exc}")
+                return False
+
+        run_step("preloaded scene", self._discard_preloaded)
+        run_step("current scene", self.kill_current)
+        transition_process = self.transition_process
+        if transition_process is not None:
+            transition_stopped = run_step(
+                "transition overlay",
+                lambda: self._kill_process(transition_process, "sakura_transition"),
+            )
+            if transition_stopped:
+                self.transition_process = None
+
+        if errors:
+            print("[Manager] Cleanup completed with errors: " + "; ".join(errors))
+            return False
+        return True
 
 
 class HeadClapMonitor:
@@ -478,6 +562,11 @@ class HeadClapMonitor:
         self.running = False
         if self.thread:
             self.thread.join(timeout=3)
+            if self.thread.is_alive():
+                print("[Monitor] Error: monitor thread did not stop")
+                return False
+            self.thread = None
+        return True
 
     def consume_clap(self):
         if self.clap_detected:
@@ -488,35 +577,44 @@ class HeadClapMonitor:
     def _monitor_loop(self):
         import mediapipe as mp
 
-        mp_holistic = mp.solutions.holistic
-        holistic = mp_holistic.Holistic(
-            model_complexity=2,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5,
-        )
+        holistic = None
+        try:
+            mp_holistic = mp.solutions.holistic
+            holistic = mp_holistic.Holistic(
+                model_complexity=2,
+                min_detection_confidence=0.7,
+                min_tracking_confidence=0.5,
+            )
 
-        while self.running:
-            ret, frame = self.frame_source.read()
-            if not ret or frame is None:
-                self.status = "waiting_frame"
-                time.sleep(0.01)
-                continue
+            while self.running:
+                ret, frame = self.frame_source.read()
+                if not ret or frame is None:
+                    self.status = "waiting_frame"
+                    time.sleep(0.01)
+                    continue
 
-            self.status = "monitoring"
-            image = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
-            image.flags.writeable = False
-            results = holistic.process(image)
+                self.status = "monitoring"
+                image = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
+                image.flags.writeable = False
+                results = holistic.process(image)
 
-            left_hand_landmarks = results.left_hand_landmarks
-            right_hand_landmarks = results.right_hand_landmarks
+                left_hand_landmarks = results.left_hand_landmarks
+                right_hand_landmarks = results.right_hand_landmarks
 
-            if self.interpreter.check_gesture(left_hand_landmarks, right_hand_landmarks):
-                print("[Monitor] GUPAR DETECTED! (Alternating Rock/Paper 5x)")
-                self.clap_detected = True
+                if self.interpreter.check_gesture(left_hand_landmarks, right_hand_landmarks):
+                    print("[Monitor] GUPAR DETECTED! (Alternating Rock/Paper 5x)")
+                    self.clap_detected = True
 
-            time.sleep(1.0 / max(CONFIG["TARGET_FPS"], 1))
-
-        holistic.close()
+                time.sleep(1.0 / max(CONFIG["TARGET_FPS"], 1))
+        except Exception as exc:
+            self.status = "failed"
+            print(f"[Monitor] Error: {exc}")
+        finally:
+            if holistic is not None:
+                try:
+                    holistic.close()
+                except Exception as exc:
+                    print(f"[Monitor] Cleanup error: {exc}")
 
 
 def main():
@@ -537,59 +635,58 @@ def main():
             return 2
 
     manager_window_available = True
-    camera_relay = SharedCameraRelay(
-        camera_index=CONFIG["CAMERA_INDEX"],
-        width=CONFIG["CAMERA_WIDTH"],
-        height=CONFIG["CAMERA_HEIGHT"],
-        fps=CONFIG["CAMERA_FPS"],
-        fourcc=CONFIG.get("CAMERA_FOURCC", "MJPG"),
-        diagnostic_seconds=CONFIG.get("CAMERA_DIAGNOSTIC_SECONDS", 2.0),
-        strict_backend=CONFIG.get("CAMERA_STRICT_BACKEND", True),
-        backend_preference=CONFIG.get("CAMERA_BACKEND", "default"),
-        fallback_to_default=CONFIG.get("CAMERA_ALLOW_FALLBACK", False),
-        camera_name_hint=CONFIG.get("CAMERA_NAME_HINTS"),
-        exclude_name_hints=CONFIG.get("CAMERA_EXCLUDE_HINTS"),
-        explicit_index=CONFIG.get("CAMERA_OPENCV_INDEX"),
-    ).start()
-
-    camera_env = camera_relay.export_env() if CONFIG.get("SHARED_CAMERA_ENABLED", True) else {}
-    print(
-        f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
-        f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
-        f"fourcc={CONFIG.get('CAMERA_FOURCC', 'MJPG')} "
-        f"diag={CONFIG.get('CAMERA_DIAGNOSTIC_SECONDS', 2.0)}s "
-        f"strict_backend={CONFIG.get('CAMERA_STRICT_BACKEND', True)} "
-        f"backend={CONFIG.get('CAMERA_BACKEND', 'default')} "
-        f"shared={CONFIG.get('SHARED_CAMERA_ENABLED', True)}"
-    )
-
+    camera_relay = None
     manager = None
-    if not args.camera_only:
-        manager = SceneManager(camera_env=camera_env, scenes=production_scenes)
-        if not manager.all_scenes:
-            print("[Manager] Error: No scene files found.")
-            camera_relay.close()
-            return
-
     monitor = None
-    if not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True):
-        monitor = HeadClapMonitor(frame_source=camera_relay)
-        monitor.start()
-    elif args.camera_only:
-        print("[Manager] Camera-only mode enabled. Scene launching is disabled.")
-    else:
-        print("[Manager] Clap monitor disabled by config.")
-
-    if manager is not None:
-        manager.switch_scene()
+    exit_code = 0
     try:
-        cv2.namedWindow("Manager Control", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Manager Control", 440, 120)
-    except cv2.error as exc:
-        manager_window_available = False
-        print(f"[Manager] Warning: Manager Control window disabled: {exc}")
+        camera_relay = SharedCameraRelay(
+            camera_index=CONFIG["CAMERA_INDEX"],
+            width=CONFIG["CAMERA_WIDTH"],
+            height=CONFIG["CAMERA_HEIGHT"],
+            fps=CONFIG["CAMERA_FPS"],
+            fourcc=CONFIG.get("CAMERA_FOURCC", "MJPG"),
+            diagnostic_seconds=CONFIG.get("CAMERA_DIAGNOSTIC_SECONDS", 2.0),
+            strict_backend=CONFIG.get("CAMERA_STRICT_BACKEND", True),
+            backend_preference=CONFIG.get("CAMERA_BACKEND", "default"),
+            fallback_to_default=CONFIG.get("CAMERA_ALLOW_FALLBACK", False),
+            camera_name_hint=CONFIG.get("CAMERA_NAME_HINTS"),
+            exclude_name_hints=CONFIG.get("CAMERA_EXCLUDE_HINTS"),
+            explicit_index=CONFIG.get("CAMERA_OPENCV_INDEX"),
+        )
+        camera_relay.start()
 
-    try:
+        camera_env = camera_relay.export_env() if CONFIG.get("SHARED_CAMERA_ENABLED", True) else {}
+        print(
+            f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
+            f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
+            f"fourcc={CONFIG.get('CAMERA_FOURCC', 'MJPG')} "
+            f"diag={CONFIG.get('CAMERA_DIAGNOSTIC_SECONDS', 2.0)}s "
+            f"strict_backend={CONFIG.get('CAMERA_STRICT_BACKEND', True)} "
+            f"backend={CONFIG.get('CAMERA_BACKEND', 'default')} "
+            f"shared={CONFIG.get('SHARED_CAMERA_ENABLED', True)}"
+        )
+
+        if not args.camera_only:
+            manager = SceneManager(camera_env=camera_env, scenes=production_scenes)
+
+        if not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True):
+            monitor = HeadClapMonitor(frame_source=camera_relay)
+            monitor.start()
+        elif args.camera_only:
+            print("[Manager] Camera-only mode enabled. Scene launching is disabled.")
+        else:
+            print("[Manager] Clap monitor disabled by config.")
+
+        if manager is not None:
+            manager.switch_scene()
+        try:
+            cv2.namedWindow("Manager Control", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Manager Control", 440, 120)
+        except cv2.error as exc:
+            manager_window_available = False
+            print(f"[Manager] Warning: Manager Control window disabled: {exc}")
+
         while True:
             if monitor and monitor.consume_clap() and manager is not None:
                 print("[Manager] Head clap detected. Switching scene.")
@@ -628,15 +725,40 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[Manager] Interrupted by user.")
+    except Exception as exc:
+        print(f"[Manager] Fatal error: {exc}")
+        traceback.print_exc()
+        exit_code = 1
     finally:
         print("[Manager] Shutting down...")
         if monitor:
-            monitor.stop()
+            try:
+                if monitor.stop() is False:
+                    exit_code = 1
+            except Exception as exc:
+                print(f"[Manager] Monitor cleanup error: {exc}")
+                exit_code = 1
         if manager is not None:
-            manager.cleanup()
-        camera_relay.close()
-        cv2.destroyAllWindows()
+            try:
+                if manager.cleanup() is False:
+                    exit_code = 1
+            except Exception as exc:
+                print(f"[Manager] Scene cleanup error: {exc}")
+                exit_code = 1
+        if camera_relay is not None:
+            try:
+                if camera_relay.close() is False:
+                    exit_code = 1
+            except Exception as exc:
+                print(f"[Manager] Camera cleanup error: {exc}")
+                exit_code = 1
+        try:
+            cv2.destroyAllWindows()
+        except Exception as exc:
+            print(f"[Manager] Window cleanup error: {exc}")
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

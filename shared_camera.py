@@ -341,6 +341,7 @@ class SharedCameraRelay:
         self.frame_id = 0
         self.write_seq = 0
         self.read_failures = 0
+        self._closed = False
         self._write_header(status=0, timestamp=0.0)
 
     def _write_header(self, status, timestamp):
@@ -359,28 +360,32 @@ class SharedCameraRelay:
         )
 
     def start(self):
-        self.cap = self._create_capture()
-        if self.cap is None or not self.cap.isOpened():
-            raise RuntimeError(f"Could not open physical camera index={self.camera_index}")
+        try:
+            self.cap = self._create_capture()
+            if self.cap is None or not self.cap.isOpened():
+                raise RuntimeError(f"Could not open physical camera index={self.camera_index}")
 
-        actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
-        actual_fourcc = _decode_fourcc(self.cap.get(cv2.CAP_PROP_FOURCC))
-        measured_fps, measured_frames = _measure_capture_fps(self.cap, self.diagnostic_seconds)
-        print(
-            "[shared_camera] Camera diagnostic "
-            f"requested={self.width}x{self.height}@{self.fps:.0f} fourcc={self.fourcc} "
-            f"actual={actual_width:.0f}x{actual_height:.0f}@{actual_fps:.2f} fourcc={actual_fourcc} "
-            f"measured_fps={measured_fps:.2f} frames={measured_frames} "
-            f"sample_seconds={self.diagnostic_seconds:.2f}"
-        )
-        self.write_session_file()
+            actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            actual_fourcc = _decode_fourcc(self.cap.get(cv2.CAP_PROP_FOURCC))
+            measured_fps, measured_frames = _measure_capture_fps(self.cap, self.diagnostic_seconds)
+            print(
+                "[shared_camera] Camera diagnostic "
+                f"requested={self.width}x{self.height}@{self.fps:.0f} fourcc={self.fourcc} "
+                f"actual={actual_width:.0f}x{actual_height:.0f}@{actual_fps:.2f} fourcc={actual_fourcc} "
+                f"measured_fps={measured_fps:.2f} frames={measured_frames} "
+                f"sample_seconds={self.diagnostic_seconds:.2f}"
+            )
+            self.write_session_file()
 
-        self.running = True
-        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
-        self.thread.start()
-        return self
+            self.running = True
+            self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.thread.start()
+            return self
+        except Exception:
+            self.close()
+            raise
 
     def _create_capture(self):
         return _open_with_backends(
@@ -468,21 +473,60 @@ class SharedCameraRelay:
             print(f"[shared_camera] Warning: could not write session file: {exc}")
 
     def close(self):
+        if getattr(self, "_closed", False):
+            return True
+
+        errors = []
         self.running = False
-        if self.thread:
-            self.thread.join(timeout=2)
-        if self.cap is not None:
-            self.cap.release()
-        self.shm.close()
-        try:
-            self.shm.unlink()
-        except FileNotFoundError:
-            pass
+        cap = getattr(self, "cap", None)
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception as exc:
+                errors.append(f"camera release: {exc}")
+            self.cap = None
+
+        thread = getattr(self, "thread", None)
+        if thread and thread is not threading.current_thread():
+            try:
+                thread.join(timeout=2)
+            except Exception as exc:
+                errors.append(f"capture thread join: {exc}")
+            if thread.is_alive():
+                errors.append("capture thread did not stop")
+
         try:
             if os.path.exists(SESSION_INFO_PATH):
                 os.remove(SESSION_INFO_PATH)
+        except Exception as exc:
+            errors.append(f"session file removal: {exc}")
+
+        if thread and thread.is_alive():
+            print("[shared_camera] Cleanup incomplete: " + "; ".join(errors))
+            return False
+
+        shm = getattr(self, "shm", None)
+        if shm is not None:
+            try:
+                shm.close()
+            except Exception as exc:
+                errors.append(f"shared memory close: {exc}")
+            try:
+                shm.unlink()
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                errors.append(f"shared memory unlink: {exc}")
+        try:
+            self.shm = None
         except Exception:
             pass
+        self._closed = True
+
+        if errors:
+            print("[shared_camera] Cleanup completed with errors: " + "; ".join(errors))
+            return False
+        return True
 
 
 def open_camera_source(
