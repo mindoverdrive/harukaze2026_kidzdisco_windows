@@ -118,7 +118,7 @@ def load_config(path=CONFIG_PATH):
                     if key in user_cfg:
                         camera_sources[key] = "config"
         except Exception as exc:
-            print(f"[Manager] Warning: Failed to read config file {path}: {exc}")
+            raise ConfigurationError(f"Failed to read config file {path}: {exc}") from exc
 
     for key, caster in CAMERA_ENV_CASTERS.items():
         env_key = f"KIDZDISCO_{key}"
@@ -300,6 +300,9 @@ class SceneManager:
         env = os.environ.copy()
         env["WGPU_BACKEND"] = env.get("WGPU_BACKEND", "dx12")
         env.update(self.camera_env)
+        for key in ("DISPLAY_TARGET", "DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT"):
+            if key in CONFIG:
+                env[f"KIDZDISCO_{key}"] = str(CONFIG[key])
         return env
 
     def _spawn_process(self, argv, cwd):
@@ -648,7 +651,9 @@ class HeadClapMonitor:
 
 
 def main():
+    global CONFIG
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="Use an explicit configuration file, e.g. configs/kids_test_acer.json")
     parser.add_argument(
         "--camera-only",
         action="store_true",
@@ -656,7 +661,15 @@ def main():
     )
     args, _ = parser.parse_known_args()
 
-    if CONFIG_LOAD_ERROR is not None:
+    if args.config:
+        try:
+            if not os.path.isfile(args.config):
+                raise ConfigurationError(f"Config file not found: {args.config}")
+            CONFIG = load_config(args.config)
+        except ConfigurationError as exc:
+            print(f"[Manager] Configuration error: {exc}")
+            return 2
+    elif CONFIG_LOAD_ERROR is not None:
         print(f"[Manager] Configuration error: {CONFIG_LOAD_ERROR}")
         return 2
 
@@ -687,6 +700,7 @@ def main():
             camera_name_hint=CONFIG.get("CAMERA_NAME_HINTS"),
             exclude_name_hints=CONFIG.get("CAMERA_EXCLUDE_HINTS"),
             explicit_index=CONFIG.get("CAMERA_OPENCV_INDEX"),
+            require_name_match=CONFIG.get("CAMERA_REQUIRE_NAME_MATCH", False),
         )
         camera_relay.start()
 

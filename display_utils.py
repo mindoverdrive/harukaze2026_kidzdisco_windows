@@ -215,11 +215,12 @@ def get_uniform_layout(base_width, base_height, stage_width=None, stage_height=N
     }
 
 
-def fit_frame_to_size(frame, target_width, target_height, pad_color=(0, 0, 0)):
+def fit_frame_to_size(frame, target_width, target_height, pad_color=(0, 0, 0), *, layout=None):
     src_h, src_w = frame.shape[:2]
     if src_w == target_width and src_h == target_height:
         return frame
-    layout = get_uniform_layout(src_w, src_h, target_width, target_height)
+    if layout is None:
+        layout = get_uniform_layout(src_w, src_h, target_width, target_height)
     resized = cv2.resize(
         frame,
         (layout["scaled_width"], layout["scaled_height"]),
@@ -240,7 +241,8 @@ def prepare_camera_frame(frame, stage_width, stage_height, mirror=True, pad_colo
     camera_frame = cv2.flip(frame, 1) if mirror else frame
     frame_h, frame_w = camera_frame.shape[:2]
     layout = get_uniform_layout(frame_w, frame_h, stage_width, stage_height)
-    stage_frame = fit_frame_to_size(camera_frame, stage_width, stage_height, pad_color=pad_color)
+    # The image placement and landmark projection must consume this same layout.
+    stage_frame = fit_frame_to_size(camera_frame, stage_width, stage_height, pad_color=pad_color, layout=layout)
     return camera_frame, stage_frame, layout
 
 
@@ -249,8 +251,8 @@ def normalized_to_stage(norm_x, norm_y, layout):
         return int(norm_x), int(norm_y)
     nx = max(0.0, min(1.0, float(norm_x)))
     ny = max(0.0, min(1.0, float(norm_y)))
-    x = layout["offset_x"] + nx * layout["scaled_width"]
-    y = layout["offset_y"] + ny * layout["scaled_height"]
+    x = layout["offset_x"] + nx * (layout["scaled_width"] - 1)
+    y = layout["offset_y"] + ny * (layout["scaled_height"] - 1)
     return int(round(x)), int(round(y))
 
 

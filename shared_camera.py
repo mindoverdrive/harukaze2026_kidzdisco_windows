@@ -34,9 +34,11 @@ def enumerate_camera_devices():
         return []
 
 
-def resolve_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=None):
+def resolve_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=None, require_name_match=False):
     devices = enumerate_camera_devices()
     if not devices:
+        if require_name_match:
+            raise RuntimeError("No camera matches: device enumeration unavailable; check pygrabber and C922")
         return int(camera_index)
 
     excludes = [str(item).lower() for item in (exclude_name_hints or [])]
@@ -54,10 +56,12 @@ def resolve_camera_index(camera_index, camera_name_hint=None, exclude_name_hints
             return idx
 
     print(f"[shared_camera] Camera hint did not match. Available devices: {devices}")
+    if require_name_match:
+        raise RuntimeError(f"No camera matches required hints {hints}; detected devices: {devices}")
     return int(camera_index)
 
 
-def choose_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=None, explicit_index=None):
+def choose_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=None, explicit_index=None, require_name_match=False):
     if explicit_index is not None:
         explicit_index = int(explicit_index)
         if explicit_index < 0:
@@ -90,12 +94,14 @@ def choose_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=
                 f"name={selected_name}"
             )
         else:
+            if require_name_match:
+                raise RuntimeError("No camera matches: cannot verify explicit index without device enumeration")
             print(
                 f"[shared_camera] Using explicit OpenCV camera index={explicit_index}; "
                 "device name could not be enumerated"
             )
         return explicit_index
-    return resolve_camera_index(camera_index, camera_name_hint, exclude_name_hints)
+    return resolve_camera_index(camera_index, camera_name_hint, exclude_name_hints, require_name_match)
 
 
 def _backend_from_name(name):
@@ -348,6 +354,7 @@ class SharedCameraRelay:
         fourcc="MJPG",
         diagnostic_seconds=2.0,
         strict_backend=True,
+        require_name_match=False,
     ):
         self.requested_camera_index = int(camera_index)
         self.camera_index = choose_camera_index(
@@ -355,6 +362,7 @@ class SharedCameraRelay:
             camera_name_hint=camera_name_hint,
             exclude_name_hints=exclude_name_hints,
             explicit_index=explicit_index,
+            require_name_match=require_name_match,
         )
         self.width = int(width)
         self.height = int(height)

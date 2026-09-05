@@ -69,6 +69,9 @@ def _cleanup():
 
 atexit.register(_cleanup)
 
+if cap is None or not cap.isOpened():
+    raise RuntimeError("The shared C922 camera could not be attached")
+
 pygame.init()
 screen, _pg_size = display_utils.setup_pygame_fullscreen()
 w, h = screen.get_size()
