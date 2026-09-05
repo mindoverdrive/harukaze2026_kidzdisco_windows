@@ -1,15 +1,16 @@
 # リバース2026：iPhone ChatGPTへの引き継ぎメモ
 
 - 引き継ぎID：REBIRTH-20260905-001
-- 版：v002（GitHubへの保存依頼を反映）
+- 版：v003（Acer単独開発、一発差し替え、TouchDesigner表示切替を反映）
 - 作成日：2026年9月5日（日本時間）
-- 現在の段階：修正計画の整理。実装前。
+- 最終更新日：2026年9月6日（日本時間）
+- 現在の段階：修正計画と本番運用設計の整理。実装前。
 - コード・設定の変更：行っていない。
 - 実機試験：行っていない。30分試験も12時間試験も未実施。
 - GitHubへのメモの保存：ユーザーから、このメモを含む単発のcommit/pushの指示を受けた。自動同期の案は取り消されたままで、仕組みは設定していない。
-- 最新の依頼：作成した引き継ぎメモをGitHubへcommit/pushすること。
+- 最新の依頼：今回までの追加条件をiPhone ChatGPTへGitHub経由で引き継ぐこと。
 
-このメモは会話を引き継ぐための資料です。「ユーザーが確定した条件」「コードから確認した事実」「Codexの提案」「未確認」を区別してください。提案はユーザーの承認済み決定として扱わず、最新のユーザー指示を優先してください。
+このメモは会話を引き継ぐための資料です。「ユーザーが確定した条件」「コードから確認した事実」「Codexの提案」「未確認」を区別してください。提案はユーザーの承認済み決定として扱わず、最新のユーザー指示を優先してください。最初に第11〜15節の2026年9月6日更新を読み、その後に必要な旧監査情報を参照してください。
 
 ## 1. 最初に把握してほしいこと
 
@@ -19,7 +20,7 @@
 
 時間が少ないため、全面的な作り直しではなく、使える既存資産を選んで絞る。最優先は、Acer Windows実機での安定動作、無人オート運用と必要時の手動介入の両立。
 
-現在はコードを変更しない。静的監査は完了し、その結果のうち5項目だけについて修正計画を作る段階。今回作成した計画案も、まだ実装していない。
+現在はコードを変更しない。静的監査は完了し、その結果のうち5項目について修正計画を作成した。その後、本番で使うシーン、参加者操作、MacBook操作、Acer上でのリリース差し替え、TouchDesignerとの表示切替まで計画範囲が広がった。いずれもまだ実装していない。
 
 ## 2. ユーザーが確定した条件
 
@@ -32,16 +33,16 @@
 - 長時間安定運用の最終的な想定は、暫定で「再起動なし12時間」。
 - ただし次の確認は、修正後の「30分間の単一シーン」と「Managerによる切替反復」まで。12時間連続試験にはまだ入らない。
 
-### 今回の作業範囲
+### 中核修正の作業範囲
 
-- 修正計画だけを作成する。
-- 新機能追加、大規模リファクタリング、修正の実装は行わない。
+- 現在は修正計画と運用設計だけを作成する。
+- 新機能追加、大規模リファクタリング、修正の実装はまだ行わない。
 - 対象は前回監査のP1のうち、#2、#9、#1、#3、#6だけ。
 - 基本順序は #2 → #9 → #1 → #3 → #6。依存関係で順序を変えるなら理由を説明する。
 - START問題は、単なる待ち時間追加ではなく、受信準備完了を確認できるハンドシェイク方式を検討する。
 - 物理カメラはManagerが所有する設計を維持する。
 - 起動対象は最終的に明示リスト化し、本番で使う *_acer.py だけに限定できる構造を優先する。
-- 本番に採用するシーンは、まだ確定しない。
+- 本番に採用する正確なファイルは、ユーザーの目視選定まで確定しない。
 - 基準シーンの第一候補はFinger Colorful Dots系。実ファイル名は次節を参照。
 
 ### 認識上の注意
@@ -444,12 +445,11 @@ USB切断、再接続途中、選択バックエンドで再取得失敗、読�
 
 ## 8. 未確認・未決定事項
 
-- 本番Acerの正確な型番、CPU、GPU、RAM、Windows/ドライバー。
-- 現在Codexを動かしているWindows機が、その本番Acerと同一か。
+- Acer Nitro AN515-58を開発機兼本番機として使うことは確定。CPU、RAM、Windows、GPU／カメラdriverの実状態は実機記録が必要。
 - 実機上のコードと監査コミットの一致。
 - 実際のPython/ライブラリのバージョン、起動フックの読み込み状況。
-- 本番で使用するカメラ、番号・名前選択方式、バックエンド。
-- 本番ディスプレイ配置・解像度・拡大率。
+- 本番カメラはLogicool C922。Windows上のdevice名、index、USB接続、backendの実測は未確認。
+- 本番ディスプレイはXiaomi L32M8-A2TWN。配置、入力mode、解像度、拡大率は未確認。
 - 本番採用シーン、順序、手動介入とオート運用の詳細。
 - #6を前倒しする計画、TCP方式、各タイムアウト・合格数値の採用。
 - 30分/切替試験の結果。まだ試験していない。
@@ -485,3 +485,219 @@ AIの発言と人間の発言を分け、決定がない欄は「なし」とす
 ソース修正、アプリの設定変更、実機試験、自動同期の設定は行っていない。今回、このメモをユーザーの依頼による単発のcommit/push対象とする。
 
 メモは手動で引き継ぐ資料。会話終了後やタスク完了時に、自動的に更新・同期される仕組みは設定していない。
+
+## 11. 2026年9月6日に追加された確定条件
+
+### 開発機と本番機
+
+- 開発はぎりぎりまで本番に使うAcer一台で行う。
+- Acerを開発機兼本番機として扱い、合格済みの安定版を作業中の候補版で直接上書きしない。
+- 最後に一度の操作で候補版へ差し替え、失敗時は直前の安定版へすぐ戻せることを重視する。
+- 実機環境はLogicool C922とXiaomi L32M8-A2TWNを含む。正確なWindows表示名、表示モード、拡大率は実機確認対象。
+- AcerからMacBook ProをPANで接続して操作できることは必須条件。操作は可能ならブラウザUIにする。接続方式とフォールバックの詳細は未確定。
+
+### 体験とManagerの挙動
+
+- 人が操作していない時間は、自律的に成立する映像を流す。
+- 参加者用画面の上部左右へ「前のシーン」「次のシーン」に相当する操作を常設する案を検討する。
+- ボタン操作を、人が遊んでいることを示すactivityとして扱う。
+- activity中は独立したゲーム系シーンも混ぜて切り替えられるようにする。
+- 手動操作では、承認済みシーンを任意指定できるようにする。
+- 自動モード向けシーンと、Minecraft等の手動・独立シーンを明示的に分類する。
+- シーン切替時の桜エフェクトは内容を一新する。
+- inactivityから自動モードへ戻す案は120秒。ボタンのdwell案は約1秒。いずれも実機で操作感を確認して確定する。
+
+### ユーザーが使いたいシーン候補
+
+次は作品・種類の候補名であり、似た実装のうち正確に使うファイルはユーザーが目視して指定する。
+
+- finger_mandala
+- colorfull_dots_spheres
+- colorfull_wave_dots
+- fractal_moving
+- finger_colorfull_dots
+- otedama系
+- minecraft
+- polygon_vibes系
+- particle_storm
+- roulette
+- skeleton_glitch系
+- earth
+- spider_cursor_acer
+- saturn_particles
+- colorful_tree系。音声・入力時の綴り揺れとして`coloefull_tree`があるため、実ファイル名を照合する。
+
+各候補は「派手でリッチな描画」を目標にする。ただし、子供向けの単純なゲーム画面にはせず、サイケデリック／テクノ空間で大人が見ても映像作品として成立させる。
+
+`finger_mandala`は複数人対応を求める。第一案は最大3人で、人ごとに異なる色を割り当て、同じ人物の左右の手は同じ色にする。他の適切なシーンにも複数人操作を入れるが、全シーンを同じ操作へ揃えず、シーンごとに異なる趣向を持たせる。
+
+### `全シーンを棚卸しして分類`との突合結果
+
+同タスクは、Manager候補50ファイルと除外中の体験・転換用5ファイル、合計55ファイルをソースから確認した。評価順は「小学生への分かりやすさ → サイケデリック空間の大人への伝わり方 → 技術的説明力」。分類は設計上の初期評価であり、その後のユーザーによる「使いたい」指定が優先される。
+
+| ユーザーの候補名 | 棚卸しでの代表ファイル | 棚卸し評価 | 現在の整合した扱い |
+|---|---|---|---|
+| finger_mandala | `finger_mandala_3.py` | キープ／看板作品 | 最優先候補。現在の`finger_mandala_acer.py`は`finger_mandala_2.py`を起動するため、3人対応案と本番entrypointの対応を目視選定後に確定する。 |
+| colorfull_dots_spheres | `colorfull_dots_spheres.py` | ドロップ案 | ユーザーが後から明示的に希望したため候補へ復帰。指の影響が弱いという監査所見を実機目視し、独立scene、idle映像、reworkのどれにするか決める。 |
+| colorfull_wave_dots | `colorfull_wave_dots.py` | マージ／ドット遊び | 使用候補を維持。独立sceneにするか、finger dotsのlookへ統合するかを目視で決める。 |
+| fractal_moving | `fractal_moving_2.py` | キープ／動く光 | 使用候補。既存Acer entrypointは`fractal_moving_acer.py`。 |
+| finger_colorfull_dots | `finger_colorfull_dots_2.py` | キープ／入口 | 使用候補かつ最初の安定性基準scene。既存Acer entrypointは`finger_colorfull_dots_acer.py`。 |
+| otedama系 | `modern_otedama.py` | キープ／身体ゲーム | `modern_otedama.py`を代表候補、`otedama_modern.py`は演出素材のマージ案。正確な本番entrypointは未作成・未決定。 |
+| minecraft | `minecraft.py` | リワーク／工作室 | 手動・独立sceneの有力候補。まず「空中に置く」を中心にし、長く遊ぶmodeとして扱う案。 |
+| polygon_vibes系 | `polygon_vibes.py` | リワーク／触れる空間 | 本体を代表候補とし、`polygon_vibes_face.py`と`pygfx_psychedelic_art.py`の表現を選択的にマージする案。 |
+| particle_storm | `particle_storm_2.py` | キープ／宇宙の山場 | 使用候補。既存Acer entrypointは`particle_storm_acer.py`。 |
+| roulette | `roulette_game_advanced.py` | リワーク／回す模様 | 使用候補。現コードは当選ゲームより、手の回転で模様を回す作品に近い。用途と本番entrypointを目視後に確定する。 |
+| skeleton_glitch | `skeleton_glitch.py` | キープ／踊る本編 | 使用候補。綴りは`skeleton_glitch.py`が正しい。既存Acer wrapperはない。 |
+| earth | `earth.py` | リワーク／宇宙への入口・待機 | ユーザーは基本そのままを希望。映像を維持し、操作の複雑さが実機で問題になった部分だけ修正候補にする。 |
+| spider_cursor_acer | `spider_cursor_2.py` | キープ／生き物遊び | 使用候補。既存entrypointは`spider_cursor_acer.py`。 |
+| saturn_particles | `saturn_particles_2.py` | リワーク／崩して戻す宇宙 | 使用候補。既存entrypointは`saturn_particles_acer.py`。左右の役割の分かりやすさを目視確認する。 |
+| colorful_tree系 | `colorfull_tree.py` | リワーク／育てる遊び | 使用候補。リポジトリ上の正確な綴りは`colorfull_tree.py`。既存Acer wrapperはない。 |
+
+棚卸しで強いキープ評価だったが、ユーザーの「使いたい」一覧にまだ入っていない候補は次の3本。自動追加せず、目視候補として提示する。
+
+- `finger_grid_interaction_2.py`：触ると布状の網が引かれ、つまむと切れ、再生する。既存entrypointは`finger_grid_interaction_acer.py`。
+- `hands_shake.py`：手同士を近づける共同遊び。複数人体験の候補。
+- `spiral_mouth_effect.py`：口を開くと渦と煙が強くなる変身の入口候補。
+
+棚卸しで`scene_profile_runner.py`はsceneから除外し、機材profile付き起動基盤として保持する評価だった。これはP1 #2の明示playlist方針と一致する。`sakura_transition.py`はscene数に含めず章の転換基盤としてキープする評価だったが、ユーザーは切替演出の見た目を一新したい。役割は保持し、視覚内容は再設計候補とする。
+
+棚卸しで提案された体験構造は「入口：指の波・変身 → 本編：触る・描く・踊る → 山場：共同遊び・宇宙 → 余韻：模様・万華鏡」の短い循環と、長く遊ぶ工作室。今回のAUTO／ACTIVE_PLAY／MANUAL分類はこの構造を参考にするが、各sceneの所属はまだ確定しない。
+
+## 12. rebirth2026側から確認した技術的事実
+
+これはWindows側Codexが別タスク`rebirth2026 Sol 再開`と`TD復旧とcanonical実体照合を続行`、および`C:\rebirth2026`のファイルから確認した事実。iPhone側は、自分で同じソースを取得していない限り「Windows側Codexが確認した事実」として扱う。
+
+### MediaPipeとC922
+
+- C922の安定基準として1280×720、MJPG、30fps、露出-5を使っていた。
+- カメラ入力は約30fps、Pose／Hand／Face推論は約10fps、Objectは修正後約7.4fps、TD描画は60fpsという別周期で動かしていた。
+- 描画周期と推論周期を分離し、遅い推論を表示全体へ伝播させない設計が有効だった。
+- Hand＋Faceは5分以上、Hand＋Face＋Objectは10分以上の安定動作履歴がある。ただし今回のKids Disco Pythonシーンや本番12時間試験の合格を意味しない。
+- MediaPipe Objectの`Category.index`は`None`になり得る。`int(None)`でcallbackが終了した履歴があり、修正側では`class_id=-1`と`category_name`基準を使った。
+- 生存確認には`sender_fps`だけでなく、増加する`camera_frame_id`と最終更新時刻を使う。映像が生きていても`sender_fps=-1`となった履歴がある。
+- Poseのみ、Hand、Hand＋Face、Objectという段階起動と、モデル存在・SHA検査が使われている。
+
+### TouchDesignerプロジェクト
+
+- 別リポジトリはhttps://github.com/mindoverdrive/rebirth2026、Acer上の正規パスは`C:\rebirth2026`。
+- canonical development TOEは`C:\rebirth2026\touchdesigner\development\rebirth2026_live.toe`だけ。
+- runtime候補は`C:\rebirth2026\touchdesigner\runtime\rebirth2026_runtime.toe`。manifest付きで昇格するまで本番合格扱いにしない。
+- `start-venue.cmd`は既にBridgeを起動し、ready fileを待ってTouchDesignerと設定されたTOEを起動する。
+- venue設定は現在`Mi TV`、display index 1、1280×720、60Hz、fullscreen true。
+- 現在のrunnerはTouchDesignerプロセス生成直後に`READY`と表示する。Xiaomiへの実フレーム表示までは確認していない。
+- 現在のOperator PanelのFullscreenボタンは状態値を切り替える。現行本線で、Window COMPをXiaomiへ確実に開く処理は未証明。
+- TD側ではPython BridgeだけがC922を所有する。Kids Disco Python側ではManagerだけがC922を所有する。二つのモードを同時にカメラ所有者として起動しない。
+- TDの出力優先順位は`EMERGENCY RAW > MANUAL > AUTO`。起動状態はSTANDBY、AI OFFを基準にする。
+- TD側にはnative-only Auto 88分19秒とscene切替100回の過去合格履歴がある。ただし最新runtimeへの昇格、Xiaomi表示、熱、今回のモード切替は別gate。
+
+## 13. Acer上で一発差し替えする設計案
+
+ここからはWindows側Codexの提案であり、まだ採用確定・実装していない。
+
+### リリース配置
+
+```text
+C:\RebirthKidz\
+├─ releases\
+│  ├─ stable-<release-id>\
+│  └─ candidate-<release-id>\
+├─ runtime\
+│  ├─ current.json
+│  ├─ previous.json
+│  ├─ acer-production.json
+│  └─ scene-manifest.json
+├─ logs\
+└─ launch\
+```
+
+- 安定版と候補版を変更しないディレクトリとして並置する。
+- カメラ設定、シーンmanifest、状態、ログはrelease外へ置く。
+- `current.json`のような小さな参照だけを一度に置換する。
+- releaseにはGit commit、Python版、依存lock、モデルhash、選択した`*_acer.py`と対応`*_2.py`、カメラ／表示profileを記録する。
+- 本番差し替え時は`git pull`、`pip install`、モデルdownload、Windows Updateを行わず、事前構築済み候補へ切り替える。
+
+### 差し替えtransaction
+
+1. 安定版を動かしたまま、候補版のmanifest、依存関係、モデル、空き容量、設定、scene一覧を検査する。
+2. 安全な待機表示へ移る。
+3. 現Managerを正常終了し、子process、window、GPU資源、C922 handleの解放を確認する。
+4. `current.json`を候補版へ原子的に置換する。
+5. 候補Managerを起動する。
+6. Manager ready、増加するcamera frame ID、操作UI ready、最初のsceneの`FIRST_FRAME`を確認する。
+7. 全成功後だけ候補を現行版に確定する。
+8. 途中失敗なら参照を戻し、previousの安定版を再起動する。
+
+候補版が30分単一scene、同一scene再起動20回、異種scene切替、失敗経路の基礎gateに合格するまで安定版と呼ばない。最終12時間試験は機能凍結後に行う。
+
+## 14. Python映像とTouchDesigner映像の一発切替案
+
+ユーザー要望は、タイミングによりTouchDesigner作品をXiaomiへ全画面表示し、Python映像へ簡単に戻せること。操作入口を次の4つへ揃える案を優先する。
+
+- `1 Python映像を開始`
+- `2 TouchDesigner映像を開始`
+- `3 待機画面`
+- `4 直前の映像へ戻す`
+
+AcerのデスクトップshortcutとMacBookのローカルWeb UIは同じshow-mode supervisorを操作する。
+
+### 表示の役割
+
+- Acer内蔵画面：操作UI、状態、ログ、緊急操作。
+- Xiaomi：作品映像だけを枠なし、最前面、cursor非表示で全画面表示。
+- ユーザー発言中の「Acerの画面」は、現時点では「Acerから起動してXiaomiへ全画面出力」と解釈している。Acer内蔵画面自体へ作品を出す要求なら、表示profileを分ける必要がある。
+
+### PythonからTDへの切替flow案
+
+1. 承認済みruntime TOE、manifest、Xiaomi、TouchDesigner、portを事前検査する。
+2. Python映像を待機へ移し、Managerとsceneを正常終了する。
+3. C922と全子processの解放を確認する。
+4. Rebirth Bridgeを起動し、camera frameの更新を確認する。
+5. 承認済み`rebirth2026_runtime.toe`を一つだけ起動する。
+6. `/project1/output/out_display`をXiaomi用Window COMPへ接続する。
+7. project identity、Windowの表示先、出力cook／frameの進行を確認する。
+8. 全成功後だけ`TOUCHDESIGNER_SHOW`に確定する。
+9. 失敗時はTDとBridgeを終了し、Python映像へ自動復帰する。
+
+本番入口は専用shortcutから承認済みruntime TOEだけを開く。Windowsの`.toe`全体を関連付けるとdevelopment、backup、referenceを誤起動できるため採用候補にしない。
+
+### 最小実機gate案
+
+- Python→TD→Pythonを10回反復する。
+- 二重カメラ取得、二重TD、残留processがない。
+- Xiaomiへ定めた時間内に実フレームが出る。黒画面を成功と判定しない。
+- HDMI抜き差し後に表示先を再検出してfullscreenを再適用できる。
+- 各モード30分でメモリ、handle、VRAMが増え続けない。
+- TD起動失敗、Bridge ready失敗、Xiaomi不在の各経路からPython安定版へ戻れる。
+
+## 15. iPhone側の現在の役割と次の返却形式
+
+iPhone側は、実装開始を指示せず、ユーザーと次の判断を整理する。
+
+1. 候補シーンごとに、使う正確なファイルと用途を目視選定する。
+2. 自動向け、activity中、手動専用の分類を整理する。
+3. TouchDesignerへ切り替える運用タイミングと、戻す条件を整理する。
+4. 上部左右ボタン、dwell、120秒inactivity、桜transitionの希望を言語化する。
+5. MacBook UIで必須の操作と、緊急時にAcerで行う操作を分ける。
+6. 決定事項だけをWindows側へ返す。提案は未承認として分離する。
+
+Windows側へ返す形式：
+
+> 引き継ぎID：REBIRTH-20260905-001 / v003
+>
+> ユーザーが新たに確定したこと：
+>
+> 採用する正確なscene file：
+>
+> 自動／activity／手動の分類：
+>
+> TouchDesigner切替条件：
+>
+> MacBook UIの必須操作：
+>
+> 未決定事項：
+>
+> Windows側へ次に依頼する作業：
+>
+> 実装開始の許可：あり／なし
+
+ユーザーが明示していない内容を「決定」に変換しない。現在、ソース実装、設定変更、TOE操作、実機試験は未実施であり、自動同期も設定していない。
