@@ -67,7 +67,7 @@ class JsonChannel:
 class SceneLaunchControl:
     """Manager side. poll() never waits for a child to initialize."""
 
-    def __init__(self, ready_timeout=10.0, ack_timeout=5.0, frame_timeout=30.0):
+    def __init__(self, ready_timeout=10.0, ack_timeout=5.0, frame_timeout=30.0, on_event=None):
         self.launch_id = uuid.uuid4().hex
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -88,15 +88,19 @@ class SceneLaunchControl:
         self.first_frame = None
         self.error = None
         self.child_pid = None
+        self.on_event = on_event
 
     def argv(self):
         return ["--control-port", str(self.port), "--launch-id", self.launch_id]
 
     def _log(self, event, **fields):
-        print("[SceneControl] " + json.dumps({
+        payload = {
             "event": event, "launch_id": self.launch_id,
             "elapsed_s": round(time.monotonic() - self.created_at, 3), **fields,
-        }), flush=True)
+        }
+        print("[SceneControl] " + json.dumps(payload), flush=True)
+        if self.on_event is not None:
+            self.on_event(payload)
 
     def poll(self, process):
         if self.state == "FAILED":
@@ -174,6 +178,8 @@ class SceneChildControl:
     def __init__(self, port, launch_id):
         self.launch_id = launch_id
         self.first_frame_sent = False
+        self.sample_started_at = None
+        self.processed_frames = 0
         self.channel = JsonChannel(socket.create_connection(("127.0.0.1", port), timeout=10.0))
 
     def send(self, event, **fields):
@@ -193,12 +199,21 @@ class SceneChildControl:
 
     def first_frame(self, camera):
         if self.first_frame_sent:
+            self.processed_frames += 1
+            now = time.monotonic()
+            elapsed = now - self.sample_started_at
+            if elapsed >= 10.0:
+                print("[SceneMetrics] " + json.dumps({"pid": os.getpid(), "launch_id": self.launch_id,
+                      "processed_render_fps": self.processed_frames / elapsed, "sample_seconds": elapsed,
+                      "frame_id": getattr(camera, "last_read_frame_id", None)}), flush=True)
+                self.sample_started_at, self.processed_frames = now, 0
             return
         frame_id = getattr(camera, "last_read_frame_id", 0)
         if type(frame_id) is not int or frame_id <= 0:
             return
         self.send("FIRST_FRAME", frame_id=frame_id, shm_name=getattr(camera, "shm_name", None))
         self.first_frame_sent = True
+        self.sample_started_at = time.monotonic()
 
     def close(self):
         self.channel.close()

@@ -372,6 +372,8 @@ class SharedCameraRelay:
         self.stop_event = threading.Event()
         self.latest_frame = None
         self.latest_timestamp = 0.0
+        self.last_success_at = None
+        self.max_frame_gap = 0.0
         self.frame_id = 0
         self.write_seq = 0
         self.read_failures = 0
@@ -509,6 +511,9 @@ class SharedCameraRelay:
                     if len(frame_bytes) != self.frame_bytes:
                         raise RuntimeError("unexpected camera frame byte length")
                     now = time.monotonic()
+                    if self.last_success_at is not None:
+                        self.max_frame_gap = max(self.max_frame_gap, now - self.last_success_at)
+                    self.last_success_at = now
                     self.write_seq += 1
                     self._write_header(status=1, timestamp=now)
                     self.shm.buf[HEADER_SIZE:HEADER_SIZE + self.frame_bytes] = frame_bytes

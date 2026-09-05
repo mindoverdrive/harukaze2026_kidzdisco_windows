@@ -18,6 +18,8 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 
 `--check` は依存ライブラリとMediaPipe Hands APIを確認し、カメラやウィンドウを開かない。結果は `test_reports/kids_preflight_*.json`。起動成功を意味する検査ではない。
 
+通常起動時は試験IDごとのログ/メトリクスを `test_reports/kids_trial_*/` に保存する。30分で止めるには `Start Kids Test.cmd --duration-minutes 30`。20回切替と12時間試験の準備は [ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。12時間試験はまだ開始していない。
+
 直接起動する場合:
 
 ```powershell

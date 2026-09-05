@@ -36,6 +36,9 @@ def check_runtime():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Check imports only; do not open camera/windows")
+    parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
+    parser.add_argument("--switch-every", type=float, help="Trial switch interval in seconds")
+    parser.add_argument("--switch-count", type=int, help="Number of successful trial switches")
     args = parser.parse_args()
     sys.path.insert(0, str(ROOT))
     os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -52,7 +55,15 @@ def main():
     if args.check:
         return 0
     os.chdir(ROOT)
-    sys.argv = [str(ROOT / "manager.py"), "--config", str(ROOT / "configs" / "kids_test_acer.json")]
+    trial_dir = report_dir / (time.strftime("kids_trial_%Y%m%d_%H%M%S_") + str(time.time_ns() % 1_000_000_000))
+    sys.argv = [str(ROOT / "manager.py"), "--config", str(ROOT / "configs" / "kids_test_acer.json"),
+                "--report-dir", str(trial_dir)]
+    if args.duration_minutes is not None:
+        sys.argv.extend(["--duration-seconds", str(args.duration_minutes * 60)])
+    if args.switch_every is not None:
+        sys.argv.extend(["--switch-interval-seconds", str(args.switch_every)])
+    if args.switch_count is not None:
+        sys.argv.extend(["--switch-count", str(args.switch_count)])
     runpy.run_path(str(ROOT / "manager.py"), run_name="__main__")
     return 0
 

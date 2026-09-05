@@ -21,6 +21,7 @@ from shared_camera import SharedCameraRelay
 from scene_control import SceneLaunchControl, SceneControlError
 from scene_profile_runner import resolve_scene_path
 from windows_process import WindowsSceneJob, get_scene_job
+from runtime_diagnostics import RuntimeDiagnostics
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -331,7 +332,7 @@ class GestureInterpreter:
 
 
 class SceneManager:
-    def __init__(self, camera_env=None, scenes=None):
+    def __init__(self, camera_env=None, scenes=None, diagnostics=None):
         self.running_process = None
         self.running_scene_path = None
         self.current_scene_name = "None"
@@ -348,6 +349,8 @@ class SceneManager:
         self.last_switch_error = None
         self.fatal_error = None
         self.uncontained_process = None
+        self.diagnostics = diagnostics
+        self.completed_switches = 0
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
         self.all_scenes = list(scenes) if scenes is not None else self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
@@ -379,6 +382,7 @@ class SceneManager:
             cwd=cwd,
             env=self._scene_env(),
             creationflags=self._creationflags(),
+            **({"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT} if self.diagnostics else {}),
         )
         if os.name == "nt":
             try:
@@ -391,6 +395,9 @@ class SceneManager:
                 else:
                     self.fatal_error = "Uncontained scene process could not be stopped"
                 raise
+        if self.diagnostics:
+            self.diagnostics.capture_stdout(proc)
+            self.diagnostics.record("scene_spawn", launcher_pid=proc.pid, argv=argv)
         return proc
 
     def _stage_geometry(self):
@@ -553,6 +560,7 @@ class SceneManager:
                 ready_timeout=CONFIG.get("SCENE_READY_TIMEOUT", 10.0),
                 ack_timeout=CONFIG.get("SCENE_START_ACK_TIMEOUT", 5.0),
                 frame_timeout=CONFIG.get("SCENE_FIRST_FRAME_TIMEOUT", 30.0),
+                on_event=(lambda event: self.diagnostics.record("scene_control", detail=event)) if self.diagnostics else None,
             )
             self.preloaded_scene_path = scene_path
             self.preloaded_scene_name = os.path.basename(scene_path)
@@ -638,6 +646,7 @@ class SceneManager:
             self.current_scene_name = self.preloaded_scene_name
             print(f"[Manager] Promoted {self.current_scene_name} pid={self.running_process.pid} after FIRST_FRAME")
             self.scene_index += 1
+            self.completed_switches += 1
             self._clear_preloaded()
             self.switch_pending = False
             self.switch_cover_until = None
@@ -758,16 +767,31 @@ class HeadClapMonitor:
                     print(f"[Monitor] Cleanup error: {exc}")
 
 
+def _positive_seconds(value):
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError("must be positive and finite")
+    return number
+
+
 def main():
     global CONFIG
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", help="Use an explicit configuration file, e.g. configs/kids_test_acer.json")
+    parser.add_argument("--report-dir", help="Write bounded trial logs and resource observations here")
+    parser.add_argument("--duration-seconds", type=_positive_seconds, help="Stop this trial after the first scene has run this long")
+    parser.add_argument("--switch-interval-seconds", type=_positive_seconds, help="Request a trial switch after each successful scene has run this long")
+    parser.add_argument("--switch-count", type=int, help="Stop after this many successful trial switches, excluding initial launch")
     parser.add_argument(
         "--camera-only",
         action="store_true",
         help="Start only the shared camera relay for manual scene editing.",
     )
     args, _ = parser.parse_known_args()
+    if args.switch_count is not None and (args.switch_count <= 0 or args.switch_interval_seconds is None):
+        parser.error("--switch-count requires a positive count and --switch-interval-seconds")
+    if args.camera_only and (args.switch_count or args.switch_interval_seconds):
+        parser.error("camera-only mode cannot run scene switch trials")
 
     if args.config:
         try:
@@ -793,8 +817,17 @@ def main():
     camera_relay = None
     manager = None
     monitor = None
+    diagnostics = None
+    trial_started_at = None
+    next_switch_at = None
+    observed_switches = 0
+    next_sample_at = 0.0
+    stop_reason = "error"
     exit_code = 0
     try:
+        if args.report_dir:
+            diagnostics = RuntimeDiagnostics(args.report_dir, CONFIG)
+            print(f"[Manager] Trial logs: {diagnostics.directory}")
         camera_relay = SharedCameraRelay(
             camera_index=CONFIG["CAMERA_INDEX"],
             width=CONFIG["CAMERA_WIDTH"],
@@ -832,7 +865,7 @@ def main():
         )
 
         if not args.camera_only:
-            manager = SceneManager(camera_env=camera_env, scenes=production_scenes)
+            manager = SceneManager(camera_env=camera_env, scenes=production_scenes, diagnostics=diagnostics)
 
         if not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True):
             monitor = HeadClapMonitor(frame_source=camera_relay)
@@ -852,12 +885,36 @@ def main():
             print(f"[Manager] Warning: Manager Control window disabled: {exc}")
 
         while True:
+            now = time.monotonic()
             if camera_relay.thread is not None and not camera_relay.thread.is_alive():
                 raise RuntimeError(f"Camera capture thread stopped: {camera_relay.last_error}")
             if manager is not None:
                 manager.tick()
                 if manager.fatal_error:
                     raise RuntimeError(manager.fatal_error)
+                if (args.switch_interval_seconds or args.duration_seconds) and manager.last_switch_error:
+                    raise RuntimeError(f"Trial switch failed: {manager.last_switch_error}")
+
+            if trial_started_at is None and (manager is None or manager.is_scene_running()):
+                trial_started_at = now
+                if diagnostics:
+                    diagnostics.record("trial_started")
+            if manager is not None and manager.completed_switches != observed_switches:
+                observed_switches = manager.completed_switches
+                next_switch_at = now + args.switch_interval_seconds if args.switch_interval_seconds else None
+            if diagnostics and now >= next_sample_at:
+                diagnostics.sample(camera_relay, manager)
+                next_sample_at = now + 10.0
+            if args.duration_seconds and trial_started_at is not None and now - trial_started_at >= args.duration_seconds:
+                stop_reason = "duration_reached"
+                break
+            if (args.switch_count and manager is not None and manager.completed_switches >= args.switch_count + 1
+                    and manager.transition_process is None and not manager.switch_pending):
+                stop_reason = "switch_count_reached"
+                break
+            if next_switch_at is not None and now >= next_switch_at and manager is not None:
+                if manager.switch_scene():
+                    next_switch_at = None
             if monitor and monitor.consume_clap() and manager is not None:
                 print("[Manager] Head clap detected. Switching scene.")
                 manager.switch_scene()
@@ -887,17 +944,24 @@ def main():
                 time.sleep(0.1)
 
             if key == ord("q"):
+                stop_reason = "user_quit"
                 break
             if key == ord("n") and manager is not None:
                 print("[Manager] Keyboard next scene")
                 manager.switch_scene()
 
     except KeyboardInterrupt:
+        stop_reason = "user_interrupt"
         print("\n[Manager] Interrupted by user.")
     except Exception as exc:
         print(f"[Manager] Fatal error: {exc}")
         traceback.print_exc()
         exit_code = 1
+        if diagnostics:
+            try:
+                diagnostics.record("run_error", reason=str(exc), traceback=traceback.format_exc())
+            except OSError:
+                pass
     finally:
         print("[Manager] Shutting down...")
         if monitor:
@@ -926,6 +990,22 @@ def main():
         except Exception as exc:
             print(f"[Manager] Window cleanup error: {exc}")
             exit_code = 1
+        if diagnostics:
+            try:
+                diagnostics.record("run_end", reason=stop_reason, exit_code=exit_code,
+                                   trial_elapsed_s=time.monotonic() - trial_started_at if trial_started_at else 0,
+                                   completed_switches=max(0, manager.completed_switches - 1) if manager else 0,
+                                   human_check_required=True)
+            except OSError as exc:
+                print(f"[Manager] Report error: {exc}")
+                exit_code = 1
+            try:
+                if not diagnostics.close():
+                    print(f"[Manager] Report cleanup incomplete: {diagnostics.error}")
+                    exit_code = 1
+            except OSError as exc:
+                print(f"[Manager] Report cleanup error: {exc}")
+                exit_code = 1
     return exit_code
 
 

@@ -3,6 +3,7 @@ import ctypes
 from ctypes import wintypes as wt
 import os
 import time
+from functools import lru_cache
 
 
 class _BasicLimits(ctypes.Structure):
@@ -25,6 +26,7 @@ class _ProcessEntry(ctypes.Structure):
                 ("exe", wt.WCHAR * 260)]
 
 
+@lru_cache(maxsize=1)
 def _kernel():
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     signatures = {
