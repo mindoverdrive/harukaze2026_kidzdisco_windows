@@ -11,6 +11,28 @@ import manager
 
 
 class RuntimeValidationTests(unittest.TestCase):
+    def test_launch_log_failure_keeps_process_reference_when_cleanup_fails(self):
+        diagnostics = mock.Mock()
+        diagnostics.record.side_effect = PermissionError("log is not writable")
+        scene_manager = manager.SceneManager(scenes=["fixture_acer.py"], diagnostics=diagnostics)
+        process = mock.Mock()
+        with (mock.patch.object(manager.subprocess, "Popen", return_value=process),
+              mock.patch.object(manager, "WindowsSceneJob"),
+              mock.patch.object(scene_manager, "_kill_process", return_value=False)):
+            with self.assertRaises(PermissionError):
+                scene_manager._spawn_process([sys.executable, "fixture_acer.py"], ".")
+        self.assertIs(scene_manager.uncontained_process, process)
+        self.assertIsNotNone(scene_manager.fatal_error)
+
+    def test_misspelled_trial_option_is_not_silently_ignored(self):
+        with (mock.patch.object(sys, "argv", ["manager.py", "--duratoin-seconds", "1800"]),
+              mock.patch.object(manager, "SharedCameraRelay") as relay,
+              mock.patch.object(sys, "stderr")):
+            with self.assertRaises(SystemExit) as caught:
+                manager.main()
+        self.assertEqual(caught.exception.code, 2)
+        relay.assert_not_called()
+
     def test_invalid_operational_config_is_rejected_before_allocation(self):
         for config in ([], {"CAMERA_WIDTH": -1}, {"CAMERA_FPS": 0},
                        {"SCENE_FIRST_FRAME_TIMEOUT": float("nan")},

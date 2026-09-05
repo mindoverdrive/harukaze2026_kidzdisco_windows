@@ -384,20 +384,20 @@ class SceneManager:
             creationflags=self._creationflags(),
             **({"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT} if self.diagnostics else {}),
         )
-        if os.name == "nt":
-            try:
+        try:
+            if os.name == "nt":
                 proc._scene_job = WindowsSceneJob(proc)
-            except BaseException:
-                # This is only the process just spawned by this Manager.
-                self.uncontained_process = proc
-                if self._kill_process(proc, "failed job assignment"):
-                    self.uncontained_process = None
-                else:
-                    self.fatal_error = "Uncontained scene process could not be stopped"
-                raise
-        if self.diagnostics:
-            self.diagnostics.capture_stdout(proc)
-            self.diagnostics.record("scene_spawn", launcher_pid=proc.pid, argv=argv)
+            if self.diagnostics:
+                self.diagnostics.capture_stdout(proc)
+                self.diagnostics.record("scene_spawn", launcher_pid=proc.pid, argv=argv)
+        except BaseException:
+            # Keep ownership even if Job assignment or diagnostic I/O fails.
+            self.uncontained_process = proc
+            if self._kill_process(proc, "failed launch setup"):
+                self.uncontained_process = None
+            else:
+                self.fatal_error = "Scene process could not be stopped after launch setup failure"
+            raise
         return proc
 
     def _stage_geometry(self):
@@ -787,7 +787,7 @@ def main():
         action="store_true",
         help="Start only the shared camera relay for manual scene editing.",
     )
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
     if args.switch_count is not None and (args.switch_count <= 0 or args.switch_interval_seconds is None):
         parser.error("--switch-count requires a positive count and --switch-interval-seconds")
     if args.camera_only and (args.switch_count or args.switch_interval_seconds):
@@ -896,12 +896,12 @@ def main():
                     raise RuntimeError(f"Trial switch failed: {manager.last_switch_error}")
 
             if trial_started_at is None and (manager is None or manager.is_scene_running()):
-                trial_started_at = now
+                trial_started_at = time.monotonic()
                 if diagnostics:
                     diagnostics.record("trial_started")
             if manager is not None and manager.completed_switches != observed_switches:
                 observed_switches = manager.completed_switches
-                next_switch_at = now + args.switch_interval_seconds if args.switch_interval_seconds else None
+                next_switch_at = time.monotonic() + args.switch_interval_seconds if args.switch_interval_seconds else None
             if diagnostics and now >= next_sample_at:
                 diagnostics.sample(camera_relay, manager)
                 next_sample_at = now + 10.0
