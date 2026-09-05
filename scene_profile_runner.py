@@ -26,6 +26,8 @@ def run_scene(script_name, profile="stage"):
     previous = {}
     try:
         for key, value in overrides.items():
+            if key in os.environ:
+                continue
             previous[key] = os.environ.get(key)
             os.environ[key] = str(value)
         runpy.run_path(str(script_path), run_name="__main__")

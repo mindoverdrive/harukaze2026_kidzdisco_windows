@@ -37,14 +37,34 @@ DEFAULT_PRODUCTION_SCENES = [
 class ConfigurationError(RuntimeError):
     pass
 
+
+def _parse_bool_setting(value):
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"expected boolean, got {value!r}")
+
+
+def _parse_optional_int_setting(value):
+    if value is None or str(value).strip().lower() in {"", "none", "null", "auto"}:
+        return None
+    return int(value)
+
 DEFAULT_CONFIG = {
     "CAMERA_INDEX": 1,
     "CAMERA_WIDTH": 1280,
     "CAMERA_HEIGHT": 720,
     "CAMERA_FPS": 60,
+    "CAMERA_FOURCC": "MJPG",
+    "CAMERA_DIAGNOSTIC_SECONDS": 2.0,
+    "CAMERA_STRICT_BACKEND": True,
     "CAMERA_BACKEND": "dshow",
     "CAMERA_ALLOW_FALLBACK": False,
-    "CAMERA_OPENCV_INDEX": 0,
+    "CAMERA_OPENCV_INDEX": None,
     "CAMERA_NAME_HINTS": ["c922", "pro stream webcam"],
     "CAMERA_EXCLUDE_HINTS": ["nizima", "virtual", "logi capture"],
     "SCENE_DIR": ".",
@@ -68,8 +88,23 @@ DEFAULT_CONFIG = {
 }
 
 
+CAMERA_ENV_CASTERS = {
+    "CAMERA_INDEX": int,
+    "CAMERA_WIDTH": int,
+    "CAMERA_HEIGHT": int,
+    "CAMERA_FPS": int,
+    "CAMERA_FOURCC": str,
+    "CAMERA_DIAGNOSTIC_SECONDS": float,
+    "CAMERA_STRICT_BACKEND": _parse_bool_setting,
+    "CAMERA_BACKEND": str,
+    "CAMERA_OPENCV_INDEX": _parse_optional_int_setting,
+    "CAMERA_ALLOW_FALLBACK": _parse_bool_setting,
+}
+
+
 def load_config(path=CONFIG_PATH):
     cfg = dict(DEFAULT_CONFIG)
+    camera_sources = {key: "internal default" for key in CAMERA_ENV_CASTERS}
 
     if os.path.exists(path):
         try:
@@ -77,13 +112,27 @@ def load_config(path=CONFIG_PATH):
                 user_cfg = json.load(f)
             if isinstance(user_cfg, dict):
                 cfg.update(user_cfg)
+                for key in CAMERA_ENV_CASTERS:
+                    if key in user_cfg:
+                        camera_sources[key] = "config"
         except Exception as exc:
             print(f"[Manager] Warning: Failed to read config file {path}: {exc}")
+
+    for key, caster in CAMERA_ENV_CASTERS.items():
+        env_key = f"KIDZDISCO_{key}"
+        if env_key not in os.environ:
+            continue
+        try:
+            cfg[key] = caster(os.environ[env_key])
+        except (TypeError, ValueError) as exc:
+            raise ConfigurationError(f"Invalid {env_key}: {exc}") from exc
+        camera_sources[key] = "environment"
 
     scene_dir = os.path.expanduser(cfg["SCENE_DIR"])
     if not os.path.isabs(scene_dir):
         scene_dir = os.path.abspath(os.path.join(BASE_DIR, scene_dir))
     cfg["SCENE_DIR"] = scene_dir
+    cfg["_CAMERA_CONFIG_SOURCES"] = camera_sources
     return cfg
 
 
@@ -128,7 +177,13 @@ def resolve_production_scenes(config):
     return scenes
 
 
-CONFIG = load_config()
+CONFIG_LOAD_ERROR = None
+try:
+    CONFIG = load_config()
+except ConfigurationError as exc:
+    CONFIG = dict(DEFAULT_CONFIG)
+    CONFIG["SCENE_DIR"] = BASE_DIR
+    CONFIG_LOAD_ERROR = exc
 
 
 class GestureInterpreter:
@@ -626,6 +681,10 @@ def main():
     )
     args, _ = parser.parse_known_args()
 
+    if CONFIG_LOAD_ERROR is not None:
+        print(f"[Manager] Configuration error: {CONFIG_LOAD_ERROR}")
+        return 2
+
     production_scenes = None
     if not args.camera_only:
         try:
@@ -665,6 +724,14 @@ def main():
             f"strict_backend={CONFIG.get('CAMERA_STRICT_BACKEND', True)} "
             f"backend={CONFIG.get('CAMERA_BACKEND', 'default')} "
             f"shared={CONFIG.get('SHARED_CAMERA_ENABLED', True)}"
+        )
+        camera_sources = CONFIG.get("_CAMERA_CONFIG_SOURCES", {})
+        print(
+            "[Manager] Camera config sources: "
+            + ", ".join(
+                f"{key}={camera_sources.get(key, 'unknown')}"
+                for key in CAMERA_ENV_CASTERS
+            )
         )
 
         if not args.camera_only:

@@ -14,6 +14,7 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 MAGIC = b"HARUCAM1"
 
 ENV_ENABLED = "HARUKAZE_SHARED_CAMERA"
+ENV_REQUIRED = "HARUKAZE_SHARED_CAMERA_REQUIRED"
 ENV_SHM_NAME = "HARUKAZE_CAMERA_SHM"
 ENV_WIDTH = "HARUKAZE_CAMERA_WIDTH"
 ENV_HEIGHT = "HARUKAZE_CAMERA_HEIGHT"
@@ -59,7 +60,40 @@ def resolve_camera_index(camera_index, camera_name_hint=None, exclude_name_hints
 def choose_camera_index(camera_index, camera_name_hint=None, exclude_name_hints=None, explicit_index=None):
     if explicit_index is not None:
         explicit_index = int(explicit_index)
-        print(f"[shared_camera] Using explicit OpenCV camera index={explicit_index}")
+        if explicit_index < 0:
+            raise RuntimeError(f"Explicit OpenCV camera index must be non-negative: {explicit_index}")
+
+        devices = enumerate_camera_devices()
+        if devices:
+            if explicit_index >= len(devices):
+                raise RuntimeError(
+                    f"Explicit OpenCV camera index={explicit_index} is outside detected devices {devices}"
+                )
+            selected_name = str(devices[explicit_index])
+            lower_name = selected_name.lower()
+            excludes = [str(item).lower() for item in (exclude_name_hints or [])]
+            hints = camera_name_hint or []
+            if isinstance(hints, str):
+                hints = [hints]
+            hints = [str(item).lower() for item in hints if str(item).strip()]
+            if any(exclude in lower_name for exclude in excludes):
+                raise RuntimeError(
+                    f"Explicit OpenCV camera index={explicit_index} selects excluded device {selected_name!r}"
+                )
+            if hints and not any(hint in lower_name for hint in hints):
+                raise RuntimeError(
+                    f"Explicit OpenCV camera index={explicit_index} device {selected_name!r} "
+                    f"does not match configured hints {hints}"
+                )
+            print(
+                f"[shared_camera] Using explicit OpenCV camera index={explicit_index} "
+                f"name={selected_name}"
+            )
+        else:
+            print(
+                f"[shared_camera] Using explicit OpenCV camera index={explicit_index}; "
+                "device name could not be enumerated"
+            )
         return explicit_index
     return resolve_camera_index(camera_index, camera_name_hint, exclude_name_hints)
 
@@ -448,12 +482,22 @@ class SharedCameraRelay:
     def export_env(self):
         return {
             ENV_ENABLED: "1",
+            ENV_REQUIRED: "1",
             ENV_SHM_NAME: self.shm_name,
             ENV_WIDTH: str(self.width),
             ENV_HEIGHT: str(self.height),
             ENV_CHANNELS: str(self.channels),
             ENV_FPS: str(int(self.fps)),
             ENV_FOURCC: self.fourcc,
+            "KIDZDISCO_CAMERA_INDEX": str(self.camera_index),
+            "KIDZDISCO_CAMERA_OPENCV_INDEX": str(self.camera_index),
+            "KIDZDISCO_CAMERA_WIDTH": str(self.width),
+            "KIDZDISCO_CAMERA_HEIGHT": str(self.height),
+            "KIDZDISCO_CAMERA_FPS": str(int(self.fps)),
+            "KIDZDISCO_CAMERA_FOURCC": self.fourcc,
+            "KIDZDISCO_CAMERA_BACKEND": str(self.backend_preference),
+            "KIDZDISCO_CAMERA_STRICT_BACKEND": str(self.strict_backend).lower(),
+            "KIDZDISCO_CAMERA_ALLOW_FALLBACK": str(self.fallback_to_default).lower(),
         }
 
     def write_session_file(self):
@@ -543,10 +587,24 @@ def open_camera_source(
     diagnostic_seconds=2.0,
     strict_backend=True,
 ):
-    shared_cap = SharedMemoryCamera.from_env()
+    shared_required = str(os.environ.get(ENV_REQUIRED, "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    try:
+        shared_cap = SharedMemoryCamera.from_env()
+    except Exception as exc:
+        if shared_required:
+            raise RuntimeError(f"Manager shared camera is required but attach failed: {exc}") from exc
+        raise
     if shared_cap is not None:
         print(f"[shared_camera] Attached to shared camera {shared_cap.shm_name}")
         return shared_cap
+
+    if shared_required:
+        raise RuntimeError("Manager shared camera is required but connection details are unavailable")
 
     shared_cap = SharedMemoryCamera.from_session_file()
     if shared_cap is not None:
