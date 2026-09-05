@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rebirth 2026 Kidz Disco 実装計画書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./design-system/document.css">
+<script src="./design-system/math-copy.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<style>
+  .plan-status {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .plan-status > div {
+    background: var(--mb-surface);
+    border: var(--mb-border-w) solid var(--mb-border);
+    border-radius: var(--mb-radius);
+    padding: 14px 16px;
+  }
+  .plan-status dt {
+    color: var(--mb-muted);
+    font-family: var(--mb-font-mono);
+    font-size: 12px;
+  }
+  .plan-status dd {
+    margin: 4px 0 0;
+    color: var(--mb-ink);
+    font-weight: 700;
+  }
+  .phase {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 18px;
+    padding: 20px 0;
+    border-bottom: var(--mb-border-w) solid var(--mb-rule);
+  }
+  .phase:last-child { border-bottom: 0; }
+  .phase-id {
+    font-family: var(--mb-font-mono);
+    font-weight: 700;
+    color: var(--mb-ink);
+  }
+  .phase h3 { margin-top: 0; }
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .flow-grid > div {
+    border: var(--mb-border-w) solid var(--mb-border);
+    border-radius: var(--mb-radius);
+    background: var(--mb-surface);
+    padding: 16px;
+  }
+  .flow-grid strong { display: block; margin-bottom: 6px; }
+  .checklist {
+    border: var(--mb-border-w) solid var(--mb-border);
+    border-radius: var(--mb-radius);
+    background: var(--mb-surface);
+    padding: 8px 20px;
+    margin: 20px 0;
+  }
+  .check-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    padding: 12px 0;
+    border-bottom: var(--mb-border-w) solid var(--mb-rule);
+  }
+  .check-row:last-child { border-bottom: 0; }
+  .check-row input { margin-top: 7px; width: 17px; height: 17px; }
+  .check-row label { cursor: pointer; }
+  .check-row small { display: block; color: var(--mb-muted); }
+  .state-name {
+    font-family: var(--mb-font-mono);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .decision {
+    border-left: 6px solid var(--mb-ink);
+    padding: 4px 0 4px 18px;
+    margin: 18px 0;
+  }
+  .mono { font-family: var(--mb-font-mono); }
+  details {
+    border: var(--mb-border-w) solid var(--mb-rule);
+    border-radius: var(--mb-radius);
+    background: var(--mb-surface);
+    padding: 12px 16px;
+    margin: 12px 0;
+  }
+  summary { cursor: pointer; color: var(--mb-ink); font-weight: 700; }
+  @media (max-width: 760px) {
+    .plan-status, .flow-grid { grid-template-columns: minmax(0, 1fr); }
+    .phase { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="mb-page">
+
+<header class="mb-header">
+  <div>
+    <h1>Rebirth 2026 Kidz Disco 実装計画書</h1>
+    <p class="mb-meta-line">revision 0.1 / 2026-09-06 JST / planning artifact</p>
+  </div>
+</header>
+
+<p class="mb-lede">
+春風2026のPythonシーンを選別し、Acer一台で安定運用できる連続体験へ仕上げるための実装順、機材切替、実機gateをまとめる。現段階は計画のみで、Pythonソース、設定、TouchDesigner TOEは未変更。
+</p>
+
+<dl class="plan-status">
+  <div><dt>完了目標</dt><dd><em>9月8日 夜</em></dd></div>
+  <div><dt>予備・休養日</dt><dd>9月9日</dd></div>
+  <div><dt>実装機・本番機</dt><dd>Acer Nitro</dd></div>
+  <div><dt>最終安定性目標</dt><dd>再起動なし12時間</dd></div>
+</dl>
+
+<div class="mb-wrap">
+<div class="mb-main">
+
+<nav class="mb-toc" aria-label="目次">
+  <ol>
+    <li><a href="#terms">用語と判断境界</a></li>
+    <li><a href="#goal">目的と固定条件</a></li>
+    <li><a href="#architecture">本番アーキテクチャ</a></li>
+    <li><a href="#scene-contract">全シーン共通契約</a></li>
+    <li><a href="#manager">Managerと操作モード</a></li>
+    <li><a href="#p1">P1修正計画</a></li>
+    <li><a href="#scenes">シーン選定と実装波</a></li>
+    <li><a href="#release">一発差し替えとTouchDesigner</a></li>
+    <li><a href="#test">実機試験gate</a></li>
+    <li><a href="#schedule">9月8日夜までの進行</a></li>
+    <li><a href="#logs">ログ・復旧・完了条件</a></li>
+  </ol>
+</nav>
+
+<div class="mb-summary">
+  <ul>
+    <li>最初にscene選択、cleanup、camera設定、起動handshake、camera再取得を閉じる</li>
+    <li>全sceneに「緩やかな時間変化」「即時のaction反応」「妖精guide」を別層として持たせる</li>
+    <li>Python、TouchDesigner、待機画面を一つのshow-mode supervisorから切り替える</li>
+    <li>実ファイルはユーザーの目視後にmanifestへ固定し、候補を全投入しない</li>
+  </ul>
+</div>
+
+<h2 id="terms">1. 用語と判断境界</h2>
+
+<p>
+この計画では、ユーザーが確定した要求、ソースから確認した事実、実装案を区別する。数値や内部名のうち「案」と記したものは、実機確認後に確定する。
+</p>
+
+<div class="mb-grid-2">
+  <div class="mb-card">
+    <div class="mb-card-label">現在行うこと</div>
+    <p>実装単位、依存関係、試験方法、採用判断の順序を固定する。</p>
+  </div>
+  <div class="mb-card">
+    <div class="mb-card-label">実装開始前の境界</div>
+    <p>安定版を保存し、候補版を隔離し、正確なscene fileを目視選定する。</p>
+  </div>
+</div>
+
+<h2 id="goal">2. 目的と固定条件</h2>
+
+<div class="mb-card">
+  <div class="mb-card-title">作品としての目的</div>
+  <p>小学生が自分の動きと映像の変化の因果を直感的に理解できること。サイケデリック／テクノ空間の大人にも、継続して見られる映像作品として成立すること。</p>
+</div>
+
+<table>
+  <tr><th class="mb-rowlabel">領域</th><th>固定条件</th></tr>
+  <tr><td class="mb-rowlabel">機材</td><td>Acer Nitro、Logicool C922、Xiaomi L32M8-A2TWNを基準にする</td></tr>
+  <tr><td class="mb-rowlabel">カメラ</td><td>PythonモードではManagerだけが物理cameraを所有する</td></tr>
+  <tr><td class="mb-rowlabel">運用</td><td>無人AUTO、参加者のACTIVE_PLAY、スタッフのMANUAL_HOLDを両立する</td></tr>
+  <tr><td class="mb-rowlabel">遠隔操作</td><td>MacBook ProをAcerのPANへ接続し、可能ならbrowser UIで操作する</td></tr>
+  <tr><td class="mb-rowlabel">表示</td><td>Acer内蔵画面を操作用、Xiaomiを作品の全画面出力用とする</td></tr>
+  <tr><td class="mb-rowlabel">安定性</td><td>短時間gateを順に通し、機能凍結後に12時間連続試験へ進む</td></tr>
+</table>
+
+<h2 id="architecture">3. 本番アーキテクチャ</h2>
+
+<p>
+Show-mode supervisorは、Python映像とTouchDesigner映像のどちらがC922を所有しているかを一元管理する。二つのcamera ownerを同時に起動しない。
+</p>
+
+<figure class="mb-figure">
+  <div class="mb-figure-frame">
+    <svg viewBox="0 0 760 560" width="760" role="img" aria-labelledby="arch-title arch-desc">
+      <title id="arch-title">Acer上の本番アーキテクチャ</title>
+      <desc id="arch-desc">操作UIからsupervisorを通し、PythonまたはTouchDesignerの一方をXiaomiへ出力する構成</desc>
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#111110"/>
+        </marker>
+      </defs>
+      <g fill="#FFFFFF" stroke="#111110" stroke-width="2">
+        <rect x="250" y="20" width="260" height="56" rx="10"/>
+        <rect x="40" y="130" width="190" height="66" rx="10"/>
+        <rect x="285" y="130" width="190" height="66" rx="10"/>
+        <rect x="530" y="130" width="190" height="66" rx="10"/>
+        <rect x="40" y="265" width="280" height="150" rx="10"/>
+        <rect x="440" y="265" width="280" height="150" rx="10"/>
+        <rect x="240" y="480" width="280" height="56" rx="10"/>
+      </g>
+      <g fill="none" stroke="#111110" stroke-width="2" marker-end="url(#arrow)">
+        <path d="M135 196 L135 250 L180 250 L180 265"/>
+        <path d="M380 196 L380 232 L180 232 L180 265"/>
+        <path d="M380 196 L380 232 L580 232 L580 265"/>
+        <path d="M625 196 L625 250 L580 250 L580 265"/>
+        <path d="M180 415 L180 452 L330 452 L330 480"/>
+        <path d="M580 415 L580 452 L430 452 L430 480"/>
+        <path d="M380 76 L380 130"/>
+      </g>
+      <g fill="#111110" font-family="Ubuntu Sans, Noto Sans JP, sans-serif" font-size="15" text-anchor="middle">
+        <text x="380" y="46" font-weight="700">Acer Show-mode Supervisor</text>
+        <text x="380" y="66" font-size="12">単一owner・状態・rollback</text>
+        <text x="135" y="157" font-weight="700">C922</text>
+        <text x="135" y="179" font-size="12">物理camera</text>
+        <text x="380" y="157" font-weight="700">Acer / MacBook UI</text>
+        <text x="380" y="179" font-size="12">操作・状態・緊急復帰</text>
+        <text x="625" y="157" font-weight="700">Release Manifest</text>
+        <text x="625" y="179" font-size="12">承認済みentrypoint</text>
+        <text x="180" y="294" font-weight="700">PYTHON_SHOW</text>
+        <text x="180" y="322">Manager owns camera</text>
+        <text x="180" y="348">Shared memory</text>
+        <text x="180" y="374">Acer wrapper / scene</text>
+        <text x="180" y="400">Navigation / fairy guide</text>
+        <text x="580" y="294" font-weight="700">TOUCHDESIGNER_SHOW</text>
+        <text x="580" y="322">Rebirth Bridge owns camera</text>
+        <text x="580" y="348">Spout / OSC</text>
+        <text x="580" y="374">Approved runtime TOE</text>
+        <text x="580" y="400">out_display / Window COMP</text>
+        <text x="380" y="514" font-weight="700">Xiaomi Fullscreen Output</text>
+      </g>
+    </svg>
+  </div>
+  <figcaption>fig.1　二つの映像系を排他的に切り替える本番構成案</figcaption>
+</figure>
+
+<h2 id="scene-contract">4. 全シーン共通契約</h2>
+
+<p>
+採用sceneはすべて、無操作時にも変化する作品性と、子供のactionによる明確な因果を持つ。両者は速度、範囲、視覚言語で分離する。
+</p>
+
+<div class="flow-grid">
+  <div>
+    <strong>時間変化層</strong>
+    <p>20〜120秒程度の緩やかな周期。画面全体の色、密度、構図、揺らぎを連続的に変える。</p>
+  </div>
+  <div>
+    <strong>Action反応層</strong>
+    <p>手や身体の位置から即座に現れる局所反応。自分が起こした変化だと判断できる強さを持たせる。</p>
+  </div>
+  <div>
+    <strong>妖精guide層</strong>
+    <p>迷った時間だけ半透明の妖精が現れ、主actionを一つ実演する。成功時は光や粒子へ変わる。</p>
+  </div>
+</div>
+
+<table>
+  <tr><th class="mb-rowlabel">契約項目</th><th>実装時の条件</th></tr>
+  <tr><td class="mb-rowlabel">ambient</td><td>無操作でも画面が止まらず、action成功と誤認しない緩い変化</td></tr>
+  <tr><td class="mb-rowlabel">primary action</td><td>sceneの最初の約束を一つに絞り、動作と反応位置を一致させる</td></tr>
+  <tr><td class="mb-rowlabel">guide</td><td>短い文字、pictogram、妖精の実演を使い、遊び始めたら消す</td></tr>
+  <tr><td class="mb-rowlabel">success</td><td>認識成功時に強い局所反応を出し、認識途中とは区別する</td></tr>
+  <tr><td class="mb-rowlabel">history</td><td>最古要素を少量ずつ退場させ、上限到達時の一括resetを避ける</td></tr>
+  <tr><td class="mb-rowlabel">multiuser</td><td>人物slotと色を安定させ、同じ人の左右の手は同系色を維持する</td></tr>
+</table>
+
+<h3>妖精guideの基本flow</h3>
+
+<ol>
+  <li>actionが数秒ない場合、画面を遮らない位置へ妖精を表示する。</li>
+  <li>妖精が「手を開く」「近づける」「回す」など一つの動作を繰り返す。</li>
+  <li>参加者が動作を始めたら、軌跡またはprogress表示で認識途中を示す。</li>
+  <li>成立時に妖精を光へ変え、同じ場所からscene固有の反応を発生させる。</li>
+  <li>継続activity中はguideを抑え、再び迷った場合だけ戻す。</li>
+</ol>
+
+<h3>finger_mandalaの時間変化案</h3>
+
+<p>
+新しい線を鮮明に残し、古い層をゆっくり拡大、回転、発光させ、さらに古い線だけを粒子や霞へ変える。色相と対称構造を滑らかに移行し、全消去の瞬間を作らない。3人の基本色は維持し、時間変化では明度と彩度を動かす。
+</p>
+
+<h2 id="manager">5. Managerと操作モード</h2>
+
+<table>
+  <tr><th class="mb-rowlabel">状態</th><th>役割</th><th>遷移条件</th></tr>
+  <tr><td class="mb-rowlabel"><span class="state-name">AUTO_IDLE</span></td><td>無人でも成立する承認済みsceneを循環</td><td>起動時、またはactivity終了後の猶予経過</td></tr>
+  <tr><td class="mb-rowlabel"><span class="state-name">ACTIVE_PLAY</span></td><td>参加者の操作を優先し、独立sceneも混ぜる</td><td>画面button、明確なaction、スタッフ開始</td></tr>
+  <tr><td class="mb-rowlabel"><span class="state-name">MANUAL_HOLD</span></td><td>指定sceneを維持し、工作・gameを長く遊ぶ</td><td>MacBookまたはAcer UIから明示指定</td></tr>
+  <tr><td class="mb-rowlabel"><span class="state-name">SWITCHING</span></td><td>新transitionとhandshakeを進行</td><td>前後移動、AUTO cue、手動選択</td></tr>
+  <tr><td class="mb-rowlabel"><span class="state-name">STANDBY</span></td><td>安全な待機表示と障害復旧</td><td>起動前、終了、失敗、緊急操作</td></tr>
+</table>
+
+<p>
+参加者画面の左上にPrevious、右上にNextを常設する案を基準にする。約1秒のdwellは暫定値。button成立をactivityとして記録し、最後のactivityから120秒後にAUTOへ戻す案を実機で調整する。
+</p>
+
+<div class="decision">
+  <strong>切替の一貫性</strong>
+  <p>scene内部の消去gestureと全体scene切替を分離する。全体切替は常設navigationとstaff UIへ集約し、左右グー・パー交互5回のような記憶負荷の高い操作を本番主経路にしない。</p>
+</div>
+
+<h2 id="p1">6. P1修正計画</h2>
+
+<p>
+依存順は <code>#2</code>、<code>#6</code>、<code>#9</code>、<code>#1</code>、<code>#3</code>。cleanupを先に閉じることで、後続の起動失敗やcamera切断試験を安全に行える。
+</p>
+
+<div class="phase">
+  <div class="phase-id">P1-02</div>
+  <div>
+    <h3>起動sceneを明示manifestへ限定</h3>
+    <p><code>manager.py</code>のdirectory走査を本番入口から外し、存在、重複、path、Acer entrypointを起動前に検証する。空または不正manifestはcamera取得前に失敗させる。</p>
+    <p><strong>完了条件：</strong><code>scene_profile_runner.py</code>や補助scriptが候補へ混入せず、承認済みentryだけが列挙される。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-id">P1-06</div>
+  <div>
+    <h3>例外を含むcleanupの一本化</h3>
+    <p>Manager、共有camera、scene runnerの初期化済み資源を台帳化し、通常終了、起動途中失敗、切替失敗で同じ冪等cleanupを通す。各資源の失敗を記録し、残りのcleanupを継続する。</p>
+    <p><strong>完了条件：</strong>子process、window、共有memory、socket、camera handleが次回起動を妨げない。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-id">P1-09</div>
+  <div>
+    <h3>Manager所有camera profileへ統一</h3>
+    <p>ManagerがC922のdevice、backend、解像度、FPS、露出を一度解決する。共有経路のsceneは物理cameraを再探索せず、解決済みprofileと共有frameだけを受け取る。</p>
+    <p><strong>完了条件：</strong>ManagerとAcer wrapperのcamera設定が競合せず、1280×720、MJPG、30fps、露出-5を実機基準として計測できる。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-id">P1-01</div>
+  <div>
+    <h3>待ち時間依存をhandshakeへ置換</h3>
+    <p>sceneごとの<code>launch_id</code>とPIDを結び、<code>READY</code>、<code>START</code>、<code>START_ACK</code>、<code>FIRST_FRAME</code>を確認する。旧sceneは新sceneの実描画が確認できるまで維持する。</p>
+    <p><strong>完了条件：</strong>受信準備前のSTART取りこぼしがなく、黒画面や別PIDの応答を成功扱いしない。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-id">P1-03</div>
+  <div>
+    <h3>camera再取得を状態機械化</h3>
+    <p>切断、失敗、待機、再open、frame確認を分け、<code>cap=None</code>でreadしない。backoffと終了要求を処理し、再取得後は増加するframe IDを合格条件にする。</p>
+    <p><strong>完了条件：</strong>USB切断後にthreadが無言終了せず、復帰または明確なSTANDBYへ移る。</p>
+  </div>
+</div>
+
+<h2 id="scenes">7. シーン選定と実装波</h2>
+
+<p>
+全55ファイル棚卸しと、後からユーザーが指定した候補を突合した。棚卸しの分類は設計評価であり、後発の使用希望を優先する。正確な本番fileは目視後に固定する。
+</p>
+
+<table>
+  <tr><th>代表file</th><th>位置付け</th><th>最初の判断</th></tr>
+  <tr><td><code>finger_colorfull_dots_2.py</code></td><td>入口・基準</td><td>既存Acer wrapperで最初に30分試験</td></tr>
+  <tr><td><code>finger_mandala_3.py</code></td><td>看板作品</td><td>3人色分け、連続履歴、時間的世代交代</td></tr>
+  <tr><td><code>fractal_moving_2.py</code></td><td>動く光</td><td>keep。時間変化とaction反応を分離</td></tr>
+  <tr><td><code>particle_storm_2.py</code></td><td>宇宙の山場</td><td>keep。固定粒子数とGPU安定性を測定</td></tr>
+  <tr><td><code>skeleton_glitch.py</code></td><td>踊る本編</td><td>keep。Acer entrypointの用意が必要</td></tr>
+  <tr><td><code>spider_cursor_2.py</code></td><td>生き物遊び</td><td>keep。追従、捕食、色変化を明確化</td></tr>
+  <tr><td><code>earth.py</code></td><td>宇宙・待機</td><td>基本映像を維持し、操作負担だけ確認</td></tr>
+  <tr><td><code>modern_otedama.py</code></td><td>身体game</td><td>代表候補。派手な演出を別版から選ぶ</td></tr>
+  <tr><td><code>minecraft.py</code></td><td>手動工作室</td><td>MANUAL_HOLD候補。最初は置く操作を主役にする</td></tr>
+  <tr><td><code>polygon_vibes.py</code></td><td>触れる空間</td><td>face版等の良い表現を選択的に統合</td></tr>
+  <tr><td><code>roulette_game_advanced.py</code></td><td>回す模様</td><td>用途とentrypointを目視後に確定</td></tr>
+  <tr><td><code>saturn_particles_2.py</code></td><td>崩して戻す宇宙</td><td>左右の役割を分かりやすくする</td></tr>
+  <tr><td><code>colorfull_tree.py</code></td><td>育てる遊び</td><td>手を広げると育つ関係を主役候補にする</td></tr>
+  <tr><td><code>colorfull_wave_dots.py</code></td><td>ドット表現</td><td>独立sceneかlook統合かを目視判断</td></tr>
+  <tr><td><code>colorfull_dots_spheres.py</code></td><td>希望復帰候補</td><td>指の影響を確認し、idleまたはreworkを判断</td></tr>
+</table>
+
+<details>
+  <summary>棚卸しで追加候補になった3シーン</summary>
+  <ul>
+    <li><code>finger_grid_interaction_2.py</code>：布状の網を引く、切る、再生する触覚的scene</li>
+    <li><code>hands_shake.py</code>：手を近づける複数人の共同遊び</li>
+    <li><code>spiral_mouth_effect.py</code>：口を開くと渦と煙が強くなる変身scene</li>
+  </ul>
+</details>
+
+<h3>実装の波</h3>
+
+<ol>
+  <li><strong>波A：</strong>Finger Colorful DotsでManager、camera、handshake、guide共通部を成立させる。</li>
+  <li><strong>波B：</strong>Mandala、Fractal、Particle Storm、Skeleton、Spider、Earthを本編候補として通す。</li>
+  <li><strong>波C：</strong>Otedama、Saturn、Tree、Wave、Spheresから実機で強いものを選ぶ。</li>
+  <li><strong>波D：</strong>Minecraft、Polygon、Rouletteを手動枠として、残時間と安定性に応じて入れる。</li>
+</ol>
+
+<h2 id="release">8. 一発差し替えとTouchDesigner</h2>
+
+<h3>Acer上のrelease配置</h3>
+
+<pre><code class="language-plaintext">C:\RebirthKidz\
+├─ releases\
+│  ├─ stable-&lt;release-id&gt;\
+│  └─ candidate-&lt;release-id&gt;\
+├─ runtime\
+│  ├─ current.json
+│  ├─ previous.json
+│  ├─ acer-production.json
+│  └─ scene-manifest.json
+├─ logs\
+└─ launch\
+   ├─ start-rebirth.ps1
+   ├─ switch-release.ps1
+   └─ rollback-release.ps1</code></pre>
+
+<p>
+差し替え時はcandidateを事前検査し、待機表示、現行停止、資源解放、参照fileの原子的置換、candidate起動、実frame確認の順に進める。途中失敗時はpreviousへ戻す。本番切替中にGit取得、依存install、model downloadを行わない。
+</p>
+
+<h3>PythonとTouchDesignerの切替</h3>
+
+<p>
+TouchDesigner側には<code>C:\rebirth2026\start-venue.cmd</code>があり、Bridge ready後に設定済みTOEを起動する。現状はTD process生成をREADYとしており、Xiaomiへの実frame表示は未確認。Window COMPと出力heartbeatを追加gateにする。
+</p>
+
+<div class="mb-grid-2">
+  <div class="mb-card">
+    <div class="mb-card-title">Acer desktop</div>
+    <ul>
+      <li>Python映像を開始</li>
+      <li>TouchDesigner映像を開始</li>
+      <li>待機画面</li>
+      <li>直前の映像へ戻す</li>
+    </ul>
+  </div>
+  <div class="mb-card">
+    <div class="mb-card-title">MacBook UI</div>
+    <ul>
+      <li>同じ4操作をlocal browserから実行</li>
+      <li>現在mode、scene、release、camera状態を表示</li>
+      <li>PANを本線として実機gateを通す</li>
+      <li>Acer側の緊急操作を常に残す</li>
+    </ul>
+  </div>
+</div>
+
+<p>
+TD入口は承認済みruntime TOEを指す専用shortcutに固定する。development、backup、referenceを誤起動しないよう、Windowsの全<code>.toe</code>関連付けは本番入口に使わない。
+</p>
+
+<h2 id="test">9. 実機試験gate</h2>
+
+<p>後のgateは前のgateに合格したreleaseだけを対象にする。失敗時は原因を一つに絞り、同じ試験へ変更を重ねない。</p>
+
+<div class="checklist" id="test-checklist">
+  <div class="check-row">
+    <input type="checkbox" id="gate0" data-plan-check="gate0">
+    <label for="gate0"><strong>Gate 0　静的・起動前検査</strong><small>manifest、path、依存、model、camera profile、displayをcamera取得前に検査</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate1" data-plan-check="gate1">
+    <label for="gate1"><strong>Gate 1　単一scene 30分</strong><small>finger_colorfull_dots_acer.py、frame停止なし、resource継続増加なし</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate2" data-plan-check="gate2">
+    <label for="gate2"><strong>Gate 2　同一scene再起動20回</strong><small>launch_id、FIRST_FRAME、旧PID消失、camera owner維持</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate3" data-plan-check="gate3">
+    <label for="gate3"><strong>Gate 3　異種scene切替30回</strong><small>Pygame、OpenCV、WGPU／pygfxを混ぜ、windowとGPU資源の残留を確認</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate4" data-plan-check="gate4">
+    <label for="gate4"><strong>Gate 4　複数人と妖精guide</strong><small>3人slot、色の安定、左右同色、guideの理解、activity判定</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate5" data-plan-check="gate5">
+    <label for="gate5"><strong>Gate 5　MacBook UIとPAN</strong><small>接続30分、scene指定、AUTO復帰、緊急操作、通信切断時の安全性</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate6" data-plan-check="gate6">
+    <label for="gate6"><strong>Gate 6　PythonとTDの往復10回</strong><small>二重cameraなし、Xiaomi実frame、失敗時Python復帰、HDMI再接続</small></label>
+  </div>
+  <div class="check-row">
+    <input type="checkbox" id="gate7" data-plan-check="gate7">
+    <label for="gate7"><strong>Gate 7　最終12時間</strong><small>機能凍結済みreleaseだけを対象に、無人AUTOと切替を含める</small></label>
+  </div>
+</div>
+
+<h3>最初に実機テストする3シーン</h3>
+
+<ol>
+  <li><code>finger_colorfull_dots_acer.py</code>：操作が直感的で、Pygame系の基準にできる。</li>
+  <li><code>particle_storm_acer.py</code>：4万粒子のGPU系で、負荷と解放を早期に確認できる。</li>
+  <li><code>skeleton_glitch.py</code>：OpenCV系の身体反応を確認できる。Acer entrypoint追加前は直接本番manifestへ入れない。</li>
+</ol>
+
+<h2 id="schedule">10. 9月8日夜までの進行</h2>
+
+<div class="mb-card">
+  <div class="phase">
+    <div class="phase-id">9月6日</div>
+    <div><h3>基盤を閉じる</h3><p>安定版checkpoint、manifest、cleanup、camera profile、handshake、再取得。Finger Colorful Dotsで30分と20回再起動まで進める。</p></div>
+  </div>
+  <div class="phase">
+    <div class="phase-id">9月7日</div>
+    <div><h3>体験と運用を組み立てる</h3><p>Manager状態、navigation、妖精guide共通部、Mandalaを含む波B。MacBook UI、PAN、一発差し替えを実機確認する。</p></div>
+  </div>
+  <div class="phase">
+    <div class="phase-id">9月8日</div>
+    <div><h3>選別して凍結する</h3><p>異種切替、複数人、Xiaomi、Python／TD往復を確認。合格したsceneだけでruntime manifestを固定し、夜に最終candidateを凍結する。</p></div>
+  </div>
+  <div class="phase">
+    <div class="phase-id">9月9日</div>
+    <div><h3>予備と受動試験</h3><p>必要なら凍結releaseの12時間試験結果だけを確認する。修正はrollback可能なrelease単位に限定する。</p></div>
+  </div>
+</div>
+
+<h3>削る判断</h3>
+
+<p>期限に間に合わない場合は、次の順でscopeを狭める。</p>
+
+<ol>
+  <li>未確認のscene数を減らし、波Aと波Bの合格sceneを守る。</li>
+  <li>scene固有guideを共通妖精guideへ寄せ、固有animationを後回しにする。</li>
+  <li>手動工作室の数を減らし、Minecraftを代表一本にする。</li>
+  <li>TouchDesignerは承認済みruntimeの専用shortcutと安全復帰を優先し、複雑な統合UIを後回しにする。</li>
+  <li>Bluetooth PANが不安定な場合も、Acerローカル操作を本番可能な状態に保つ。</li>
+</ol>
+
+<h2 id="logs">11. ログ・復旧・完了条件</h2>
+
+<table>
+  <tr><th class="mb-rowlabel">記録対象</th><th>残す値</th></tr>
+  <tr><td class="mb-rowlabel">起動</td><td>release、commit、scene、PID、launch_id、各handshake時刻、exit code</td></tr>
+  <tr><td class="mb-rowlabel">camera</td><td>device名、backend、実解像度、FPS、frame ID、最終更新時刻、再取得回数</td></tr>
+  <tr><td class="mb-rowlabel">process</td><td>親子PID、Private Bytes、handle数、CPU、残留window</td></tr>
+  <tr><td class="mb-rowlabel">GPU</td><td>描画FPS、VRAM、温度、device loss、backend error</td></tr>
+  <tr><td class="mb-rowlabel">操作</td><td>mode、scene、activity、navigation、manual command、失敗理由</td></tr>
+</table>
+
+<p>
+画像、動画、音声、顔画像、Pose／Hand／Face landmark列は保存しない。stdoutとstderrはfileへstreamし、毎frameの大量logを避け、releaseごとにrotationする。
+</p>
+
+<h3>実装完了の判定</h3>
+
+<div class="checklist" id="completion-checklist">
+  <div class="check-row"><input type="checkbox" id="done1" data-plan-check="done1"><label for="done1">本番scene manifestが正確なentrypointだけを含む</label></div>
+  <div class="check-row"><input type="checkbox" id="done2" data-plan-check="done2"><label for="done2">通常・例外・切替失敗後にcameraと子processが残らない</label></div>
+  <div class="check-row"><input type="checkbox" id="done3" data-plan-check="done3"><label for="done3">無人映像、action反応、妖精guideが視覚的に分離されている</label></div>
+  <div class="check-row"><input type="checkbox" id="done4" data-plan-check="done4"><label for="done4">AcerとMacBookから同じ安全な操作ができる</label></div>
+  <div class="check-row"><input type="checkbox" id="done5" data-plan-check="done5"><label for="done5">PythonとTouchDesignerをXiaomiへ切り替え、直前の安定版へ戻せる</label></div>
+  <div class="check-row"><input type="checkbox" id="done6" data-plan-check="done6"><label for="done6">全短時間gateを通過した凍結releaseが一つ存在する</label></div>
+</div>
+
+<h3>実装開始前に確定する項目</h3>
+
+<ul>
+  <li>似たsceneごとに使う正確なfile</li>
+  <li>AUTO、ACTIVE_PLAY、MANUAL_HOLDの所属</li>
+  <li>妖精の基本造形と、scene固有actionの優先順位</li>
+  <li>Xiaomiの実表示名、解像度、拡大率、display index</li>
+  <li>MacBook PANの接続方法と緊急時のAcer操作</li>
+</ul>
+
+</div>
+
+<aside class="mb-glossary">
+  <h2>用語リスト</h2>
+  <table>
+    <tr><th>用語</th><th>定義</th></tr>
+    <tr><td>Manager</td><td>Python scene、camera共有、切替を管理する親process。</td></tr>
+    <tr><td>Acer wrapper</td><td><code>*_acer.py</code>。機材profileを指定して対応する<code>*_2.py</code>を起動する入口。</td></tr>
+    <tr><td>Manifest</td><td>本番で起動してよいscene、release、資産を明示する一覧。</td></tr>
+    <tr><td>Handshake</td><td>新sceneが受信、開始、初回描画まで到達したことを段階的に確認する通信。</td></tr>
+    <tr><td>FIRST_FRAME</td><td>新sceneが実際の最初のframeを描画した証明。</td></tr>
+    <tr><td>Ambient</td><td>参加者が操作しなくても続く緩やかな時間変化。</td></tr>
+    <tr><td>Action trigger</td><td>手や身体の動作によって直ちに起きるscene固有反応。</td></tr>
+    <tr><td>妖精guide</td><td>半透明の妖精が次のactionを視覚的に実演する案内層。</td></tr>
+    <tr><td>Gate</td><td>次の実装・試験段階へ進めるかを決める観測可能な合格条件。</td></tr>
+    <tr><td>Runtime TOE</td><td>目視と試験を通し、manifest付きで昇格したTouchDesigner本番file。</td></tr>
+  </table>
+</aside>
+
+</div>
+
+<footer class="mb-footer">
+  Source context: REBIRTH_IPHONE_HANDOFF_2026-09-05.md v003 / scene inventory task / rebirth2026 TD operation notes. Checkboxes are stored only in this browser.
+</footer>
+
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  if (window.hljs) window.hljs.highlightAll();
+  var prefix = "rebirth-plan-20260906-";
+  document.querySelectorAll("[data-plan-check]").forEach(function (box) {
+    var key = prefix + box.getAttribute("data-plan-check");
+    box.checked = localStorage.getItem(key) === "1";
+    box.addEventListener("change", function () {
+      localStorage.setItem(key, box.checked ? "1" : "0");
+    });
+  });
+});
+</script>
+</body>
+</html>
