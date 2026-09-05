@@ -1,5 +1,14 @@
 {
   "SCENE_DIR": ".",
+  "PRODUCTION_SCENES": [
+    "finger_colorfull_dots_acer.py",
+    "finger_mandala_acer.py",
+    "particle_storm_acer.py",
+    "fractal_moving_acer.py",
+    "finger_grid_interaction_acer.py",
+    "saturn_particles_acer.py",
+    "spider_cursor_acer.py"
+  ],
   "PRELOAD_COUNT": 2,
   "TRANSITION_ENABLED": true,
   "TRANSITION_SCRIPT": "sakura_transition.py",

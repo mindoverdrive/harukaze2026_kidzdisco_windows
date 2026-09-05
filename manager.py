@@ -4,7 +4,6 @@
 import json
 import math
 import os
-import random
 import socket
 import subprocess
 import sys
@@ -22,6 +21,20 @@ from shared_camera import SharedCameraRelay
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
+DEFAULT_PRODUCTION_SCENES = [
+    "finger_colorfull_dots_acer.py",
+    "finger_mandala_acer.py",
+    "particle_storm_acer.py",
+    "fractal_moving_acer.py",
+    "finger_grid_interaction_acer.py",
+    "saturn_particles_acer.py",
+    "spider_cursor_acer.py",
+]
+
+
+class ConfigurationError(RuntimeError):
+    pass
+
 DEFAULT_CONFIG = {
     "CAMERA_INDEX": 1,
     "CAMERA_WIDTH": 1280,
@@ -33,6 +46,7 @@ DEFAULT_CONFIG = {
     "CAMERA_NAME_HINTS": ["c922", "pro stream webcam"],
     "CAMERA_EXCLUDE_HINTS": ["nizima", "virtual", "logi capture"],
     "SCENE_DIR": ".",
+    "PRODUCTION_SCENES": list(DEFAULT_PRODUCTION_SCENES),
     "SHARED_CAMERA_ENABLED": True,
     "CLAP_MONITOR_ENABLED": True,
     "CLAP_DIST_THRESHOLD": 0.15,
@@ -68,6 +82,47 @@ def load_config(path=CONFIG_PATH):
         scene_dir = os.path.abspath(os.path.join(BASE_DIR, scene_dir))
     cfg["SCENE_DIR"] = scene_dir
     return cfg
+
+
+def resolve_production_scenes(config):
+    scene_dir = os.path.realpath(config["SCENE_DIR"])
+    configured = config.get("PRODUCTION_SCENES")
+    if not isinstance(configured, list) or not configured:
+        raise ConfigurationError("PRODUCTION_SCENES must be a non-empty list")
+
+    scenes = []
+    seen = set()
+    for position, raw_name in enumerate(configured, start=1):
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ConfigurationError(f"PRODUCTION_SCENES[{position}] must be a filename")
+
+        filename = raw_name.strip()
+        if filename != os.path.basename(filename):
+            raise ConfigurationError(
+                f"Production scene must be a basename inside SCENE_DIR: {filename!r}"
+            )
+        if not filename.lower().endswith("_acer.py"):
+            raise ConfigurationError(
+                f"Production scene must use an *_acer.py entrypoint: {filename!r}"
+            )
+
+        identity = filename.casefold()
+        if identity in seen:
+            raise ConfigurationError(f"Duplicate production scene: {filename!r}")
+        seen.add(identity)
+
+        scene_path = os.path.realpath(os.path.join(scene_dir, filename))
+        try:
+            inside_scene_dir = os.path.commonpath([scene_dir, scene_path]) == scene_dir
+        except ValueError:
+            inside_scene_dir = False
+        if not inside_scene_dir:
+            raise ConfigurationError(f"Production scene escapes SCENE_DIR: {filename!r}")
+        if not os.path.isfile(scene_path):
+            raise ConfigurationError(f"Production scene not found: {scene_path}")
+        scenes.append(scene_path)
+
+    return scenes
 
 
 CONFIG = load_config()
@@ -153,7 +208,7 @@ class GestureInterpreter:
 
 
 class SceneManager:
-    def __init__(self, camera_env=None):
+    def __init__(self, camera_env=None, scenes=None):
         self.running_process = None
         self.running_scene_path = None
         self.current_scene_name = "None"
@@ -165,62 +220,11 @@ class SceneManager:
         self.preloaded_port = None
         self.transition_process = None
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
-        self.all_scenes = self._scan_and_shuffle_scenes()
+        self.all_scenes = list(scenes) if scenes is not None else self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
 
     def _scan_and_shuffle_scenes(self):
-        scenes = []
-        scene_dir = CONFIG["SCENE_DIR"]
-        ignore_files = {
-            "manager.py",
-            "app.py",
-            "display_utils.py",
-            "shared_camera.py",
-            "hand_tracker.py",
-            "visual_monitor_3d.py",
-            "sakura_transition.py",
-            "sitecustomize.py",
-            "visual_monitor.py",
-            "process_sakura.py",
-            "sound_face.py",
-            "harukaze2026_proto2025.py",
-            "harukaze2026proto2026_1.py",
-            "hand_drawing_app.py",
-        }
-        ignore_prefixes = (
-            "test_",
-            "patch",
-            "replace",
-            "repair",
-            "camera_",
-        )
-        ignore_contains = (
-            "display_utils",
-            "shared_camera",
-        )
-
-        if not os.path.exists(scene_dir):
-            os.makedirs(scene_dir, exist_ok=True)
-            return scenes
-
-        for filename in os.listdir(scene_dir):
-            if not filename.endswith(".py"):
-                continue
-            lower_name = filename.lower()
-            if filename in ignore_files:
-                continue
-            if any(lower_name.startswith(prefix) for prefix in ignore_prefixes):
-                continue
-            if any(token in lower_name for token in ignore_contains):
-                continue
-            scenes.append(os.path.join(scene_dir, filename))
-
-        random.shuffle(scenes)
-        earth_path = os.path.join(scene_dir, "earth.py")
-        if earth_path in scenes:
-            scenes.remove(earth_path)
-            scenes.insert(0, earth_path)
-        return scenes
+        return resolve_production_scenes(CONFIG)
 
     def _creationflags(self):
         if os.name == "nt":
@@ -524,6 +528,14 @@ def main():
     )
     args, _ = parser.parse_known_args()
 
+    production_scenes = None
+    if not args.camera_only:
+        try:
+            production_scenes = resolve_production_scenes(CONFIG)
+        except ConfigurationError as exc:
+            print(f"[Manager] Configuration error: {exc}")
+            return 2
+
     manager_window_available = True
     camera_relay = SharedCameraRelay(
         camera_index=CONFIG["CAMERA_INDEX"],
@@ -553,7 +565,7 @@ def main():
 
     manager = None
     if not args.camera_only:
-        manager = SceneManager(camera_env=camera_env)
+        manager = SceneManager(camera_env=camera_env, scenes=production_scenes)
         if not manager.all_scenes:
             print("[Manager] Error: No scene files found.")
             camera_relay.close()
