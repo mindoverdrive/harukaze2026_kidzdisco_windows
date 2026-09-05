@@ -65,6 +65,7 @@ class CleanupTests(unittest.TestCase):
         scene_manager = mock.Mock()
         scene_manager.is_scene_running.return_value = True
         scene_manager.cleanup.return_value = True
+        scene_manager.fatal_error = None
         config = dict(manager.DEFAULT_CONFIG)
         config["CLAP_MONITOR_ENABLED"] = False
 
@@ -110,8 +111,9 @@ class CleanupTests(unittest.TestCase):
         monitor.thread.join.assert_called_once_with(timeout=3)
 
     def test_switch_keeps_current_process_when_it_cannot_be_stopped(self):
-        scene_manager = manager.SceneManager.__new__(manager.SceneManager)
+        scene_manager = manager.SceneManager(scenes=["next_acer.py"])
         current_process = mock.Mock()
+        current_process.poll.return_value = None
         preloaded_process = mock.Mock()
         scene_manager.running_process = current_process
         scene_manager.running_scene_path = "current_acer.py"
@@ -122,21 +124,19 @@ class CleanupTests(unittest.TestCase):
         scene_manager.preloaded_process = preloaded_process
         scene_manager.preloaded_scene_path = "next_acer.py"
         scene_manager.preloaded_scene_name = "next_acer.py"
-        scene_manager.preloaded_port = 12345
+        scene_manager.preloaded_control = mock.Mock()
+        scene_manager.preloaded_control.poll.return_value = "FIRST_FRAME"
         scene_manager.transition_process = None
         scene_manager._ensure_preloaded_scene = mock.Mock()
         scene_manager._start_transition_overlay = mock.Mock(return_value=None)
-        scene_manager._send_scene_command = mock.Mock()
         scene_manager._kill_process = mock.Mock(side_effect=[False, True])
-        scene_manager._wait_for_transition_finish = mock.Mock()
         scene_manager.launch_scene = mock.Mock()
 
         with (
             mock.patch.dict(
                 manager.CONFIG,
                 {
-                    "SCENE_PRELOAD_START_GRACE": 0,
-                    "SCENE_SWITCH_DELAY": 0,
+                    "TRANSITION_ENABLED": False,
                 },
             ),
             mock.patch("builtins.print"),

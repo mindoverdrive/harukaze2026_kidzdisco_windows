@@ -42,6 +42,7 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
 import display_utils
+from scene_control import notify_first_frame
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
@@ -429,6 +430,8 @@ class SaturnParticlesApp:
                             
                         self.cursors[i].material.color = col
 
+            return True
+
         except Exception as e:
             print(f"Hand detection error: {e}")
 
@@ -441,13 +444,15 @@ class SaturnParticlesApp:
             if dt > 0.1:
                 dt = 0.1
             
-            self.detect_hands()
+            frame_processed = self.detect_hands()
             self.update_physics(dt)
             
             try:
                 self.renderer.render(self.scene, self.camera)
             except RuntimeError:
                 pass
+            else:
+                notify_first_frame(self.cap, frame_processed=bool(frame_processed))
             
             self.canvas.request_draw()
         except Exception as e:

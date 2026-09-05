@@ -5,7 +5,6 @@ import json
 import math
 import os
 import signal
-import socket
 import subprocess
 import sys
 import threading
@@ -18,6 +17,7 @@ import cv2
 import numpy as np
 
 from shared_camera import SharedCameraRelay
+from scene_control import SceneLaunchControl, SceneControlError
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,7 +78,9 @@ DEFAULT_CONFIG = {
     "SCENE_GRACEFUL_TIMEOUT": 2.0,
     "SCENE_TERMINATE_TIMEOUT": 3.0,
     "SCENE_SWITCH_DELAY": 0.2,
-    "SCENE_PRELOAD_START_GRACE": 0.25,
+    "SCENE_READY_TIMEOUT": 10.0,
+    "SCENE_START_ACK_TIMEOUT": 5.0,
+    "SCENE_FIRST_FRAME_TIMEOUT": 30.0,
     "TRANSITION_ENABLED": True,
     "TRANSITION_SCRIPT": "sakura_transition.py",
     "TRANSITION_TOTAL_DURATION": 5.0,
@@ -275,8 +277,13 @@ class SceneManager:
         self.preloaded_process = None
         self.preloaded_scene_path = None
         self.preloaded_scene_name = None
-        self.preloaded_port = None
+        self.preloaded_control = None
         self.transition_process = None
+        self.transition_started_at = None
+        self.switch_pending = False
+        self.switch_cover_until = None
+        self.last_switch_error = None
+        self.fatal_error = None
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
         self.all_scenes = list(scenes) if scenes is not None else self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
@@ -311,20 +318,6 @@ class SceneManager:
             int(CONFIG.get("DISPLAY_HEIGHT", 800)),
         )
 
-    def _reserve_udp_port(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
-        return port
-
-    def _send_scene_command(self, port, cmd):
-        if not port:
-            return
-        payload = json.dumps({"cmd": cmd}).encode("utf-8")
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.sendto(payload, ("127.0.0.1", int(port)))
-
     def _announce_launch(self, scene_name, mode="launching"):
         label = "PRELOADING" if mode == "preload" else "LAUNCHING"
         print(f"\n[Manager] >>> {label}: {scene_name} <<<\n")
@@ -332,10 +325,9 @@ class SceneManager:
     def _next_scene_path(self):
         return self.all_scenes[self.scene_index % len(self.all_scenes)]
 
-    def _launch_scene_process(self, scene_path, wait=False, port=None):
+    def _launch_scene_process(self, scene_path, control):
         argv = [sys.executable, scene_path]
-        if wait and port:
-            argv.extend(["--wait", "--port", str(port)])
+        argv.extend(control.argv())
         proc = self._spawn_process(argv, cwd=os.path.dirname(scene_path))
         return proc
 
@@ -397,10 +389,13 @@ class SceneManager:
         return stopped
 
     def _clear_preloaded(self):
+        control = getattr(self, "preloaded_control", None)
+        if control is not None:
+            control.close()
+        self.preloaded_control = None
         self.preloaded_process = None
         self.preloaded_scene_path = None
         self.preloaded_scene_name = None
-        self.preloaded_port = None
 
     def _discard_preloaded(self):
         stopped = True
@@ -435,133 +430,113 @@ class SceneManager:
             "--phase2-end", str(CONFIG.get("TRANSITION_PHASE2_END", 2.5)),
         ]
         self.transition_process = self._spawn_process(argv, cwd=os.path.dirname(transition_path))
+        self.transition_started_at = time.monotonic()
         return self.transition_process
 
-    def _wait_for_transition_finish(self, proc, cover_delay):
-        if proc is None:
-            return True
-        total_duration = float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0))
-        remaining = max(0.0, total_duration - cover_delay) + 1.0
-        stopped = False
-        try:
-            proc.wait(timeout=remaining)
-            stopped = True
-        except subprocess.TimeoutExpired:
-            stopped = self._kill_process(proc, "sakura_transition")
-        except Exception as exc:
-            print(f"[Manager] Transition wait failed: {exc}")
-        finally:
-            if stopped and self.transition_process is proc:
-                self.transition_process = None
-        return stopped
-
     def _ensure_preloaded_scene(self):
-        if not self.preload_enabled or not self.all_scenes:
-            return
+        if not self.all_scenes:
+            return False
         if self.preloaded_process is not None:
-            if self.preloaded_process.poll() is None:
-                return
-            print(f"[Manager] Warning: preloaded scene exited early: {self.preloaded_scene_name}")
-            self._clear_preloaded()
+            return True
 
         scene_path = self._next_scene_path()
-        self.preloaded_port = self._reserve_udp_port()
-        self.preloaded_scene_path = scene_path
-        self.preloaded_scene_name = os.path.basename(scene_path)
-        self._announce_launch(self.preloaded_scene_name, mode="preload")
-        self.preloaded_process = self._launch_scene_process(
-            scene_path,
-            wait=True,
-            port=self.preloaded_port,
-        )
-
-    def _activate_preloaded_scene(self, send_start=True):
-        if self.preloaded_process is None:
+        try:
+            self.preloaded_control = SceneLaunchControl(
+                ready_timeout=CONFIG.get("SCENE_READY_TIMEOUT", 10.0),
+                ack_timeout=CONFIG.get("SCENE_START_ACK_TIMEOUT", 5.0),
+                frame_timeout=CONFIG.get("SCENE_FIRST_FRAME_TIMEOUT", 30.0),
+            )
+            self.preloaded_scene_path = scene_path
+            self.preloaded_scene_name = os.path.basename(scene_path)
+            self._announce_launch(self.preloaded_scene_name, mode="preload")
+            self.preloaded_process = self._launch_scene_process(scene_path, self.preloaded_control)
+            return True
+        except (OSError, SceneControlError) as exc:
+            self._fail_switch(str(exc))
             return False
-        if self.preloaded_process.poll() is not None:
-            print(f"[Manager] Warning: preloaded scene failed before START: {self.preloaded_scene_name}")
-            self._clear_preloaded()
-            return False
-
-        self._announce_launch(self.preloaded_scene_name, mode="launch")
-        if send_start:
-            self._send_scene_command(self.preloaded_port, "START")
-        self.running_process = self.preloaded_process
-        self.running_scene_path = self.preloaded_scene_path
-        self.current_scene_name = self.preloaded_scene_name or "None"
-        self.scene_index += 1
-        self._clear_preloaded()
-        return True
 
     def launch_scene(self, scene_path):
-        self.current_scene_name = os.path.basename(scene_path)
-        self.running_scene_path = scene_path
-        self._announce_launch(self.current_scene_name, mode="launch")
-        self.running_process = self._launch_scene_process(scene_path)
+        if scene_path not in self.all_scenes:
+            raise ConfigurationError(f"Scene is outside PRODUCTION_SCENES: {scene_path}")
+        if self.switch_pending or self.transition_process is not None:
+            return False
+        if not self._discard_preloaded():
+            return False
+        self.scene_index = self.all_scenes.index(scene_path)
+        return self.switch_scene()
 
     def switch_scene(self):
-        if not self.all_scenes:
-            print("[Manager] No scenes available.")
+        if not self.all_scenes or self.switch_pending or self.transition_process is not None:
             return False
+        self.last_switch_error = None
+        self.switch_pending = True
+        self.switch_cover_until = None
+        if not self._ensure_preloaded_scene():
+            self.switch_pending = False
+            return False
+        self.tick()
+        return self.last_switch_error is None
 
-        if self.running_process is None:
+    def _fail_switch(self, reason):
+        self.last_switch_error = reason
+        print(f"[Manager] Candidate failed: {self.preloaded_scene_name}: {reason}")
+        self.switch_pending = False
+        self.switch_cover_until = None
+        if not self._discard_preloaded():
+            self.fatal_error = "failed candidate could not be stopped: " + reason
+        elif not self.is_scene_running():
+            self.fatal_error = "no running scene after candidate failure: " + reason
+
+    def tick(self):
+        now = time.monotonic()
+        transition = self.transition_process
+        if transition is not None:
+            if transition.poll() is not None:
+                self.transition_process = None
+            elif now - self.transition_started_at > float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0)) + 1.0:
+                if self._kill_process(transition, "sakura_transition"):
+                    self.transition_process = None
+                else:
+                    self.fatal_error = "transition overlay could not be stopped"
+
+        if self.preloaded_process is None or self.fatal_error:
+            return
+        try:
+            control = self.preloaded_control
+            state = control.poll(self.preloaded_process)
+            if not self.switch_pending:
+                return
+            if state == "READY":
+                control.start()
+                return
+            if state != "FIRST_FRAME":
+                return
+
+            expected_shm = self.camera_env.get("HARUKAZE_CAMERA_SHM")
+            if expected_shm and control.first_frame.get("shm_name") != expected_shm:
+                raise SceneControlError("FIRST_FRAME came from a different shared camera")
+
+            if self.switch_cover_until is None:
+                overlay = self._start_transition_overlay() if self.is_scene_running() else None
+                delay = float(CONFIG.get("TRANSITION_COVER_DELAY", 1.5)) if overlay else 0.0
+                self.switch_cover_until = now + max(0.0, delay)
+            if now < self.switch_cover_until:
+                return
+            if not self.kill_current():
+                raise SceneControlError("current scene could not be stopped; keeping its handle")
+
+            self.running_process = self.preloaded_process
+            self.running_scene_path = self.preloaded_scene_path
+            self.current_scene_name = self.preloaded_scene_name
+            print(f"[Manager] Promoted {self.current_scene_name} pid={self.running_process.pid} after FIRST_FRAME")
+            self.scene_index += 1
+            self._clear_preloaded()
+            self.switch_pending = False
+            self.switch_cover_until = None
             if self.preload_enabled:
                 self._ensure_preloaded_scene()
-                if not self._activate_preloaded_scene():
-                    scene_path = self._next_scene_path()
-                    self.scene_index += 1
-                    self.launch_scene(scene_path)
-            else:
-                scene_path = self._next_scene_path()
-                self.scene_index += 1
-                self.launch_scene(scene_path)
-            time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
-            self._ensure_preloaded_scene()
-            return True
-
-        if self.preload_enabled:
-            self._ensure_preloaded_scene()
-
-        cover_delay = float(
-            CONFIG.get(
-                "TRANSITION_COVER_DELAY",
-                CONFIG.get("TRANSITION_PHASE1_END", 1.5),
-            )
-        )
-        transition_proc = self._start_transition_overlay()
-        if transition_proc is not None:
-            time.sleep(max(0.0, cover_delay))
-
-        activated_preloaded = False
-        if self.preload_enabled and self.preloaded_process is not None:
-            self._send_scene_command(self.preloaded_port, "START")
-            time.sleep(float(CONFIG.get("SCENE_PRELOAD_START_GRACE", 0.25)))
-            if not self.kill_current():
-                print(
-                    f"[Manager] Error: current scene is still running; "
-                    f"aborting switch from {self.current_scene_name}"
-                )
-                self._discard_preloaded()
-                self._wait_for_transition_finish(transition_proc, cover_delay)
-                return False
-            activated_preloaded = self._activate_preloaded_scene(send_start=False)
-
-        if not activated_preloaded:
-            if not self.kill_current():
-                print(
-                    f"[Manager] Error: current scene is still running; "
-                    f"not launching another scene"
-                )
-                self._wait_for_transition_finish(transition_proc, cover_delay)
-                return False
-            scene_path = self._next_scene_path()
-            self.scene_index += 1
-            time.sleep(float(CONFIG.get("SCENE_SWITCH_DELAY", 0.2)))
-            self.launch_scene(scene_path)
-
-        self._wait_for_transition_finish(transition_proc, cover_delay)
-        self._ensure_preloaded_scene()
-        return True
+        except (OSError, SceneControlError) as exc:
+            self._fail_switch(str(exc))
 
     def is_scene_running(self):
         if self.running_process is None:
@@ -755,13 +730,16 @@ def main():
             print(f"[Manager] Warning: Manager Control window disabled: {exc}")
 
         while True:
+            if manager is not None:
+                manager.tick()
+                if manager.fatal_error:
+                    raise RuntimeError(manager.fatal_error)
             if monitor and monitor.consume_clap() and manager is not None:
                 print("[Manager] Head clap detected. Switching scene.")
                 manager.switch_scene()
 
-            if manager is not None and not manager.is_scene_running():
+            if manager is not None and not manager.is_scene_running() and not manager.switch_pending:
                 print(f"[Manager] Scene '{manager.current_scene_name}' exited. Launching next...")
-                time.sleep(0.5)
                 manager.switch_scene()
 
             key = -1

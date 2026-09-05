@@ -36,6 +36,7 @@ if __name__ == "__main__":
 import atexit
 import pygame
 import display_utils
+from scene_control import notify_first_frame
 import math
 import cv2
 import mediapipe as mp
@@ -376,5 +377,6 @@ while running:
 
 
     pygame.display.flip()
+    notify_first_frame(cap, frame_processed=bool(ret))
     clock.tick(60)
 

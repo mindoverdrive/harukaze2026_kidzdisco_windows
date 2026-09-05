@@ -34,6 +34,7 @@ if __name__ == "__main__":
 # =============================================================================
 import pygame
 import display_utils
+from scene_control import notify_first_frame
 import math
 import colorsys
 import sys
@@ -382,6 +383,7 @@ def main():
                 pygame.draw.circle(screen, (255, 255, 255), (int(p.current_x), int(p.current_y)), 8, 1)
             
         pygame.display.flip()
+        notify_first_frame(cap, frame_processed=bool(ret))
         clock.tick(60)
 
     hands.close()

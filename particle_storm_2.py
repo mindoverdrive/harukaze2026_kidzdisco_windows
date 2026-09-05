@@ -43,6 +43,7 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
 import display_utils
+from scene_control import notify_first_frame
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
 import pylinalg as la
@@ -380,20 +381,23 @@ class ParticleStormApp:
         self.update_physics(dt)
         
         # Render
+        rendered = True
         try:
             self.renderer.render(self.bg_scene, self.bg_camera, flush=False)
         except RuntimeError:
-            pass
+            rendered = False
         
         try:
             self.renderer.render(self.scene, self.camera, clear=False, flush=False)
         except RuntimeError:
-            pass
+            rendered = False
 
         try:
             self.renderer.render(self.overlay_scene, self.overlay_camera, clear=False)
         except RuntimeError:
-            pass
+            rendered = False
+
+        notify_first_frame(self.cap, frame_processed=bool(ret and rendered and self.detector is not None))
         
         self.canvas.request_draw()
 

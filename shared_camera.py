@@ -248,6 +248,7 @@ class SharedMemoryCamera:
         self.fps = float(fps)
         self.frame_bytes = self.width * self.height * self.channels
         self.closed = False
+        self.last_read_frame_id = 0
         self.shm = shared_memory.SharedMemory(name=shm_name)
 
     def isOpened(self):
@@ -295,6 +296,7 @@ class SharedMemoryCamera:
             write_seq2 = header2[5]
             if write_seq1 == write_seq2 and write_seq2 % 2 == 0:
                 frame = np.frombuffer(frame_buffer, dtype=np.uint8).reshape((height, width, channels))
+                self.last_read_frame_id = int(header2[6])
                 return True, frame.copy()
 
         return False, None

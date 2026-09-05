@@ -35,6 +35,7 @@ if __name__ == "__main__":
 import cv2
 import pygame
 import display_utils
+from scene_control import notify_first_frame
 import mediapipe as mp
 import numpy as np
 import math
@@ -507,6 +508,7 @@ def main():
             pygame.draw.circle(screen, (0, 255, 255), (int(target2[0]), int(target2[1])), 10, 2)
 
         pygame.display.flip()
+        notify_first_frame(cap, frame_processed=bool(ret))
         clock.tick(60)
 
     hands.close()

@@ -35,6 +35,7 @@ if __name__ == "__main__":
 import atexit
 import pygame
 import display_utils
+from scene_control import notify_first_frame
 import math
 import random
 import cv2
@@ -260,5 +261,6 @@ while running:
             canvas.fill((0,0,0,0)) # Clear canvas with Space
 
     pygame.display.flip()
+    notify_first_frame(cap, frame_processed=bool(ret))
     clock.tick(120)
 
