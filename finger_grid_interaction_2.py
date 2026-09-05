@@ -34,12 +34,17 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import atexit
+from contextlib import ExitStack
 import pygame
 import display_utils
 from scene_control import notify_first_frame
 import math
 import cv2
 import mediapipe as mp
+
+_resources = ExitStack()
+atexit.register(_resources.close)
+_resources.callback(pygame.quit)
 
 # Initialize Pygame
 pygame.init()
@@ -54,6 +59,7 @@ hands = mp_hands.Hands(model_complexity=1,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.7
 )
+_resources.callback(hands.close)
 
 # Particle System Setup
 cols = 50
@@ -84,26 +90,10 @@ for i in range(len(P)):
 
 # Camera capture
 cap = display_utils.open_camera()
-def _cleanup():
-    try:
-        hands.close()
-    except Exception:
-        pass
-    try:
-        cap.release()
-    except Exception:
-        pass
-    try:
-        pygame.quit()
-    except Exception:
-        pass
-
-
-atexit.register(_cleanup)
-if not cap.isOpened():
-   cap = display_utils.open_camera()
-if not cap.isOpened():
-   raise IOError("Cannot open webcam")
+if cap is not None:
+    _resources.callback(cap.release)
+if cap is None or not cap.isOpened():
+    raise RuntimeError("The shared camera could not be attached")
 
 def get_hands_data(frame):
     if frame is None:

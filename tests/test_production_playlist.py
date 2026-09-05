@@ -15,7 +15,8 @@ class ProductionPlaylistTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             approved = root / "approved_scene_acer.py"
-            approved.write_text("# approved\n", encoding="utf-8")
+            approved.write_text('from scene_profile_runner import run_scene\n'
+                                'run_scene("finger_colorfull_dots_2.py", profile="acer")\n', encoding="utf-8")
             (root / "unapproved_scene_acer.py").write_text("# not selected\n", encoding="utf-8")
             (root / "helper.py").write_text("# not a scene\n", encoding="utf-8")
 
@@ -35,7 +36,7 @@ class ProductionPlaylistTests(unittest.TestCase):
     def test_invalid_production_entrypoints_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "valid_acer.py").write_text("# valid\n", encoding="utf-8")
+            (root / "valid_acer.py").write_text('run_scene("finger_colorfull_dots_2.py", profile="acer")\n', encoding="utf-8")
 
             invalid_playlists = [
                 [],

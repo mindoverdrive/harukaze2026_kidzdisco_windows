@@ -21,10 +21,19 @@ PROFILES = {
 }
 
 
-def run_scene(script_name, profile="stage"):
-    script_path = BASE_DIR / script_name
-    if not script_path.exists():
+def resolve_scene_path(script_name):
+    script_path = (BASE_DIR / script_name).resolve()
+    if not script_path.is_relative_to(BASE_DIR) or script_path.suffix != ".py":
+        raise ValueError(f"Scene source must be a Python file inside {BASE_DIR}: {script_name}")
+    if not script_path.is_file():
         raise FileNotFoundError(f"Scene script not found: {script_path}")
+    return script_path
+
+
+def run_scene(script_name, profile="stage"):
+    script_path = resolve_scene_path(script_name)
+    if profile not in PROFILES:
+        raise ValueError(f"Unknown scene profile: {profile}")
 
     overrides = PROFILES.get(profile, {})
     previous = {}

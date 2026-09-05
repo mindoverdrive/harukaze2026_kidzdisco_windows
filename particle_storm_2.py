@@ -32,6 +32,8 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
+from contextlib import ExitStack
 import time
 import math
 import random
@@ -63,8 +65,12 @@ EXPLOSION_THRESHOLD = 0.22      # Hand openness threshold for explosion
 
 class ParticleStormApp:
     def __init__(self):
+        self._resources = ExitStack()
+        atexit.register(self.cleanup)
+        self._resources.callback(cv2.destroyAllWindows)
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Particle Storm 3D")
+        self._resources.callback(self.canvas.close)
         display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
@@ -96,13 +102,14 @@ class ParticleStormApp:
                 running_mode=vision.RunningMode.VIDEO
             )
             self.detector = vision.HandLandmarker.create_from_options(options)
+            self._resources.callback(self.detector.close)
 
         # 3. Camera Setup
         self.cap = display_utils.open_camera() # Default to 0, or 2 if user has setup
-        if not self.cap.isOpened():
-             self.cap = display_utils.open_camera()
-             if not self.cap.isOpened():
-                 print("Error: No camera found on index 0 or 2.")
+        if self.cap is not None:
+            self._resources.callback(self.cap.release)
+        if self.cap is None or not self.cap.isOpened():
+            raise RuntimeError("The shared camera could not be attached")
         
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -406,12 +413,7 @@ class ParticleStormApp:
         loop.run()
 
     def cleanup(self):
-        if getattr(self, "cap", None) is not None:
-            self.cap.release()
-        detector = getattr(self, "detector", None)
-        if detector is not None and hasattr(detector, "close"):
-            detector.close()
-        cv2.destroyAllWindows()
+        self._resources.close()
 
 if __name__ == "__main__":
     app = ParticleStormApp()

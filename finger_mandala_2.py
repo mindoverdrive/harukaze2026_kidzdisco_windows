@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import atexit
+from contextlib import ExitStack
 import pygame
 import display_utils
 from scene_control import notify_first_frame
@@ -41,6 +42,10 @@ import random
 import cv2
 import mediapipe as mp
 
+_resources = ExitStack()
+atexit.register(_resources.close)
+_resources.callback(pygame.quit)
+
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(model_complexity=1, 
@@ -48,25 +53,14 @@ hands = mp_hands.Hands(model_complexity=1,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.5
 )
+_resources.callback(hands.close)
 
 # Initialize Camera
 cap = display_utils.open_camera()
-def _cleanup():
-    try:
-        hands.close()
-    except Exception:
-        pass
-    try:
-        cap.release()
-    except Exception:
-        pass
-    try:
-        pygame.quit()
-    except Exception:
-        pass
-
-
-atexit.register(_cleanup)
+if cap is not None:
+    _resources.callback(cap.release)
+if cap is None or not cap.isOpened():
+    raise RuntimeError("The shared camera could not be attached")
 
 pygame.init()
 screen, _pg_size = display_utils.setup_pygame_fullscreen()

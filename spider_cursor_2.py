@@ -32,6 +32,8 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
+from contextlib import ExitStack
 import cv2
 import pygame
 import display_utils
@@ -418,6 +420,9 @@ class Spider:
         pygame.draw.circle(surface, draw_color, (int(self.pos[0]), int(self.pos[1])), 10)
 
 def main():
+    resources = ExitStack()
+    atexit.register(resources.close)
+    resources.callback(pygame.quit)
     pygame.init()
     screen, _pg_size = display_utils.setup_pygame_fullscreen()
     width, height = screen.get_size()
@@ -427,12 +432,17 @@ def main():
     camera_layout = None
 
     cap = display_utils.open_camera()
+    if cap is not None:
+        resources.callback(cap.release)
+    if cap is None or not cap.isOpened():
+        raise RuntimeError("The shared camera could not be attached")
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(model_complexity=1, 
         max_num_hands=2,
         min_detection_confidence=0.7,
         min_tracking_confidence=0.7
     )
+    resources.callback(hands.close)
 
     spider_1 = Spider(width//2 - 100, height//2, True)
     spider_2 = Spider(width//2 + 100, height//2, False)
@@ -511,9 +521,7 @@ def main():
         notify_first_frame(cap, frame_processed=bool(ret))
         clock.tick(60)
 
-    hands.close()
-    cap.release()
-    pygame.quit()
+    resources.close()
 
 if __name__ == "__main__":
     main()

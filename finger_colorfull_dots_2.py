@@ -33,12 +33,17 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import atexit
+from contextlib import ExitStack
 import pygame
 import display_utils
 from scene_control import notify_first_frame
 import math
 import cv2
 import mediapipe as mp
+
+_resources = ExitStack()
+atexit.register(_resources.close)
+_resources.callback(pygame.quit)
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
@@ -47,28 +52,12 @@ hands = mp_hands.Hands(model_complexity=1,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.5
 )
+_resources.callback(hands.close)
 
 # Initialize Webcam
 cap = display_utils.open_camera()
-
-
-def _cleanup():
-    try:
-        hands.close()
-    except Exception:
-        pass
-    try:
-        cap.release()
-    except Exception:
-        pass
-    try:
-        pygame.quit()
-    except Exception:
-        pass
-
-
-atexit.register(_cleanup)
-
+if cap is not None:
+    _resources.callback(cap.release)
 if cap is None or not cap.isOpened():
     raise RuntimeError("The shared C922 camera could not be attached")
 
@@ -86,19 +75,19 @@ running = True
 t = 0
 
 # Initial cursors
-cursors = [(w // 2, h // 2)]
+cursors = []
 camera_surface = None
 camera_layout = None
 
 while running:
     # Read frame from webcam
     ret, frame = cap.read()
+    cursors = []
     if ret:
         frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, w, h)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         stage_rgb = cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGB)
         camera_surface = pygame.image.frombuffer(stage_rgb.tobytes(), (w, h), "RGB")
-        
         # Process the frame with MediaPipe
         results = hands.process(rgb_frame)
         
@@ -110,12 +99,17 @@ while running:
                 new_cursors.append(display_utils.normalized_to_stage(index_tip.x, index_tip.y, camera_layout))
             if new_cursors:
                 cursors = new_cursors
+    else:
+        camera_surface = None
     
     if camera_surface is not None:
         screen.blit(camera_surface, (0, 0))
     else:
         screen.fill((0, 0, 0))
-    t += 0.1
+    t = pygame.time.get_ticks() * 0.006
+    # Ambient motion has no finger marker; only current detections drive markers.
+    influencers = cursors or [(w * (0.5 + 0.15 * math.cos(t * 0.03)),
+                               h * (0.5 + 0.18 * math.sin(t * 0.027)))]
 
     # Draw cursors
     for cx, cy in cursors:
@@ -127,7 +121,7 @@ while running:
             py = y * spacing_y + spacing_y // 2
 
             # Calculate distance and identify the nearest hand
-            d, near_idx = min((math.hypot(cx - px, cy - py), i) for i, (cx, cy) in enumerate(cursors))
+            d, near_idx = min((math.hypot(cx - px, cy - py), i) for i, (cx, cy) in enumerate(influencers))
 
             offset = math.sin(d * 0.04 - t) * 30
             size = max(2, 12 - d * 0.015 + math.cos(t)*2)
@@ -143,7 +137,7 @@ while running:
 
             if x < cols - 1:
                 next_px = (x + 1) * spacing_x + spacing_x // 2
-                next_d = min(math.hypot(cx - next_px, cy - py) for cx, cy in cursors)
+                next_d = min(math.hypot(cx - next_px, cy - py) for cx, cy in influencers)
                 next_offset = math.sin(next_d * 0.04 - t) * 30
                 pygame.draw.line(screen, (30,30,30), (int(px), int(draw_y)), (int(next_px), int(py + next_offset)), 1)
 

@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import argparse
+import ast
 import gc
 import traceback
 
@@ -18,6 +19,7 @@ import numpy as np
 
 from shared_camera import SharedCameraRelay
 from scene_control import SceneLaunchControl, SceneControlError
+from scene_profile_runner import resolve_scene_path
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -64,6 +66,7 @@ DEFAULT_CONFIG = {
     "CAMERA_STRICT_BACKEND": True,
     "CAMERA_BACKEND": "dshow",
     "CAMERA_ALLOW_FALLBACK": False,
+    "CAMERA_REQUIRE_NAME_MATCH": False,
     "CAMERA_OPENCV_INDEX": None,
     "CAMERA_NAME_HINTS": ["c922", "pro stream webcam"],
     "CAMERA_EXCLUDE_HINTS": ["nizima", "virtual", "logi capture"],
@@ -101,7 +104,45 @@ CAMERA_ENV_CASTERS = {
     "CAMERA_BACKEND": str,
     "CAMERA_OPENCV_INDEX": _parse_optional_int_setting,
     "CAMERA_ALLOW_FALLBACK": _parse_bool_setting,
+    "CAMERA_REQUIRE_NAME_MATCH": _parse_bool_setting,
 }
+
+
+def validate_runtime_config(cfg):
+    try:
+        for key, caster in CAMERA_ENV_CASTERS.items():
+            cfg[key] = caster(cfg[key])
+        for key in ("SHARED_CAMERA_ENABLED", "CLAP_MONITOR_ENABLED", "TRANSITION_ENABLED"):
+            cfg[key] = _parse_bool_setting(cfg[key])
+        if not cfg["SHARED_CAMERA_ENABLED"]:
+            raise ValueError("Manager requires SHARED_CAMERA_ENABLED=true to retain sole camera ownership")
+        for key in ("CAMERA_WIDTH", "CAMERA_HEIGHT", "CAMERA_FPS", "TARGET_FPS"):
+            if not isinstance(cfg[key], (int, float)) or not math.isfinite(cfg[key]) or cfg[key] <= 0:
+                raise ValueError(f"{key} must be positive and finite")
+        for key in ("CAMERA_INDEX", "PRELOAD_COUNT"):
+            if int(cfg[key]) < 0:
+                raise ValueError(f"{key} must be non-negative")
+        if cfg["CAMERA_OPENCV_INDEX"] is not None and cfg["CAMERA_OPENCV_INDEX"] < 0:
+            raise ValueError("CAMERA_OPENCV_INDEX must be non-negative or null")
+        for key in ("SCENE_GRACEFUL_TIMEOUT", "SCENE_TERMINATE_TIMEOUT", "SCENE_READY_TIMEOUT",
+                    "SCENE_START_ACK_TIMEOUT", "SCENE_FIRST_FRAME_TIMEOUT", "TRANSITION_TOTAL_DURATION"):
+            value = float(cfg[key])
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{key} must be positive and finite")
+            cfg[key] = value
+        for key in ("CAMERA_DIAGNOSTIC_SECONDS", "TRANSITION_COVER_DELAY"):
+            value = float(cfg[key])
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{key} must be non-negative and finite")
+            cfg[key] = value
+        if cfg["CAMERA_BACKEND"].lower() not in {"dshow", "msmf", "any", "default"}:
+            raise ValueError("CAMERA_BACKEND must be dshow, msmf, any, or default")
+        if cfg["CAMERA_REQUIRE_NAME_MATCH"] and cfg["CAMERA_ALLOW_FALLBACK"]:
+            raise ValueError("Required camera name and arbitrary camera fallback cannot be combined")
+        if not isinstance(cfg["SCENE_DIR"], str) or not cfg["SCENE_DIR"].strip():
+            raise ValueError("SCENE_DIR must be a directory path")
+    except (TypeError, ValueError, KeyError, OverflowError) as exc:
+        raise ConfigurationError(f"Invalid runtime config: {exc}") from exc
 
 
 def load_config(path=CONFIG_PATH):
@@ -112,11 +153,12 @@ def load_config(path=CONFIG_PATH):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 user_cfg = json.load(f)
-            if isinstance(user_cfg, dict):
-                cfg.update(user_cfg)
-                for key in CAMERA_ENV_CASTERS:
-                    if key in user_cfg:
-                        camera_sources[key] = "config"
+            if not isinstance(user_cfg, dict):
+                raise ConfigurationError("Config must be a JSON object")
+            cfg.update(user_cfg)
+            for key in CAMERA_ENV_CASTERS:
+                if key in user_cfg:
+                    camera_sources[key] = "config"
         except Exception as exc:
             raise ConfigurationError(f"Failed to read config file {path}: {exc}") from exc
 
@@ -130,12 +172,31 @@ def load_config(path=CONFIG_PATH):
             raise ConfigurationError(f"Invalid {env_key}: {exc}") from exc
         camera_sources[key] = "environment"
 
+    validate_runtime_config(cfg)
     scene_dir = os.path.expanduser(cfg["SCENE_DIR"])
     if not os.path.isabs(scene_dir):
         scene_dir = os.path.abspath(os.path.join(BASE_DIR, scene_dir))
     cfg["SCENE_DIR"] = scene_dir
     cfg["_CAMERA_CONFIG_SOURCES"] = camera_sources
     return cfg
+
+
+def validate_scene_entrypoint(scene_path):
+    try:
+        with open(scene_path, encoding="utf-8-sig") as file:
+            tree = ast.parse(file.read(), filename=scene_path)
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == "run_scene"]
+        if len(calls) != 1 or not calls[0].args:
+            raise ValueError("expected one literal run_scene(source, profile='acer') call")
+        source = ast.literal_eval(calls[0].args[0])
+        profile = next((ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg == "profile"), None)
+        if not isinstance(source, str) or profile != "acer":
+            raise ValueError("entrypoint must specify a source filename and profile='acer'")
+        source_path = resolve_scene_path(source)
+        ast.parse(source_path.read_text(encoding="utf-8-sig"), filename=str(source_path))
+    except (OSError, SyntaxError, ValueError, TypeError) as exc:
+        raise ConfigurationError(f"Invalid scene entrypoint {scene_path}: {exc}") from exc
 
 
 def resolve_production_scenes(config):
@@ -174,6 +235,7 @@ def resolve_production_scenes(config):
             raise ConfigurationError(f"Production scene escapes SCENE_DIR: {filename!r}")
         if not os.path.isfile(scene_path):
             raise ConfigurationError(f"Production scene not found: {scene_path}")
+        validate_scene_entrypoint(scene_path)
         scenes.append(scene_path)
 
     return scenes
@@ -300,6 +362,8 @@ class SceneManager:
         env = os.environ.copy()
         env["WGPU_BACKEND"] = env.get("WGPU_BACKEND", "dx12")
         env.update(self.camera_env)
+        if all(key in CONFIG for key in ("DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT")):
+            env["KIDZDISCO_DISPLAY_TARGET"] = "stage"
         for key in ("DISPLAY_TARGET", "DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT"):
             if key in CONFIG:
                 env[f"KIDZDISCO_{key}"] = str(CONFIG[key])
@@ -373,6 +437,7 @@ class SceneManager:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         check=False,
+                        timeout=terminate_timeout,
                     )
                 else:
                     proc.kill()
@@ -608,10 +673,9 @@ class HeadClapMonitor:
         return False
 
     def _monitor_loop(self):
-        import mediapipe as mp
-
         holistic = None
         try:
+            import mediapipe as mp
             mp_holistic = mp.solutions.holistic
             holistic = mp_holistic.Holistic(
                 model_complexity=2,
@@ -704,7 +768,7 @@ def main():
         )
         camera_relay.start()
 
-        camera_env = camera_relay.export_env() if CONFIG.get("SHARED_CAMERA_ENABLED", True) else {}
+        camera_env = camera_relay.export_env()
         print(
             f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
             f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
@@ -744,6 +808,8 @@ def main():
             print(f"[Manager] Warning: Manager Control window disabled: {exc}")
 
         while True:
+            if camera_relay.thread is not None and not camera_relay.thread.is_alive():
+                raise RuntimeError(f"Camera capture thread stopped: {camera_relay.last_error}")
             if manager is not None:
                 manager.tick()
                 if manager.fatal_error:

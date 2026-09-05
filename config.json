@@ -9,7 +9,7 @@
     "saturn_particles_acer.py",
     "spider_cursor_acer.py"
   ],
-  "PRELOAD_COUNT": 2,
+  "PRELOAD_COUNT": 1,
   "TRANSITION_ENABLED": true,
   "TRANSITION_SCRIPT": "sakura_transition.py",
   "TRANSITION_TOTAL_DURATION": 5.0,

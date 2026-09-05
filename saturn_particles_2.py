@@ -32,6 +32,8 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
+from contextlib import ExitStack
 import time
 import math
 import os
@@ -70,8 +72,12 @@ PLANET_PARTICLE_RATIO = 0.4      # 40% particles in planet, 60% in rings
 
 class SaturnParticlesApp:
     def __init__(self):
+        self._resources = ExitStack()
+        atexit.register(self.cleanup)
+        self._resources.callback(cv2.destroyAllWindows)
         # 1. Setup pygfx
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Saturn Particle Interaction")
+        self._resources.callback(self.canvas.close)
         display_utils.setup_rendercanvas_fullscreen(self.canvas)
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
@@ -112,11 +118,14 @@ class SaturnParticlesApp:
                 running_mode=vision.RunningMode.VIDEO
             )
             self.detector = vision.HandLandmarker.create_from_options(options)
+            self._resources.callback(self.detector.close)
 
         # 3. Camera Setup
         self.cap = display_utils.open_camera()
-        if not self.cap.isOpened():
-            self.cap = display_utils.open_camera()
+        if self.cap is not None:
+            self._resources.callback(self.cap.release)
+        if self.cap is None or not self.cap.isOpened():
+            raise RuntimeError("The shared camera could not be attached")
         
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -464,12 +473,7 @@ class SaturnParticlesApp:
         loop.run()
 
     def cleanup(self):
-        if getattr(self, "cap", None) is not None:
-            self.cap.release()
-        detector = getattr(self, "detector", None)
-        if detector is not None and hasattr(detector, "close"):
-            detector.close()
-        cv2.destroyAllWindows()
+        self._resources.close()
 
 if __name__ == "__main__":
     app = SaturnParticlesApp()

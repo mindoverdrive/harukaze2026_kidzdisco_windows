@@ -32,6 +32,8 @@ if __name__ == "__main__":
             except Exception as e:
                 pass
 # =============================================================================
+import atexit
+from contextlib import ExitStack
 import pygame
 import display_utils
 from scene_control import notify_first_frame
@@ -188,6 +190,9 @@ class Pointer:
         self.fractal_type = f_type
 
 def main():
+    resources = ExitStack()
+    atexit.register(resources.close)
+    resources.callback(pygame.quit)
     pygame.init()
     
     screen, _pg_size = display_utils.setup_pygame_fullscreen()
@@ -208,6 +213,10 @@ def main():
     
     # --- MediaPipe カメラ設定 ---
     cap = display_utils.open_camera()
+    if cap is not None:
+        resources.callback(cap.release)
+    if cap is None or not cap.isOpened():
+        raise RuntimeError("The shared camera could not be attached")
     mp_hands = mp.solutions.hands
     # 検出する手を最大4本に変更
     hands = mp_hands.Hands(model_complexity=1, 
@@ -215,6 +224,7 @@ def main():
         min_detection_confidence=0.7,
         min_tracking_confidence=0.5
     )
+    resources.callback(hands.close)
     
     # 4本指分のポインターを準備（それぞれに0~3の異なるフラクタルタイプを割り当てる）
     max_pointers = 4
@@ -386,9 +396,7 @@ def main():
         notify_first_frame(cap, frame_processed=bool(ret))
         clock.tick(60)
 
-    hands.close()
-    cap.release()
-    pygame.quit()
+    resources.close()
     sys.exit()
 
 if __name__ == "__main__":
