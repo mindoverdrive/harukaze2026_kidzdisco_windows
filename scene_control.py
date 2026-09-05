@@ -6,6 +6,7 @@ import select
 import socket
 import time
 import uuid
+from windows_process import get_scene_job
 
 MAX_MESSAGE_BYTES = 4096
 
@@ -86,6 +87,7 @@ class SceneLaunchControl:
         self.frame_timeout = float(frame_timeout)
         self.first_frame = None
         self.error = None
+        self.child_pid = None
 
     def argv(self):
         return ["--control-port", str(self.port), "--launch-id", self.launch_id]
@@ -112,8 +114,16 @@ class SceneLaunchControl:
                     self.listener.close()
             if self.channel is not None:
                 for message in self.channel.receive():
-                    if message.get("launch_id") != self.launch_id or message.get("pid") != process.pid:
+                    pid = message.get("pid")
+                    if message.get("launch_id") != self.launch_id or type(pid) is not int or pid <= 0:
                         raise SceneControlError("launch_id/PID mismatch")
+                    if self.child_pid is None:
+                        job = get_scene_job(process)
+                        if pid != process.pid and not (job is not None and job.adopt_scene_pid(pid)):
+                            raise SceneControlError("launch_id/PID mismatch: not an owned scene process")
+                        self.child_pid = pid
+                    elif pid != self.child_pid:
+                        raise SceneControlError("launch_id/PID mismatch: child identity changed")
                     event = message.get("event")
                     if event == "ERROR":
                         raise SceneControlError(f"child error: {message.get('reason', 'unknown')}")
@@ -129,7 +139,7 @@ class SceneLaunchControl:
                         self.state = "FIRST_FRAME"
                     else:
                         raise SceneControlError(f"unexpected {event!r} in {self.state}")
-                    self._log(event, pid=process.pid, frame_id=message.get("frame_id"))
+                    self._log(event, pid=pid, launcher_pid=process.pid, frame_id=message.get("frame_id"))
                 if self.channel.eof and self.state != "FIRST_FRAME":
                     raise SceneControlError("control connection closed before FIRST_FRAME")
             now = time.monotonic()

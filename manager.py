@@ -20,6 +20,7 @@ import numpy as np
 from shared_camera import SharedCameraRelay
 from scene_control import SceneLaunchControl, SceneControlError
 from scene_profile_runner import resolve_scene_path
+from windows_process import WindowsSceneJob, get_scene_job
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -346,6 +347,7 @@ class SceneManager:
         self.switch_cover_until = None
         self.last_switch_error = None
         self.fatal_error = None
+        self.uncontained_process = None
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
         self.all_scenes = list(scenes) if scenes is not None else self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
@@ -370,12 +372,26 @@ class SceneManager:
         return env
 
     def _spawn_process(self, argv, cwd):
-        return subprocess.Popen(
+        if self.uncontained_process is not None:
+            raise OSError("Previous uncontained launch could not be stopped")
+        proc = subprocess.Popen(
             argv,
             cwd=cwd,
             env=self._scene_env(),
             creationflags=self._creationflags(),
         )
+        if os.name == "nt":
+            try:
+                proc._scene_job = WindowsSceneJob(proc)
+            except BaseException:
+                # This is only the process just spawned by this Manager.
+                self.uncontained_process = proc
+                if self._kill_process(proc, "failed job assignment"):
+                    self.uncontained_process = None
+                else:
+                    self.fatal_error = "Uncontained scene process could not be stopped"
+                raise
+        return proc
 
     def _stage_geometry(self):
         return (
@@ -404,9 +420,18 @@ class SceneManager:
 
         graceful_timeout = float(CONFIG.get("SCENE_GRACEFUL_TIMEOUT", 2.0))
         terminate_timeout = float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0))
+        job = get_scene_job(proc)
+
+        def stopped():
+            if job is not None:
+                if not job.wait(terminate_timeout):
+                    return False
+                job.close()
+            return True
+
         try:
-            if proc.poll() is not None:
-                return True
+            if proc.poll() is not None and (job is None or not job.is_alive()):
+                return stopped()
 
             print(f"[Manager] Stopping scene: {scene_name}")
             try:
@@ -415,14 +440,29 @@ class SceneManager:
                 else:
                     proc.send_signal(signal.SIGINT)
                 proc.wait(timeout=graceful_timeout)
-                return True
+                if stopped():
+                    return True
             except subprocess.TimeoutExpired:
                 print(f"[Manager] Warning: graceful stop timed out: {scene_name}")
             except Exception as exc:
                 print(f"[Manager] Warning: graceful stop failed for {scene_name}: {exc}")
 
+            if job is not None:
+                try:
+                    job.terminate()
+                    proc.wait(timeout=terminate_timeout)
+                    return stopped()
+                except Exception as exc:
+                    print(f"[Manager] Error: owned scene job stop failed for {scene_name}: {exc}")
+                    return False
+
             try:
-                proc.terminate()
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   timeout=terminate_timeout, check=False)
+                else:
+                    proc.terminate()
                 proc.wait(timeout=terminate_timeout)
                 return True
             except subprocess.TimeoutExpired:
@@ -636,6 +676,10 @@ class SceneManager:
             )
             if transition_stopped:
                 self.transition_process = None
+
+        uncontained = getattr(self, "uncontained_process", None)
+        if uncontained is not None and run_step("uncontained scene", lambda: self._kill_process(uncontained, "failed launch")):
+            self.uncontained_process = None
 
         if errors:
             print("[Manager] Cleanup completed with errors: " + "; ".join(errors))

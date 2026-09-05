@@ -17,6 +17,12 @@ ExitStackの登録は子プロセス1回の実行寿命に対応する。renderc
 
 ## 自動試験の範囲
 
+Windows venvの追加監査: OS観測でランチャーPIDと実Python PIDが別と確認した。初期ハンドシェイクの厳密なPopen.pid一致は、この正当な構成を拒否する。さらに親だけをterminateすると実Pythonが残る経路がある。疑似ランチャー＋実runner子で失敗を再現し、[Windows Job Objectの子継承](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject) を使って所有権を保持するように変更。既に生成済みの子もOSの親子関係を照合して取り込む。
+
+起動nonceに加えて、そのJobに属するPIDだけをREADYとして採用する。以後のメッセージでPIDが変わる場合も拒否。終了は猶予付きCTRL_BREAK後、必要なら所有Jobを終了する。[KILL_ON_JOB_CLOSE](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information) によりManagerのJobハンドル消失時も対象プロセスを終了させる。Job割り当て失敗時は新たに起動したプロセスの後始末を行い、停止失敗時には参照を残して報告する。既存ユーザープロセスは対象にしていない。
+
+この変更はWindow OSの実プロセスで検証済み。映像ライブラリの成功を意味しない。通常の子終了、ランチャーのみ終了、Job close、READY前に生成された子、無関係PIDの拒否を検証した。
+
 `python -m unittest discover -s tests -q` のみを使う。リポジトリ直下にある旧 `test*.py` はカメラやGUIを開く可能性があるため、全ルートでdiscoverしない。テスト内のOpenCV/NumPy/MediaPipe/pygame/pygfxは疑似実装。TCP、runner子プロセス、共有メモリ、スレッド、数値座標変換は実行しているが、実カメラ/描画の合格を意味しない。
 
 ## 残る実機判断

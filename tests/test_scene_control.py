@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from scene_control import JsonChannel, SceneLaunchControl, SceneControlError
+from windows_process import WindowsSceneJob
 
 
 class SceneControlTests(unittest.TestCase):
@@ -20,9 +21,13 @@ class SceneControlTests(unittest.TestCase):
         proc = subprocess.Popen([sys.executable, "-u", str(fixture), *control.argv()],
                                 env=env, creationflags=flags,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.name == "nt":
+            proc._scene_job = WindowsSceneJob(proc)
 
         def cleanup():
             control.close()
+            if os.name == "nt":
+                proc._scene_job.close()
             if proc.poll() is None:
                 proc.terminate()
             proc.wait(timeout=3)
@@ -48,7 +53,7 @@ class SceneControlTests(unittest.TestCase):
         self.assertIsNone(control.first_frame)
         self.wait_state(control, proc, "FIRST_FRAME")
         self.assertEqual(control.first_frame["frame_id"], 42)
-        self.assertEqual(control.first_frame["pid"], proc.pid)
+        self.assertEqual(control.first_frame["pid"], control.child_pid)
         with self.assertRaisesRegex(SceneControlError, "requires READY"):
             control.start()
 
