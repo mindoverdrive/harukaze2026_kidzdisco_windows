@@ -3,6 +3,7 @@ import json
 import struct
 import threading
 import time
+import uuid
 from multiprocessing import shared_memory
 
 import cv2
@@ -11,7 +12,8 @@ import numpy as np
 
 HEADER_FORMAT = "<8sIIIIQQd"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
-MAGIC = b"HARUCAM1"
+# Version 2 timestamps use the machine's monotonic clock, including across processes.
+MAGIC = b"HARUCAM2"
 
 ENV_ENABLED = "HARUKAZE_SHARED_CAMERA"
 ENV_REQUIRED = "HARUKAZE_SHARED_CAMERA_REQUIRED"
@@ -23,6 +25,10 @@ ENV_FPS = "HARUKAZE_CAMERA_FPS"
 ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
 SESSION_INFO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".shared_camera_session.json")
 DEFAULT_READ_FAILURE_REOPEN_THRESHOLD = 30
+FRAME_MAX_AGE_SECONDS = 2.0
+RECONNECT_INITIAL_DELAY = 0.25
+RECONNECT_MAX_DELAY = 5.0
+CAPTURE_JOIN_TIMEOUT = 2.0
 
 
 def enumerate_camera_devices():
@@ -192,55 +198,29 @@ def _open_with_backends(
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
 
-    for backend in _backend_order(backend_preference, strict_backend=strict_backend):
-        try:
-            if backend is None:
-                backend_label = "default"
-                print(f"[shared_camera] Trying camera index={camera_index} backend={backend_label}")
-                cap = cv2.VideoCapture(camera_index)
-            else:
-                backend_label = str(backend)
-                print(f"[shared_camera] Trying camera index={camera_index} backend={backend_label}")
-                cap = cv2.VideoCapture(camera_index, backend)
-        except Exception as exc:
-            print(f"[shared_camera] Open failed index={camera_index} backend={backend}: {exc}")
-            continue
-        if cap.isOpened():
-            _setup_props(cap)
-            actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
-            print(
-                f"[shared_camera] Opened physical camera index={camera_index} "
-                f"backend={backend_label} fourcc={actual_fourcc}"
-            )
-            return cap
-        cap.release()
-
+    indices = [camera_index]
     if fallback_to_default:
-        for idx in [0, 1, 2]:
-            if idx == camera_index:
-                continue
-            for backend in _backend_order(backend_preference, strict_backend=strict_backend):
-                try:
-                    if backend is None:
-                        backend_label = "default"
-                        print(f"[shared_camera] Trying fallback camera index={idx} backend={backend_label}")
-                        cap = cv2.VideoCapture(idx)
-                    else:
-                        backend_label = str(backend)
-                        print(f"[shared_camera] Trying fallback camera index={idx} backend={backend_label}")
-                        cap = cv2.VideoCapture(idx, backend)
-                except Exception as exc:
-                    print(f"[shared_camera] Fallback open failed index={idx} backend={backend}: {exc}")
-                    continue
+        indices.extend(idx for idx in (0, 1, 2) if idx != camera_index)
+    for idx in indices:
+        for backend in _backend_order(backend_preference, strict_backend=strict_backend):
+            cap = None
+            opened = False
+            try:
+                print(f"[shared_camera] Trying camera index={idx} backend={backend}")
+                cap = cv2.VideoCapture(idx) if backend is None else cv2.VideoCapture(idx, backend)
                 if cap.isOpened():
                     _setup_props(cap)
                     actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
-                    print(
-                        f"[shared_camera] Warning: camera_index={camera_index} failed, "
-                        f"opened fallback camera={idx} backend={backend_label} fourcc={actual_fourcc}"
-                    )
+                    print(f"[shared_camera] Opened physical camera index={idx} "
+                          f"backend={backend} fourcc={actual_fourcc}")
+                    opened = True
                     return cap
-                cap.release()
+            except Exception as exc:
+                print(f"[shared_camera] Open/setup failed index={idx} backend={backend}: {exc}")
+            finally:
+                if cap is not None and not opened:
+                    # Do not open another handle if releasing this one fails.
+                    cap.release()
 
     return None
 
@@ -263,8 +243,8 @@ class SharedMemoryCamera:
     def release(self):
         if self.closed:
             return
-        self.closed = True
         self.shm.close()
+        self.closed = True
 
     def set(self, prop_id, value):
         if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
@@ -290,17 +270,22 @@ class SharedMemoryCamera:
 
         for _ in range(5):
             header1 = struct.unpack_from(HEADER_FORMAT, self.shm.buf, 0)
-            magic, width, height, channels, _status, write_seq1, _frame_id1, _timestamp1 = header1
+            magic, width, height, channels, status, write_seq1, frame_id, timestamp = header1
             if magic != MAGIC or write_seq1 % 2 == 1:
                 time.sleep(0.001)
                 continue
 
             frame_bytes = width * height * channels
+            age = time.monotonic() - timestamp
+            if (status != 2 or frame_id <= 0 or not 0 <= age <= FRAME_MAX_AGE_SECONDS
+                    or width <= 0 or height <= 0 or channels != 3
+                    or frame_bytes > len(self.shm.buf) - HEADER_SIZE):
+                return False, None
             frame_buffer = bytes(self.shm.buf[HEADER_SIZE:HEADER_SIZE + frame_bytes])
 
             header2 = struct.unpack_from(HEADER_FORMAT, self.shm.buf, 0)
             write_seq2 = header2[5]
-            if write_seq1 == write_seq2 and write_seq2 % 2 == 0:
+            if header1 == header2 and write_seq2 % 2 == 0:
                 frame = np.frombuffer(frame_buffer, dtype=np.uint8).reshape((height, width, channels))
                 self.last_read_frame_id = int(header2[6])
                 return True, frame.copy()
@@ -374,17 +359,26 @@ class SharedCameraRelay:
         self.backend_preference = backend_preference
         self.fallback_to_default = fallback_to_default
         self.camera_name_hint = camera_name_hint
+        self.exclude_name_hints = exclude_name_hints
+        self.explicit_index = explicit_index
+        self.require_name_match = require_name_match
         self.frame_bytes = self.width * self.height * self.channels
-        self.shm_name = f"harukaze_cam_{os.getpid()}"
+        self.shm_name = f"harukaze_cam_{os.getpid()}_{uuid.uuid4().hex[:12]}"
         self.shm = shared_memory.SharedMemory(create=True, size=HEADER_SIZE + self.frame_bytes, name=self.shm_name)
         self.cap = None
         self.running = False
         self.thread = None
         self.lock = threading.Lock()
+        self.stop_event = threading.Event()
         self.latest_frame = None
+        self.latest_timestamp = 0.0
         self.frame_id = 0
         self.write_seq = 0
         self.read_failures = 0
+        self.read_failures_total = 0
+        self.reopen_attempts = 0
+        self.last_error = None
+        self.release_error = None
         self._closed = False
         self._write_header(status=0, timestamp=0.0)
 
@@ -427,7 +421,7 @@ class SharedCameraRelay:
             self.thread = threading.Thread(target=self._capture_loop, daemon=True)
             self.thread.start()
             return self
-        except Exception:
+        except BaseException:
             self.close()
             raise
 
@@ -444,48 +438,108 @@ class SharedCameraRelay:
         )
 
     def _reopen_capture(self):
-        if self.cap is not None:
-            try:
-                self.cap.release()
-            except Exception:
-                pass
-        self.cap = self._create_capture()
-        self.read_failures = 0
-        return self.cap is not None and self.cap.isOpened()
+        if not self._release_capture() or self.stop_event.is_set():
+            return False
+        self.reopen_attempts += 1
+        try:
+            # USB reconnect can change enumeration order. Never select a different
+            # device silently when an explicit index or required name was given.
+            self.camera_index = choose_camera_index(
+                self.requested_camera_index, self.camera_name_hint, self.exclude_name_hints,
+                self.explicit_index, self.require_name_match,
+            )
+            self.cap = self._create_capture()
+            if self.stop_event.is_set():
+                self._release_capture()
+                return False
+            if self.cap is None or not self.cap.isOpened():
+                self._release_capture()
+                raise RuntimeError("camera still unavailable")
+            self.read_failures = 0
+            print(f"[shared_camera] Reopened camera index={self.camera_index} attempt={self.reopen_attempts}")
+            return True
+        except Exception as exc:
+            self.last_error = f"reopen: {exc}"
+            print(f"[shared_camera] Reconnect attempt={self.reopen_attempts} failed: {exc}")
+            self._release_capture()
+            return False
+
+    def _release_capture(self):
+        if self.cap is None:
+            return True
+        try:
+            self.cap.release()
+        except Exception as exc:
+            self.release_error = f"camera release: {exc}"
+            print(f"[shared_camera] {self.release_error}")
+            return False
+        self.cap = None
+        self.release_error = None
+        return True
+
+    def _mark_unavailable(self):
+        with self.lock:
+            self.latest_frame = None
+            self.latest_timestamp = 0.0
+        self.write_seq = (self.write_seq + 2) & ~1
+        self._write_header(status=0, timestamp=0.0)
 
     def _capture_loop(self):
-        while self.running:
-            ret, frame = self.cap.read()
-            if not ret:
-                self.read_failures += 1
-                if self.read_failures >= DEFAULT_READ_FAILURE_REOPEN_THRESHOLD:
-                    print("[shared_camera] Warning: consecutive read failures detected. Reopening capture.")
+        reconnect_delay = RECONNECT_INITIAL_DELAY
+        try:
+            while self.running and not self.stop_event.is_set():
+                if self.cap is None or self.read_failures >= DEFAULT_READ_FAILURE_REOPEN_THRESHOLD:
+                    if self.stop_event.wait(reconnect_delay):
+                        break
+                    reconnect_delay = min(reconnect_delay * 2, RECONNECT_MAX_DELAY)
                     if not self._reopen_capture():
-                        time.sleep(0.1)
                         continue
-                time.sleep(0.01)
-                continue
-            self.read_failures = 0
-
-            if frame.shape[1] != self.width or frame.shape[0] != self.height:
-                frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-
-            frame = np.ascontiguousarray(frame)
-
-            with self.lock:
-                self.latest_frame = frame.copy()
-
-            now = time.time()
-            self.write_seq += 1
-            self._write_header(status=1, timestamp=now)
-            self.shm.buf[HEADER_SIZE:HEADER_SIZE + self.frame_bytes] = frame.tobytes()
-            self.frame_id += 1
-            self.write_seq += 1
-            self._write_header(status=2, timestamp=now)
+                try:
+                    ret, frame = self.cap.read()
+                    if self.stop_event.is_set():
+                        break
+                    if not ret or frame is None:
+                        raise RuntimeError("camera read returned no frame")
+                    if len(frame.shape) != 3 or frame.shape[2] != self.channels:
+                        raise RuntimeError(f"unexpected camera shape: {frame.shape}")
+                    if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                    frame = np.ascontiguousarray(frame)
+                    frame_bytes = frame.tobytes()
+                    if len(frame_bytes) != self.frame_bytes:
+                        raise RuntimeError("unexpected camera frame byte length")
+                    now = time.monotonic()
+                    self.write_seq += 1
+                    self._write_header(status=1, timestamp=now)
+                    self.shm.buf[HEADER_SIZE:HEADER_SIZE + self.frame_bytes] = frame_bytes
+                    self.frame_id += 1
+                    self.write_seq += 1
+                    self._write_header(status=2, timestamp=now)
+                    with self.lock:
+                        self.latest_frame = frame.copy()
+                        self.latest_timestamp = now
+                    self.read_failures = 0
+                    self.last_error = None
+                    reconnect_delay = RECONNECT_INITIAL_DELAY
+                except Exception as exc:
+                    self.read_failures += 1
+                    self.read_failures_total += 1
+                    self.last_error = f"read/publish: {exc}"
+                    if self.read_failures == 1:
+                        print(f"[shared_camera] {self.last_error}")
+                    self._mark_unavailable()
+                    self.stop_event.wait(0.01)
+        finally:
+            self.running = False
+            try:
+                self._mark_unavailable()
+            finally:
+                self._release_capture()
 
     def read(self):
         with self.lock:
-            if self.latest_frame is None:
+            if (self.latest_frame is None
+                    or not 0 <= time.monotonic() - self.latest_timestamp <= FRAME_MAX_AGE_SECONDS):
                 return False, None
             return True, self.latest_frame.copy()
 
@@ -520,11 +574,20 @@ class SharedCameraRelay:
             "fourcc": self.fourcc,
             "pid": os.getpid(),
         }
+        temp_path = f"{SESSION_INFO_PATH}.{self.shm_name}.tmp"
         try:
-            with open(SESSION_INFO_PATH, "w", encoding="utf-8") as f:
+            with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f)
+            os.replace(temp_path, SESSION_INFO_PATH)
         except Exception as exc:
             print(f"[shared_camera] Warning: could not write session file: {exc}")
+        finally:
+            try:
+                os.remove(temp_path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                print(f"[shared_camera] Could not remove session temporary file: {exc}")
 
     def close(self):
         if getattr(self, "_closed", False):
@@ -532,50 +595,53 @@ class SharedCameraRelay:
 
         errors = []
         self.running = False
-        cap = getattr(self, "cap", None)
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception as exc:
-                errors.append(f"camera release: {exc}")
-            self.cap = None
+        self.stop_event.set()
 
         thread = getattr(self, "thread", None)
         if thread and thread is not threading.current_thread():
             try:
-                thread.join(timeout=2)
+                thread.join(timeout=CAPTURE_JOIN_TIMEOUT)
             except Exception as exc:
                 errors.append(f"capture thread join: {exc}")
             if thread.is_alive():
                 errors.append("capture thread did not stop")
 
-        try:
-            if os.path.exists(SESSION_INFO_PATH):
-                os.remove(SESSION_INFO_PATH)
-        except Exception as exc:
-            errors.append(f"session file removal: {exc}")
-
         if thread and thread.is_alive():
             print("[shared_camera] Cleanup incomplete: " + "; ".join(errors))
             return False
 
+        # Only the worker releases an active native read/open. Before start or
+        # after it exits, close can retry a failed release without racing it.
+        if not self._release_capture():
+            errors.append(self.release_error)
+        try:
+            with open(SESSION_INFO_PATH, "r", encoding="utf-8") as f:
+                session = json.load(f)
+            if session.get("shm_name") == self.shm_name:
+                os.remove(SESSION_INFO_PATH)
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            errors.append(f"session file removal: {exc}")
+
         shm = getattr(self, "shm", None)
         if shm is not None:
+            shm_released = True
             try:
                 shm.close()
             except Exception as exc:
+                shm_released = False
                 errors.append(f"shared memory close: {exc}")
             try:
                 shm.unlink()
             except FileNotFoundError:
                 pass
             except Exception as exc:
+                shm_released = False
                 errors.append(f"shared memory unlink: {exc}")
-        try:
-            self.shm = None
-        except Exception:
-            pass
-        self._closed = True
+            if shm_released:
+                self.shm = None
+        self._closed = self.cap is None and not errors
 
         if errors:
             print("[shared_camera] Cleanup completed with errors: " + "; ".join(errors))

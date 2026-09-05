@@ -36,3 +36,4 @@ CrashReports/
 # Misc
 *.swp
 test_reports/
+.shared_camera_session.json
