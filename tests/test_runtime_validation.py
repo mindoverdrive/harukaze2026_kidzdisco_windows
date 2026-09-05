@@ -35,6 +35,8 @@ class RuntimeValidationTests(unittest.TestCase):
 
     def test_invalid_operational_config_is_rejected_before_allocation(self):
         for config in ([], {"CAMERA_WIDTH": -1}, {"CAMERA_FPS": 0},
+                       {"CAMERA_EXPOSURE": float("nan")}, {"CAMERA_EXPOSURE": True},
+                       {"CAMERA_EXPOSURE": -14},
                        {"SCENE_FIRST_FRAME_TIMEOUT": float("nan")},
                        {"SHARED_CAMERA_ENABLED": False}, {"CAMERA_BACKEND": "dshwo"}):
             with self.subTest(config=config), tempfile.TemporaryDirectory() as directory:

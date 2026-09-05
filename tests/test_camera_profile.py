@@ -15,11 +15,76 @@ import manager
 
 
 class CameraProfileTests(unittest.TestCase):
+    def test_exposure_is_explicit_verified_and_preserved_for_reopen(self):
+        relay = shared_camera.SharedCameraRelay.__new__(shared_camera.SharedCameraRelay)
+        relay.camera_index, relay.width, relay.height, relay.fps = 1, 1280, 720, 30
+        relay.fourcc, relay.backend_preference = "MJPG", "dshow"
+        relay.fallback_to_default, relay.strict_backend, relay.exposure = False, True, -5
+        with mock.patch.object(shared_camera, "_open_with_backends") as open_capture:
+            relay._create_capture()
+            self.assertEqual(open_capture.call_args.kwargs["exposure"], -5)
+
+        for requested, actual, accepted in [(None, -4, True), (-5, -5, True), (-5, -4, True), (-5, -5, False)]:
+            with self.subTest(requested=requested, actual=actual, accepted=accepted):
+                cap = mock.Mock()
+                cap.get.return_value = actual
+                cap.set.return_value = accepted
+                with (mock.patch.object(shared_camera.cv2, "CAP_PROP_EXPOSURE", 15),
+                      mock.patch.object(shared_camera.cv2, "VideoCapture", return_value=cap),
+                      mock.patch.object(shared_camera, "_backend_order", return_value=[700])):
+                    result = shared_camera._open_with_backends(1, 1280, 720, 30, "MJPG", "dshow", False, True,
+                                                              exposure=requested)
+                exposure_calls = [call for call in cap.set.call_args_list if call.args[0] == 15]
+                if requested is None:
+                    self.assertEqual(exposure_calls, [])
+                else:
+                    self.assertEqual(len(exposure_calls), 1)
+                if requested is not None and (actual != requested or not accepted):
+                    self.assertIsNone(result)
+                    cap.release.assert_called_once()
+                else:
+                    self.assertIs(result, cap)
+
+    def test_dshow_format_survives_fps_device_reconfiguration(self):
+        # Model the OpenCV DShow FPS setter reopening with its default format.
+        properties = {3: 640, 4: 480, 5: 15, 6: 844715353}
+
+        def set_property(key, value):
+            properties[key] = value
+            if key == 5:
+                properties[6] = 844715353  # YUY2
+            return True
+
+        cap = mock.Mock()
+        cap.set.side_effect = set_property
+        cap.get.side_effect = lambda key: properties.get(key, 0)
+        with (
+            mock.patch.multiple(shared_camera.cv2, CAP_PROP_FRAME_WIDTH=3, CAP_PROP_FRAME_HEIGHT=4,
+                                CAP_PROP_FPS=5, CAP_PROP_FOURCC=6, CAP_PROP_CONVERT_RGB=16,
+                                CAP_PROP_BUFFERSIZE=38, CAP_DSHOW=700),
+            mock.patch.object(shared_camera.cv2, "VideoCapture", return_value=cap),
+            mock.patch.object(shared_camera.cv2, "VideoWriter_fourcc", return_value=1196444237),
+            mock.patch.object(shared_camera, "_backend_order", return_value=[700]),
+        ):
+            opened = shared_camera._open_with_backends(1, 1280, 720, 30, "MJPG", "dshow", False, True)
+        self.assertIs(opened, cap)
+        self.assertEqual((properties[3], properties[4], properties[5]), (1280, 720, 30))
+        self.assertEqual(shared_camera._decode_fourcc(properties[6]), "MJPG")
+
+    def test_capture_fps_counts_intervals_between_first_and_last_frame(self):
+        cap = mock.Mock()
+        cap.read.return_value = (True, object())
+        with mock.patch.object(shared_camera.time, "perf_counter", side_effect=[0, 0, 0.5, 0.75, 1.0, 2.0]):
+            measured_fps, count = shared_camera._measure_capture_fps(cap, 2)
+        self.assertEqual(count, 2)
+        self.assertEqual(measured_fps, 2.0)
+
     def test_manager_camera_environment_overrides_json_config(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as config_file:
             json.dump(
                 {
                     "CAMERA_FPS": 60,
+                    "CAMERA_EXPOSURE": -4,
                     "CAMERA_BACKEND": "msmf",
                     "CAMERA_ALLOW_FALLBACK": True,
                 },
@@ -32,6 +97,7 @@ class CameraProfileTests(unittest.TestCase):
                 os.environ,
                 {
                     "KIDZDISCO_CAMERA_FPS": "30",
+                    "KIDZDISCO_CAMERA_EXPOSURE": "-5",
                     "KIDZDISCO_CAMERA_BACKEND": "dshow",
                     "KIDZDISCO_CAMERA_ALLOW_FALLBACK": "false",
                 },
@@ -42,6 +108,7 @@ class CameraProfileTests(unittest.TestCase):
             os.unlink(config_path)
 
         self.assertEqual(config["CAMERA_FPS"], 30)
+        self.assertEqual(config["CAMERA_EXPOSURE"], -5)
         self.assertEqual(config["CAMERA_BACKEND"], "dshow")
         self.assertIs(config["CAMERA_ALLOW_FALLBACK"], False)
         self.assertEqual(config["_CAMERA_CONFIG_SOURCES"]["CAMERA_FPS"], "environment")
@@ -112,6 +179,7 @@ class CameraProfileTests(unittest.TestCase):
         relay.channels = 3
         relay.fps = 60.0
         relay.fourcc = "MJPG"
+        relay.exposure = -5
         relay.camera_index = 2
         relay.backend_preference = "dshow"
         relay.strict_backend = True
@@ -125,6 +193,7 @@ class CameraProfileTests(unittest.TestCase):
         self.assertEqual(env["KIDZDISCO_CAMERA_WIDTH"], "640")
         self.assertEqual(env["KIDZDISCO_CAMERA_HEIGHT"], "360")
         self.assertEqual(env["KIDZDISCO_CAMERA_FPS"], "60")
+        self.assertEqual(env["KIDZDISCO_CAMERA_EXPOSURE"], "-5")
         self.assertEqual(env["KIDZDISCO_CAMERA_BACKEND"], "dshow")
         self.assertEqual(env["KIDZDISCO_CAMERA_STRICT_BACKEND"], "true")
         self.assertEqual(env["KIDZDISCO_CAMERA_ALLOW_FALLBACK"], "false")

@@ -58,12 +58,22 @@ def _parse_optional_int_setting(value):
         return None
     return int(value)
 
+
+def _parse_optional_float_setting(value):
+    if value is None or str(value).strip().lower() in {"", "none", "null", "auto"}:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("expected a number or null, got boolean")
+    return float(value)
+
+
 DEFAULT_CONFIG = {
     "CAMERA_INDEX": 1,
     "CAMERA_WIDTH": 1280,
     "CAMERA_HEIGHT": 720,
     "CAMERA_FPS": 60,
     "CAMERA_FOURCC": "MJPG",
+    "CAMERA_EXPOSURE": None,
     "CAMERA_DIAGNOSTIC_SECONDS": 2.0,
     "CAMERA_STRICT_BACKEND": True,
     "CAMERA_BACKEND": "dshow",
@@ -101,6 +111,7 @@ CAMERA_ENV_CASTERS = {
     "CAMERA_HEIGHT": int,
     "CAMERA_FPS": int,
     "CAMERA_FOURCC": str,
+    "CAMERA_EXPOSURE": _parse_optional_float_setting,
     "CAMERA_DIAGNOSTIC_SECONDS": float,
     "CAMERA_STRICT_BACKEND": _parse_bool_setting,
     "CAMERA_BACKEND": str,
@@ -126,6 +137,9 @@ def validate_runtime_config(cfg):
                 raise ValueError(f"{key} must be non-negative")
         if cfg["CAMERA_OPENCV_INDEX"] is not None and cfg["CAMERA_OPENCV_INDEX"] < 0:
             raise ValueError("CAMERA_OPENCV_INDEX must be non-negative or null")
+        exposure = cfg["CAMERA_EXPOSURE"]
+        if exposure is not None and (not math.isfinite(exposure) or not -13 <= exposure <= 0):
+            raise ValueError("CAMERA_EXPOSURE must be finite, between -13 and 0, or null")
         for key in ("SCENE_GRACEFUL_TIMEOUT", "SCENE_TERMINATE_TIMEOUT", "SCENE_READY_TIMEOUT",
                     "SCENE_START_ACK_TIMEOUT", "SCENE_FIRST_FRAME_TIMEOUT", "TRANSITION_TOTAL_DURATION"):
             value = float(cfg[key])
@@ -842,6 +856,7 @@ def main():
             exclude_name_hints=CONFIG.get("CAMERA_EXCLUDE_HINTS"),
             explicit_index=CONFIG.get("CAMERA_OPENCV_INDEX"),
             require_name_match=CONFIG.get("CAMERA_REQUIRE_NAME_MATCH", False),
+            exposure=CONFIG.get("CAMERA_EXPOSURE"),
         )
         camera_relay.start()
 

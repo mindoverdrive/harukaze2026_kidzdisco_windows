@@ -28,6 +28,7 @@ class KidsTestLaunchTests(unittest.TestCase):
             self.assertFalse(manager.CONFIG["CLAP_MONITOR_ENABLED"])
             self.assertEqual(manager.CONFIG["PRELOAD_COUNT"], 0)
         self.assertEqual(relay_constructor.call_args.kwargs["fps"], 30)
+        self.assertEqual(relay_constructor.call_args.kwargs["exposure"], -5)
         self.assertIsNone(relay_constructor.call_args.kwargs["explicit_index"])
         self.assertTrue(relay_constructor.call_args.kwargs["require_name_match"])
 

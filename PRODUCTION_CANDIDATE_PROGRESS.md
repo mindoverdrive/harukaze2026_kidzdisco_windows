@@ -2,6 +2,8 @@
 
 作業ブランチ: `codex/rebirth2026-production-candidate`。本番昇格・main/stable統合は行っていない。
 
+**08時台更新:** PB-01はユーザー許可による1実行ファイルのallowlist追加で解消。既存Pythonでpreflight成功、C922n実取得・30秒起動・3回切替は正常終了。回帰66件。約16fpsの未解決点とMacBook向けパラメーターUIの追加要望は [実機確認記録](CAMERA_RUNTIME_CHECK_20260906.md) を参照。下記の権限不足は解消前の履歴。
+
 ## 最新の優先順位
 
 2026-09-06: まず `finger_colorfull_dots_acer.py` を Acer + C922 で子供が実地テストできる候補にする。映像と操作位置は同一の座標変換を通す。この優先に競合しない P1、再監査、耐久試験準備は継続する。

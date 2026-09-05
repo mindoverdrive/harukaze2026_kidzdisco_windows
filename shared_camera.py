@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import struct
 import threading
 import time
@@ -175,7 +176,7 @@ def _measure_capture_fps(cap, sample_seconds=2.0):
         return 0.0, frames
 
     elapsed = last_ts - first_ts
-    return frames / elapsed, frames
+    return (frames - 1) / elapsed, frames
 
 
 def _open_with_backends(
@@ -187,8 +188,9 @@ def _open_with_backends(
     backend_preference,
     fallback_to_default,
     strict_backend=False,
+    exposure=None,
 ):
-    def _setup_props(cap):
+    def _setup_props(cap, backend):
         normalized_fourcc = _normalize_fourcc(fourcc)
         cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -197,6 +199,17 @@ def _open_with_backends(
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
+        if normalized_fourcc and backend == cv2.CAP_DSHOW:
+            # DShow reopens without the selected FOURCC when size/FPS changes.
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*normalized_fourcc))
+        if exposure is not None:
+            previous = cap.get(cv2.CAP_PROP_EXPOSURE)
+            if not cap.set(cv2.CAP_PROP_EXPOSURE, exposure):
+                raise RuntimeError(f"Camera exposure rejected: requested={exposure}")
+            actual = cap.get(cv2.CAP_PROP_EXPOSURE)
+            if not math.isfinite(actual) or abs(actual - exposure) > 0.5:
+                raise RuntimeError(f"Camera exposure mismatch: requested={exposure} actual={actual}")
+            print(f"[shared_camera] Exposure previous={previous} requested={exposure} actual={actual}")
 
     indices = [camera_index]
     if fallback_to_default:
@@ -209,7 +222,7 @@ def _open_with_backends(
                 print(f"[shared_camera] Trying camera index={idx} backend={backend}")
                 cap = cv2.VideoCapture(idx) if backend is None else cv2.VideoCapture(idx, backend)
                 if cap.isOpened():
-                    _setup_props(cap)
+                    _setup_props(cap, backend)
                     actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
                     print(f"[shared_camera] Opened physical camera index={idx} "
                           f"backend={backend} fourcc={actual_fourcc}")
@@ -340,6 +353,7 @@ class SharedCameraRelay:
         diagnostic_seconds=2.0,
         strict_backend=True,
         require_name_match=False,
+        exposure=None,
     ):
         self.requested_camera_index = int(camera_index)
         self.camera_index = choose_camera_index(
@@ -362,6 +376,7 @@ class SharedCameraRelay:
         self.exclude_name_hints = exclude_name_hints
         self.explicit_index = explicit_index
         self.require_name_match = require_name_match
+        self.exposure = exposure
         self.frame_bytes = self.width * self.height * self.channels
         self.shm_name = f"harukaze_cam_{os.getpid()}_{uuid.uuid4().hex[:12]}"
         self.shm = shared_memory.SharedMemory(create=True, size=HEADER_SIZE + self.frame_bytes, name=self.shm_name)
@@ -437,6 +452,7 @@ class SharedCameraRelay:
             backend_preference=self.backend_preference,
             fallback_to_default=self.fallback_to_default,
             strict_backend=self.strict_backend,
+            exposure=self.exposure,
         )
 
     def _reopen_capture(self):
@@ -564,6 +580,7 @@ class SharedCameraRelay:
             "KIDZDISCO_CAMERA_HEIGHT": str(self.height),
             "KIDZDISCO_CAMERA_FPS": str(int(self.fps)),
             "KIDZDISCO_CAMERA_FOURCC": self.fourcc,
+            "KIDZDISCO_CAMERA_EXPOSURE": "" if self.exposure is None else str(self.exposure),
             "KIDZDISCO_CAMERA_BACKEND": str(self.backend_preference),
             "KIDZDISCO_CAMERA_STRICT_BACKEND": str(self.strict_backend).lower(),
             "KIDZDISCO_CAMERA_ALLOW_FALLBACK": str(self.fallback_to_default).lower(),

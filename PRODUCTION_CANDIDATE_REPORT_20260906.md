@@ -4,7 +4,7 @@
 
 **最初の候補は `finger_colorfull_dots_acer.py`。専用の起動入口、映像/指先の共通座標変換、共有カメラ、起動同期、終了処理、試験ログを実装し、自動テスト63件が通過した。実C922の映像を出して子供が遊べることはまだ確認できていない。**
 
-エージェントに許可されたPython 3.11には映像ライブラリが不足している。既存映像venvと新規の独立venvの実行はlean-ctxの許可リストに拒否された。実地テスト開始の次の条件は、既存映像環境でのpreflightと実映像確認。ここを完了済み・安定版・12時間合格とは記録しない。
+**08時台の更新: ユーザー許可でlean-ctxへ既存映像Pythonを1件だけ追加し、PB-01を解消した。preflightと実C922nでの30秒起動・3回切替が成功。自動回帰は66件通過。以下の初回報告に対する更新・ログ・残る約16fpsの問題は [実機確認記録](CAMERA_RUNTIME_CHECK_20260906.md) を正とする。子供の操作確認・30分・12時間は未合格。**
 
 対象ブランチは `codex/rebirth2026-production-candidate`。基点は `260ee87`。main/stableへの統合、force push、本番昇格は行っていない。別ディレクトリで動いていた `finger_mandala_3_test.py` と関連するユーザープロセスは停止していない。
 
@@ -75,7 +75,7 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 
 |状態/ID|残っていること|根拠/次の確認|
 |---|---|---|
-|PERMISSION_BLOCKED PB-01|映像用Pythonの実行とimport確認|既存venvの直接実行が許可リスト拒否。代替のローカルvenv作成は成功したが、その実行も拒否。制限設定を変更したり別経路から同じ操作を実行していない。既存映像環境のpreflightを人間が実行し、結果を返すか、その環境を実行可能にする権限が必要|
+|RESOLVED PB-01|映像用Pythonの実行とimport確認|ユーザー許可後に公式CLIで実行ファイルを1件追加。既存環境のpreflightと実シーン起動を確認。詳細は実機確認記録|
 |HUMAN_CHECK_REQUIRED H-01|C922実取得、5点の映像/指先一致、子供が遊べること|OSの機器存在とコード上の共通変換まで確認。実映像/表示DPI/遅延は未確認|
 |HUMAN_CHECK_REQUIRED H-02|30分単一シーン、20回切替、USB復帰、終了後再取得|疑似入力での機構試験は通過。実カメラ/熱/ドライバー待ち/資源の長時間傾向は実機が必要|
 |HUMAN_CHECK_REQUIRED H-03|Xiaomi L32M8-A2TWNへの全画面とGPU2シーン|表示モード、DPI、GPU負荷、実パネルの表示品質が未確認|
