@@ -1,5 +1,7 @@
 # Rebirth 2026：P1本番候補の完了監査
 
+**後続の検証:** 本書の94件は完了監査時点の履歴。映像venvのJob問題と切替回数の追加修正、両Pythonで120件の回帰、C922nの30分運転と20回切替は [Windows映像venvの継続検証記録](WINDOWS_VENV_RUNTIME_CHECK_20260906.md) を参照する。操作が混じった30分を無中断合格とは扱わない。
+
 対象ゴールは、隔離ブランチ上でP1のproduction entrypoint・cleanup・camera profile・起動handshake・camera reconnectを調査、最小修正、検証、再検証、checkpoint commitし、人間がAcer／C922n／Xiaomiの実機評価を開始できる候補と、保留・起動・rollback・確認順を渡すこと。
 
 到達段階は **人間の実機評価へ渡す本番候補**。子供の操作、Macからの通信、Xiaomi表示、実USB復帰、30分・12時間の合格や、本番昇格を意味しない。FPSの追加原因調査はユーザー指示で後回しとし、現場でMacから露出等を調整する方針を維持する。

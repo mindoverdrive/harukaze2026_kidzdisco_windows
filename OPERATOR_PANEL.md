@@ -23,6 +23,15 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 
 ## MacBookから開く
 
+接続だけを先に確認する場合は、AcerとMacBookを選んだネットワークにつなぎ、Acer側のIPv4を確かめて次を実行する。これはTDやカメラを止めずに使える。
+
+```powershell
+$acerLinkAddress = Read-Host '選んだ接続のAcer側IPv4'
+& '.\Check Mac Connection.cmd' --bind $acerLinkAddress
+```
+
+表示されたランダムURLをMacBookで開く。既定は8767番・10分で自動終了。競合時は別のポートを明示する（例: `--port 8768`）。ネットワーク設定やファイアウォールは変更しない。接続記録 `test_reports/mac_connection_*.jsonl` は送信元IPとUTC時刻だけを含む。Acer自身からのアクセスをMac接続の合格には数えない。ページの表示は疎通だけの確認で、以下の本番操作UIは別に確認する。
+
 先に、別のTouchDesigner/BridgeやPythonがC922nを使用していないことを確認する。使用中ならその作業を保存し、通常終了してカメラを解放してからManagerを起動する。別作業のプロセスを一括強制終了しない。
 
 1. Acerホットスポット、Bluetooth PAN、同じWi-Fiのどれで接続するかを選び、AcerとMacBookをつなぐ。方式はまだ未選択で、MacBookからの実通信も未確認。

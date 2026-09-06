@@ -4,7 +4,7 @@
 
 **最新のユーザー方針:** 部屋の暗さが低fpsに影響している可能性を踏まえ、FPSの追加調査は後回しにする。露出・ズームをMacのUIから現場で調整し保存する導線を優先する。暗さを唯一の原因と断定せず、既に検証した指定値補正は保持する。現在の作業を止めず、ユーザーが準備できるMacとの接続確認を並行する。
 
-**最新チェックポイント:** 完了監査で、本番シーン一覧の省略時に7本へ広がる問題と、カメラ初期設定・解放の二重失敗で所有参照を失う問題を再現し、`40db032`・`d94ba5d`で最小修正・通常pushした。全回帰 **94件 / 9.256秒 / OK、終了コード0**。実際の `Start Kids Test.cmd --check` も既存映像用Pythonで成功した。この追加修正後の実カメラ試験は未実施。[P1完了監査](P1_CANDIDATE_COMPLETION_AUDIT_20260906.md)を現在の根拠とする。
+**最新チェックポイント:** Windows Job所有・退出観測・Mac疎通入口に加え、自然復帰を切替成功に数える問題を`91b3200`で最小修正し、候補ブランチへ通常push。全回帰はPython 3.11で120件 / 11.050秒、映像venv 3.12.10で120件 / 13.009秒、両方OK・exit0。先行版`270b315`でC922nの30分運転は正常終了・対象PID/共有メモリ残留0。ただし次へ2回とEsc復帰2回を含み、30分無中断は未合格。修正後の実20回切替も完走し、Esc復帰3回を成功回数から除外した。最新の結果・変更根拠・限界は [Windows映像venvの継続検証記録](WINDOWS_VENV_RUNTIME_CHECK_20260906.md) を参照。旧94件・112件や旧実測は各版の記録として保持する。
 
 **前段階（09:30の実機結果）:** C922nの初回フレーム後の露出戻りを再現・修正し、基準シーンで30.719秒・約30fps・途中終了なし・正常終了を確認した。当時の回帰は84件。Acer内のカメラUIも確認済み。MacBookとの実通信、透過対象、子供の操作、30分/12時間は保留。[露出補正の記録](C922_EXPOSURE_DRIFT_20260906.md)を今回の追加修正後の実機再検証とは扱わない。
 
@@ -66,6 +66,10 @@ OpenCV/NumPy/MediaPipe/pygame/pygfxの描画処理は疑似実装を用いた試
 |`c9cc221`|初回取得後の指定値補正・解放、回帰84件と実機30秒の記録。FPS追加調査は後回し|
 |`40db032`|本番シーン一覧の省略/null/空をカメラ取得前に拒否。JSON入口と明示順序の試験を追加|
 |`d94ba5d`|カメラ取得直後に所有を登録。初期設定とreleaseの二重失敗でも保持し、解放成功後だけ再取得。全回帰94件|
+|`5d5750c`|既存private Jobを持つ子も制限を維持して所有。複数Jobの停止・解放・二重失敗時の参照保持|
+|`2be24e7`|シーンの退出操作、runner終了、Manager停止要求をlaunch_id・実PIDで対応付けて記録|
+|`270b315`|カメラを使わずMacから疎通を確認する入口。3変更後の全回帰112件は両Pythonで成功|
+|`91b3200`|自然復帰を切替成功に数えず、全昇格と生存シーンの正常交代を分離。全回帰120件が両Pythonで成功|
 
 ## 最初の起動と自動試験手順
 
@@ -94,7 +98,7 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 |---|---|---|
 |RESOLVED PB-01|映像用Pythonの実行とimport確認|ユーザー許可後に公式CLIで実行ファイルを1件追加。既存環境のpreflightと実シーン起動を確認。詳細は実機確認記録|
 |HUMAN_CHECK_REQUIRED H-01|5点の映像/指先一致、子供が遊べること|実C922n取得と初回描画通知は確認済み。パネル上の座標、表示DPI、体感遅延、子供の操作は未確認|
-|HUMAN_CHECK_REQUIRED H-02|30分単一シーン、20回切替、USB復帰、終了後再取得|疑似入力での機構試験は通過。実カメラ/熱/ドライバー待ち/資源の長時間傾向は実機が必要|
+|HUMAN_CHECK_REQUIRED H-02（一部確認済み）|30分単一シーン、異種シーン、実USB復帰|同一dotsの実20回交代・Esc復帰3回・終了後の資源解放を確認。操作の入った30分は無中断未合格。GPU/熱・異種シーン・実USB復帰は別確認|
 |HUMAN_CHECK_REQUIRED H-03|Xiaomi L32M8-A2TWNへの全画面とGPU2シーン|表示モード、DPI、GPU負荷、実パネルの表示品質が未確認|
 |HUMAN_CHECK_REQUIRED H-04|採用する正確な各sceneと演出品質|`finger_mandala_3.py`と現行 `_2.py` 等の選定、個人と左右の手の対応、妖精ガイド、桜遷移の見た目を確定する必要がある|
 |HUMAN_CHECK_REQUIRED H-05|12時間再起動なし|まず基礎試験を人間が評価。試験コマンドを用意したことを耐久合格にしない|
@@ -115,13 +119,14 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 
 ## 変更ファイル一覧
 
-基点 `260ee87` から本報告までの55ファイル。Git差分と下記一覧の過不足がないことを照合した。Acerラッパー7本は本文を読んだが変更していない。`.shared_camera_session.json` は生成物としてGit追跡を解除し、元のローカルファイルを残した。
+基点 `260ee87` から本報告までの61ファイル。Acerラッパー7本は本文を読んだが変更していない。`.shared_camera_session.json` は生成物としてGit追跡を解除し、元のローカルファイルを残した。
 
 ```text
 .gitignore
 .shared_camera_session.json (Git追跡解除)
 CAMERA_RUNTIME_CHECK_20260906.md
 C922_EXPOSURE_DRIFT_20260906.md
+Check Mac Connection.cmd
 ENDURANCE_TEST_PLAN.md
 KIDS_TEST_START.md
 LEAN_CTX_REMOVAL_20260906.md
@@ -135,6 +140,7 @@ RECHECK_AUDIT_20260906.md
 REBIRTH_IPHONE_HANDOFF_2026-09-05.md
 Reverse Ubers iPhone Handoff .md
 Start Kids Test.cmd
+WINDOWS_VENV_RUNTIME_CHECK_20260906.md
 camera_controls.py
 config.json
 configs/kids_test_acer.json
@@ -151,12 +157,14 @@ runtime_diagnostics.py
 saturn_particles_2.py
 scene_control.py
 scene_profile_runner.py
+scripts/check_mac_connection.py
 scripts/start_kids_test.py
 shared_camera.py
 spider_cursor_2.py
 tests/fixtures/handshake_body.py
 tests/fixtures/handshake_launcher_acer.py
 tests/fixtures/handshake_scene_acer.py
+tests/fixtures/nested_job_launcher.py
 tests/test_camera_coordinates.py
 tests/test_camera_first_frame_controls.py
 tests/test_camera_profile.py
@@ -164,11 +172,13 @@ tests/test_camera_reconnect.py
 tests/test_cleanup.py
 tests/test_first_frame_render.py
 tests/test_kids_test_launch.py
+tests/test_mac_connection_check.py
 tests/test_operator_panel.py
 tests/test_production_playlist.py
 tests/test_runtime_diagnostics.py
 tests/test_runtime_validation.py
 tests/test_scene_control.py
+tests/test_scene_exit_observation.py
 tests/test_scene_resources.py
 tests/test_scene_switch.py
 tests/test_windows_launcher.py

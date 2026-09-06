@@ -1,6 +1,6 @@
 # Acer / C922 基礎試験と12時間試験の準備
 
-この文書は試験手順。実際の30分、実USBの復帰、12時間耐久は未実施。実地テスト入口は [KIDS_TEST_START.md](KIDS_TEST_START.md)。最初の候補は `finger_colorfull_dots_acer.py`。
+この文書は試験手順。30分の実運転は正常終了したが、操作による切替・退出を含むため単一シーン無中断は未合格。修正後の20回切替の結果も [継続検証記録](WINDOWS_VENV_RUNTIME_CHECK_20260906.md) の試験IDと照合する。実USBの復帰と12時間耐久は未実施。実地テスト入口は [KIDS_TEST_START.md](KIDS_TEST_START.md)。最初の候補は `finger_colorfull_dots_acer.py`。
 
 ## 実施順
 
@@ -42,6 +42,8 @@
 - `runtime.jsonl`: 起動制御イベント、実Python PIDとランチャーPID、共有メモリ名、10秒ごとのフレーム番号/最終成功からの経過/最大フレーム間隔、再取得回数、終了理由、切替回数。
 - 同じsample内にPrivate Bytes、Working Set、累積CPU時間、ハンドル、GDI/USERオブジェクトをPID別に記録。取得できない項目はunavailable/nullで残す。PID再利用を識別するcreation_ticksも記録する。
 - `scene_output.jsonl`: 子シーンのstdout/stderr。`[SceneMetrics]` はカメラ処理と描画APIが成功した呼出しの10秒平均FPS。実パネルの表示更新を測った値ではない。
+- `[SceneLifecycle]` の `exit_request` / `runner_end` はQUIT・Esc・q・Python終了を区別する。Managerの `scene_stop_request` / `scene_exit` とlaunch_id・実PID・launcher PIDで照合する。runner終了の記録だけでOS資源解放完了とは判定しない。
+- `91b3200`以後の `sample.switch_count` / `run_end.completed_switches` は、旧シーン生存とFIRST_FRAME後の停止成功を伴う交代数。初回と自然復帰は全昇格の `promotion_count` / `completed_promotions` にだけ含む。以前のログは定義が異なるので混在させない。
 
 各ログは5MiB×現行1ファイル＋世代3ファイルの上限。2種類合わせて約40MiB（最後のレコード分は超過し得る）。長時間の大量エラーで古いログが循環した場合、初期の測定が残っているとは限らない。metadataは別保存。子の出力は読み捨てず逐次排出し、終了済みの読取スレッドを保持し続けない。データの書込失敗は試験失敗として停止処理に進む。
 
@@ -73,5 +75,7 @@ GPUメモリ、温度、物理パネルの表示FPS、入力から反応まで�
 ## 失敗時
 
 Manager ControlのqまたはコンソールCtrl+Cで通常終了する。関連ファイル一式、失敗時刻、最後のscene_control、試験条件、実際の画面、最後のsampleを保存する。Job停止やカメラjoinが未完了なら、そのPIDを確認してから人間が該当アプリだけを終了する。別ディレクトリのシーンやTouchDesignerまで一括終了しない。
+
+映像ウィンドウのEsc/qは子シーンだけの終了で、Managerは復帰のため同じシーンを起動し得る。全体を終える場合は操作UIの「Managerを終了」またはManager Controlのqを使う。無中断試験中のNext、n、Esc/qは時刻と対象ウィンドウを記録し、無操作の試験結果と区別する。
 
 最初の再確認順は **finger_colorfull_dots_acer → finger_grid_interaction_acer → particle_storm_acer**。それぞれ、映像と指先の入口、Pygame側の複数手/CPU負荷、WGPU/モデル/描画資源の経路を段階的に確かめるため。これは本番採用の決定ではない。
