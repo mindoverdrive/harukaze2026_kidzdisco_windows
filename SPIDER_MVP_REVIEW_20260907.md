@@ -1,5 +1,13 @@
 # Spider MVP実機確認
 
+## 02:19 更新：成人の操作確認と再起動の保留
+
+- ユーザーが中央の表示・追従、両手による2匹の独立操作、四隅の指位置一致、10秒退出後の円消失・映像継続・再入場時の追従再開をそれぞれOKと回答。
+- 片手で2匹を操作できる挙動は維持する意向。中指の独立検出ではなく、人差し指から右下100pxの第2目標であることもユーザーが確認した。
+- 最新1041.063秒時点camera failure/reopen 0、last_errorなし、最大frame gap 0.094秒、直近描画35fps、検出・描画エラーログなし。
+- ただし02:06:08、02:08:19、02:13:10にscene_exitが発生。3回ともlauncher_exit_code=0、runner outcome=return、exit_request_reason=null。その後FIRST_FRAMEを再受信しpromotion_count=4。正常な連続30分運転とは扱わない。手動終了・カメラ読取終了などの原因は未特定で、ユーザー操作の有無を確認する。推測修正なし。
+- 操作面のMVP候補として保持。終了・再起動の原因確認と単一30分、終了残留、Manager切替反復、子供・2人同時・長時間運転は保留。以下は起動時点の履歴。
+
 - 起動入口 `scripts/start_kids_test.py --audience --scene spider` を追加。既存 `spider_cursor_acer.py` → `spider_cursor_2.py` を使用。描画・操作コードの変更なし。
 - 共通の一時profileでManagerが物理カメラを所有。先読み・拍手・遷移を無効化し、Xiaomi DISPLAY5へ単独表示する。
 - 両Pythonで回帰222件成功。初回の全体試験はHTTP応答中にWinError10053が1件発生し、再実行では成功した。原因未特定として保持し、安定性の合格根拠にしない。実preflight成功。
