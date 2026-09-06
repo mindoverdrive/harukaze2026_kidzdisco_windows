@@ -37,7 +37,7 @@ from contextlib import ExitStack
 import cv2
 import pygame
 import display_utils
-from scene_control import notify_first_frame
+from scene_control import notify_first_frame, notify_exit_request
 import mediapipe as mp
 import numpy as np
 import math
@@ -454,9 +454,11 @@ def main():
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                notify_exit_request("pygame_quit")
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    notify_exit_request("escape_key")
                     running = False
 
         if len(bugs) < max_bugs and random.random() < 0.01:
@@ -464,6 +466,7 @@ def main():
 
         ret, frame = cap.read()
         if not ret:
+            notify_exit_request("camera_read_failed")
             break
 
         frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, width, height)
