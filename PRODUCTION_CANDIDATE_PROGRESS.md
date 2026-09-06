@@ -1,5 +1,7 @@
 # Rebirth 2026 本番候補の作業記録
 
+**2026-09-07最新：Stormの成人基本目視合格基準は9caa62a。** タグ `codex/storm-visual-baseline-20260907` で固定・push済み。奥行き・粒径・全画面配置の修正と目視結果は `PARTICLE_STORM_DEPTH_FIX_20260907.md`。現基準版の30分は未完了で、下記の過去版30分合格とは区別する。次の低リスク1件は挙動変更0での30分連続試験という対応案にまとめた（`MVP_NEXT_STEP_PLAN_20260907.md`）。今回は試験未開始。旧15分試験は予定終了し、対象Python/共有メモリ不在。USB自動復帰未解決、子供と実2人は別の参加待ち。Mac/PANは本番対象外のまま。以下は過去時点の記録。
+
 **最新判定：Particle Stormは、背景深度修正後に成人の基本操作と30分単一シーン試験を通過したMVP候補である。** 中央の生映像が粒子を隠す問題を背景materialの`depth_write=False`で最小修正し、commit `c258d6c`をpush済み。人間が中央で生映像と粒子の重なり、開掌による反発、拳による赤カーソルと吸引をOKと確認した。`trial_elapsed_s=1809.953`、exit 0、camera read failure 0、reopen 0、`last_error=null`、最大frame gap 0.109秒、終了後の対象PID・共有メモリ残留なし。終了時の`KeyboardInterrupt`と`ConnectionAbortedError`は残るため完全無エラーとは記録しない。
 
 コード横断監査では、Managerの物理カメラ一元所有、共有メモリ接続、左右反転、アスペクト比維持、背景と同じ座標投影が既に共通化されていることを確認した。残る重複は検出条件・gesture・2D/3D投影・合成方法・カメラ欠損時挙動の差が大きい。MVP前に新しい共通moduleを実装すると合格済みシーンを含む再試験範囲が増えるため、追加共通化は行わず個別検証を続ける。詳細は [Particle Storm MVP確認と共通経路監査](PARTICLE_STORM_MVP_REVIEW_20260906.md)。
