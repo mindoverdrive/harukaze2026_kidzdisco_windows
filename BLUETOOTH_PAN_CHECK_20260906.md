@@ -2,7 +2,11 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**13:11 JST 時点ではPAN未成立。Mac側の正確なOS版と接続機能をまだ観測できておらず、この組み合わせの可否は未確定。** HTTP・SSH・再接続・短時間安定性のPAN経由の合格はまだない。必要な人間操作・情報の返答待ちとしてここで停止する。
+**最新：MacからAcerの検出はユーザー確認済み。ペアリング結果待ちで、PANはまだ未成立。** MacはTahoe 26.6.2との申告。HTTP・SSH・再接続・短時間安定性のPAN経由の合格はまだない。13:11時点の保留後、ユーザー回答を受けて確認を再開した。
+
+**13:14 JST追記:** ユーザーから「Tahoe 26.6.2、見えてない」と回答を受領。OS版は申告値として記録し、直前の確認質問に対してAcerの機器一覧にMacが表示されないとの回答として扱う。Acerの再読取でもPANはDisconnected、BluetoothサービスはRunning。PANプロファイル非対応とは断定せず、逆方向としてMacのBluetooth設定「近くのデバイス」にAcer名 `AYM_ILL` が表示されるかを追加確認した。
+
+その後ユーザーが、Mac側では `AYM_ILL` が表示されると回答した。**Mac→Acerの機器検出はユーザー確認済み**。Windows設定を前面で再取得すると「デバイスを追加する」の種類選択画面であり、Acer側の実スキャンが完了した証拠はまだない。従って最初の「見えない」だけを無線の検出失敗とは断定しない。Macから「接続」を押し、両機の番号を照合してペアリングできるか、ユーザーへ操作と結果の確認を依頼した。ペアリングとPAN成立は分けて記録する。
 
 ## 今回の優先変更
 
@@ -23,7 +27,7 @@
 |Acer内HTTP|13:04:31 JST、既存URLへ直接GET、200 / 651 bytes|サーバー自己確認のみ|
 |HTTPアクセス記録|13:09時点の2件は両方Acer自身のIP|Mac到達の記録なし|
 |SSH|OpenSSH Serverインストールあり、sshdはStopped / Manual、TCP 22 listenerなし|SSH試験未開始|
-|Mac OS / PAN機能|ユーザー申告はM1・最新macOS。版番号と実際のPAN項目は未取得|Human Check Required|
+|Mac OS / PAN機能|13:14追記：M1・Tahoe 26.6.2（ユーザー申告）。実際のPAN項目は未取得|PAN機能はHuman Check Required|
 
 13:11:29 JSTの再読取で既存待受の予定終了を確認した。ログは「時間制限」で終了し、PID 30328とTCP 8767 listenerは存在しない。アクセスはAcer自身の2件のみ。ページの期限終了を接続失敗と数えない。
 
@@ -65,6 +69,7 @@ macOS Tahoe 26のInternet Sharing説明だけでは、当該MacにBluetooth PAN�
 - `pan_existing_http_selfcheck_20260906.json`: 既存URLのAcer自己HTTP検査。
 - `pan_before_handoff_20260906.json`: 13:09のPAN・待受・HTTP記録。
 - `pan_probe_final_20260906.json`: 13:11の未接続、待受の期限終了とPID/port解放。
+- `pan_acer_after_mac_report_20260906.json`: Mac側情報を受領した13:14のPAN・Bluetooth・SSHサービス再読取。
 - `mac_link_standby_20260906_1210.jsonl`: 自己アクセスを含む既存待受の記録。予定終了は13:10:47 JST。
 
 コード・設定の基準点は `705b081` のまま。接続診断では戻すべきネットワーク設定変更はない。後続の文書コミットは履歴を消さずrevertできる。
