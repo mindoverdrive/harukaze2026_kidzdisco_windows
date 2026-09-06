@@ -339,9 +339,11 @@ def setup_rendercanvas_fullscreen(canvas):
         import glfw
 
         if hasattr(canvas, "_window") and canvas._window:
+            # Removing decorations can change the Win32 client bounds. Do it
+            # before the final placement so the audience screen stays covered.
+            glfw.set_window_attrib(canvas._window, glfw.DECORATED, False)
             glfw.set_window_pos(canvas._window, x, y)
             glfw.set_window_size(canvas._window, w, h)
-            glfw.set_window_attrib(canvas._window, glfw.DECORATED, False)
             print(f"[display_utils] RenderCanvas moved to {x},{y} size {w}x{h}")
         else:
             print("[display_utils] Warning: canvas._window not available")
