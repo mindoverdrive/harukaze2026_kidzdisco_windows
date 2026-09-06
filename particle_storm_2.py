@@ -138,8 +138,9 @@ class ParticleStormApp:
         self.hand_data = [] # List of {'pos': np.array, 'gest': float} where gest: 1.0 (attract) or -1.5 (explode)
         
         # 7. Time Tracking
-        self.start_time = time.time()
-        self.last_time = time.time()
+        self.start_time = time.monotonic()
+        self.last_time = self.start_time
+        self.last_timestamp = 0
 
         # Event Handling
         self.canvas.add_event_handler(self.on_event, "key_down")
@@ -353,8 +354,9 @@ class ParticleStormApp:
 
 
     def animate(self):
-        dt = time.time() - self.last_time
-        self.last_time = time.time()
+        now = time.monotonic()
+        dt = now - self.last_time
+        self.last_time = now
         
         # Cap dt to avoid explosion on lag
         if dt > 0.1: dt = 0.1
@@ -367,7 +369,9 @@ class ParticleStormApp:
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             
             # Detect
-            timestamp_ms = int(time.time() * 1000)
+            # VIDEO timestamps must increase even for frames within the same millisecond.
+            timestamp_ms = max(int(now * 1000), self.last_timestamp + 1)
+            self.last_timestamp = timestamp_ms
             if self.detector is not None:
                 result = self.detector.detect_for_video(mp_img, timestamp_ms)
                 self.analyze_hands(result, camera_layout)

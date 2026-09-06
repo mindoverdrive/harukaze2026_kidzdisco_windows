@@ -1,8 +1,14 @@
 # Rebirth 2026 本番候補の作業記録
 
-**現在地：ユーザー指示でBluetooth PANとMac–Acerネットワーク検証を完全中止し、Acerローカル運用の本線を再開。** 追加のネットワーク調査・設定変更は行わない。本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（現在のOS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。コードの基準点は `705b081` を維持し、新しい候補入口の実装・検証を進めている。
+**現在地：Acer単体・Xiaomi出力の候補`9e0c1c4`で2分試験を終え、15:21から別セッションの継続表示を開始した。** 本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（現在のOS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。安全基準点`705b081`は保持している。Bluetooth PANとMac–Acerネットワーク検証はユーザー指示で完全中止し、追加調査・設定変更を行わない。
 
-新入口は `Start Rebirth Acer.cmd` → `scripts/start_kids_test.py --audience` → `configs/rebirth_acer_xiaomi.json`。最初の候補は `finger_colorfull_dots_acer.py` のみ。観客側のOS名を実モニターと照合し、操作UIはAcerの `127.0.0.1` へ限定する。HDMI接続後に内部名DISPLAY5・EDID名 `Mi TV(XMD)` を確認し、新しいaudience preflightは成功した。これはカメラなしの依存・表示構成検査で、実映像・DPI・5点一致・子供・無中断30分・切替反復・実USB復帰・Xiaomi長時間の合格ではない。新しい変更の最終回帰件数は集計中。起動・停止・確認順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、[OPERATOR_PANEL.md](OPERATOR_PANEL.md)、[ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。
+新入口は `Start Rebirth Acer.cmd` → `scripts/start_kids_test.py --audience` → `configs/rebirth_acer_xiaomi.json`。最初の候補は `finger_colorfull_dots_acer.py` のみ。観客側のOS名を実モニターと照合し、操作UIはAcerの `127.0.0.1` へ限定する。HDMI接続後に内部名DISPLAY5・EDID名 `Mi TV(XMD)` を確認し、audience preflightは成功した。`9e0c1c4`までの全回帰はPython 3.11で143件 / 10.547秒、映像venv 3.12.10で143件 / 13.721秒、両方OK・終了コード0。実ロードはnumpy 2.2.6、cv2 4.12.0、pygame-ce実module 2.5.7／SDL 2.32.10、mediapipe 0.10.14。metadataのpygame 2.6.1を実ロード版と扱わない。根拠は [Acer単体・Xiaomi記録](WINDOWS_SINGLE_PC_CHECK_20260906.md) に集約する。
+
+2分試験`kids_trial_20260906_151719_217295700`はFIRST_FRAMEの`detail.elapsed_s=1.719`、初回フレーム後の試験開始から約120.609秒で`duration_reached`・`exit_code=0`。続いて`audience_continuous_session_20260906.json`に基づく`kids_trial_20260906_152123_937833500`を15:21から時間制限なしで開始し、FIRST_FRAMEは1.453秒。15:33:31時点のログでは継続中で、30分合格とはしない。別担当の15:32:44 JSTの追加照合では旧PID 7788／37664は不在、旧Manager 31312はexit0、旧シーン25232は3221225786（0xC000013A）で終了済みで、作成時刻も一致した。終了済みprocess objectは照会可能なので「全PID消失」とはしない。旧SHM `harukaze_cam_31312_c68238653520`は読取attachでFileNotFoundError／WinError 2となり存在しない。現表示15164などは除外し、操作・停止していない。
+
+ユーザーの最初の申告は「反応しない」。後のスクリーンショットで白い円一つを観測し、手の検出は少なくとも一度あると判断したが、追従・遅延・中央と四隅の5点一致は未確認。「手のひらを5秒映す」確認依頼は未回答。DPI・子供・単一30分・Xiaomi構成の切替反復・実USB復帰・長時間運転もHuman Check Requiredとして残す。
+
+最新の追加依頼は`colorfull_dots_spheres.py`の増量と滑らかでリッチな描画。現在対応中で、仕様確定・実装完了・実機合格とは記録しない。起動・停止・確認順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、[OPERATOR_PANEL.md](OPERATOR_PANEL.md)、[ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。トークン付き操作URLは資料へ保存しない。
 
 中止前に最後に観測したBluetooth試験設定は共有On・省電力Off。**中止後は再読取・復元していないため、現在も同じ値とは確認していない。** 以下に残すPAN／Mac／VNCの調査・設定・復元手順は履歴であり、現在の実行対象ではない。旧文中の「次は」「最新の優先順位」「接続準備を並行」は当時の記録として読み、ネットワーク作業を再開する指示にはしない。
 

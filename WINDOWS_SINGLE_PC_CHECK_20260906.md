@@ -1,6 +1,8 @@
 # Acer単体・Xiaomi出力への本線再開
 
-2026-09-06。安全基準点は`705b081`、作業ブランチは`codex/rebirth2026-production-candidate`。main/stableへ統合していない。
+2026-09-06。安全基準点は`705b081`、作業ブランチは`codex/rebirth2026-production-candidate`。今回のXiaomi実表示試験は完了済みコミット`9e0c1c4`で実施した。main/stableへ統合していない。
+
+**15時台の更新:** 新入口の2分試験は初回フレーム後約120.609秒で`duration_reached`・終了コード0を記録した。その後15:21から時間制限なしの別セッションを開始した。白い円が一つ見えるスクリーンショットはあるが、指への追従と5点一致は未確認で、30分・本番合格とは記録しない。
 
 ## 最新の運用方針
 
@@ -42,9 +44,31 @@ DPIの根拠は[Microsoftの設定API](https://learn.microsoft.com/en-us/windows
 
 回帰の記録は`test_reports/windows_single_pc_unittest_py311_20260906.txt`と`windows_single_pc_unittest_py312_20260906.txt`。ローカル証拠はGit対象外。
 
+## 9e0c1c4でのXiaomi短時間試験と継続表示
+
+| 項目 | 2分試験 | 時間制限なしの表示 |
+|---|---|---|
+| 開始 | 15:17台、初回フレーム15:17:27 | 15:21台、初回フレーム15:21:31 |
+| 試験ID | `kids_trial_20260906_151719_217295700` | `kids_trial_20260906_152123_937833500` |
+| FIRST_FRAMEの記録値 | `detail.elapsed_s=1.719`、frame_id 47 | `detail.elapsed_s=1.453`、frame_id 42 |
+| 終了・継続 | 初回フレーム後の試験開始から終了まで120.609秒。15:19:27に`duration_reached`・`exit_code=0`。正常交代0、昇格1 | `duration_seconds=null`。15:33:31時点の読取ではsampleが継続し、`run_end`は未記録。正常交代0、昇格1 |
+| カメラの最終読取sample | read_failures 0、reopen_attempts 0、最大フレーム間隔約0.063秒 | 上記時点でread_failures 0、reopen_attempts 0、最大フレーム間隔約0.141秒 |
+
+FIRST_FRAMEの上記秒数は`scene_control.detail.elapsed_s`で、Manager全体の経過時間とは別である。2分試験の`scene_output.jsonl`には共有カメラ接続とDISPLAY5の1920×1080・座標(1920,0)への配置が記録され、終了要求後に`runner_end`も記録された。配置ログと終了ログだけで、画面の見切れ・DPI・OS資源解放を合格にしない。
+
+別担当が15:32:44 JSTに旧2分試験のcleanupを追加照合した。旧PID 7788／37664は不在。旧Manager 31312は終了コード0、旧シーン25232は終了コード3221225786（0xC000013A）で終了済みで、作成時刻も記録と一致した。終了済みprocess objectは照会できるため「全PID消失」とは記録しない。旧共有メモリ`harukaze_cam_31312_c68238653520`は読取attachがFileNotFoundError／WinError 2となり、存在しないことを確認した。継続表示中のManager 15164などは照合対象から除外し、操作・停止していない。現セッションの終了後確認や、すべてのGPU資源の解放へこの結果を広げない。
+
+実ロード値は両試験のpreflightで一致した。numpy 2.2.6、cv2 4.12.0、pygame-ceの実module 2.5.7／SDL 2.32.10、mediapipe 0.10.14。パッケージmetadataのpygame 2.6.1やcv2 4.12.0.88と実ロードmoduleの版を混同しない。根拠は`test_reports/kids_preflight_20260906_151719.json`と`kids_preflight_20260906_152123.json`の`loaded_modules`。環境の入替・依存更新は行っていない。
+
+起動記録は`test_reports/audience_active_trial_20260906.json`と`audience_continuous_session_20260906.json`、制御・描画記録は上記各試験ディレクトリの`runtime.jsonl`と`scene_output.jsonl`。時間制限なしの表示開始は30分耐久の合格を意味せず、試験条件・操作・終了後の資源を別途確認する。操作トークンやトークン付きURLは本文へ保存しない。
+
+ユーザーは最初に「反応しない」と申告した。その後のスクリーンショットでは白い円一つを観測し、手の検出は少なくとも一度あったと判断した。ただし継続した追従・遅延・中央と四隅の5点一致は未確認。「手のひらを5秒映す」確認依頼への回答はまだなく、反応問題の解消とは記録しない。
+
+最新の追加依頼は、`colorfull_dots_spheres.py`を増量し、滑らかでリッチな描画にすること。現在は対応中であり、仕様確定・実装完了・実機合格とは記録しない。基準dotsの確認結果を別シーンへ転用しない。
+
 ## 次の実機確認と保留
 
-次は短時間の基準dotsをXiaomiへ出し、実ウィンドウの範囲・Acer側の操作窓・初回フレーム・終了後の残留を確認する。この文書作成時点では新入口の実映像は未検証。
+新入口での初回フレームと2分の終了記録は得られた。次は、継続表示中の基準dotsで実際の手の追従・中央と四隅の一致、観客ウィンドウの範囲・Acer側の操作窓を人間が確認する。旧2分試験の終了後照合は上記の範囲で記録し、現セッションの終了後確認とは分ける。現在の表示を資料更新のために停止・再起動する作業は行っていない。
 
 Human Check Requiredは、Xiaomi上でのC922n実映像と指先の中央/四隅一致、DPI・見切れ、複数人・子供の操作、単一30分、Xiaomi構成の切替反復、実USB復帰、画面抜去時のOS挙動、長時間試験。12時間試験は開始していない。GPU2シーンの実配置と映像品質も未確認で、この1シーン入口の採用へ混ぜていない。
 

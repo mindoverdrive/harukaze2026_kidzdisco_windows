@@ -139,7 +139,7 @@ class SaturnParticlesApp:
         self.hand_data_list = []  # List of hand data dicts
         
         # 6. Time Tracking
-        self.last_time = time.time()
+        self.last_time = time.monotonic()
         self.last_timestamp = 0
 
         # Hand Cursors
@@ -446,8 +446,9 @@ class SaturnParticlesApp:
 
     def animate(self):
         try:
-            dt = time.time() - self.last_time
-            self.last_time = time.time()
+            now = time.monotonic()
+            dt = now - self.last_time
+            self.last_time = now
             if dt < 0.001:
                 dt = 0.001
             if dt > 0.1:

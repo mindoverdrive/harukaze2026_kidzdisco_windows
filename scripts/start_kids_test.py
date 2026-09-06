@@ -42,6 +42,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Check imports only; do not open camera/windows")
     parser.add_argument("--audience", action="store_true", help="Use Acer local control and the configured Xiaomi extended display")
+    parser.add_argument("--scene", choices=("dots", "spheres"), default="dots",
+                        help="Scene candidate; spheres requires --audience")
     parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
     parser.add_argument("--switch-every", type=float, help="Trial switch interval in seconds")
     parser.add_argument("--switch-count", type=int, help="Number of successful trial switches")
@@ -49,9 +51,14 @@ def main():
     parser.add_argument("--operator-port", type=int, default=8766)
     parser.add_argument("--no-ui", action="store_true", help="Disable the browser operator panel")
     args = parser.parse_args()
+    if args.scene == "spheres" and not args.audience:
+        parser.error("--scene spheres requires --audience")
     sys.path.insert(0, str(ROOT))
     os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
-    config_path = ROOT / "configs" / ("rebirth_acer_xiaomi.json" if args.audience else "kids_test_acer.json")
+    config_name = "rebirth_acer_xiaomi.json" if args.audience else "kids_test_acer.json"
+    if args.scene == "spheres":
+        config_name = "rebirth_spheres_acer_xiaomi.json"
+    config_path = ROOT / "configs" / config_name
     displays = None
     display_failures = []
     if args.audience:

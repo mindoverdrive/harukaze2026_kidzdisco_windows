@@ -26,8 +26,9 @@ class FirstFrameRenderTests(unittest.TestCase):
                           display_utils=display, WINDOW_WIDTH=640, WINDOW_HEIGHT=360,
                           notify_first_frame=notify)
                 ns["time"].time.return_value = 100.1
+                ns["time"].monotonic.return_value = 100.1
                 callback = load_callback("particle_storm_2.py", "ParticleStormApp", "animate", ns)
-                app = mock.Mock(last_time=100.0)
+                app = mock.Mock(last_time=100.0, last_timestamp=0)
                 app.cap.read.return_value = (True, object())
                 app.cam_tex = mock.MagicMock()
                 app.renderer.render.side_effect = [RuntimeError("injected GPU failure") if i == failed_pass else None for i in range(3)]
@@ -38,6 +39,7 @@ class FirstFrameRenderTests(unittest.TestCase):
         notify = mock.Mock()
         ns = dict(time=mock.Mock(), notify_first_frame=notify)
         ns["time"].time.return_value = 100.1
+        ns["time"].monotonic.return_value = 100.1
         callback = load_callback("saturn_particles_2.py", "SaturnParticlesApp", "animate", ns)
         app = mock.Mock(last_time=100.0)
         app.detect_hands.return_value = True
