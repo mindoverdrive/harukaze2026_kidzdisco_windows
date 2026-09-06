@@ -65,10 +65,10 @@ def main():
                 cached_snapshot = camera_surface = None
             elif snapshot is not cached_snapshot:
                 camera_surface = pygame.image.frombuffer(snapshot.rgb_bytes, snapshot.size, "RGB")
-                # RGB24 global-alpha blending is expensive on the Windows RGB32 display.
-                # Convert once per camera update, then reuse the fast display-format surface.
+                # Convert once per camera update and preserve its actual brightness.
+                # A dimmed camera background hides the hand used for visual alignment.
                 camera_surface = camera_surface.convert(screen)
-                camera_surface.set_alpha(70)
+                camera_surface.set_alpha(None)
                 cached_snapshot = snapshot
             tips = smoother.update(snapshot.tips if snapshot is not None else (), dt)
             screen.fill((1, 2, 6))
