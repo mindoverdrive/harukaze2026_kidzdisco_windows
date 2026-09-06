@@ -1,3 +1,11 @@
+## 2026-09-07 06:15 最新：異種20回完走、USB復帰の人間確認待ち
+
+Spheres/Stormの20秒間隔20回試験は06:14:04に switch_count_reached / exit0 / trial_elapsed471.078秒 / completed_switches20 / promotions21で終了。trialは `test_reports/mixed_repeat20_20260907_060604_788024/trial`、解析は同runのsummary.json。21件のFIRST_FRAME、旧シーン停止20件すべて新FIRST_FRAMEより後。同じManager17972/SHMを維持、camera read failure/reopen0、最大frame gap0.079秒、定常sampleは3 PID。一時重複sample最大5 PID。記録41プロセス世代は全て終了、SHM不在。別のCIM確認でもManager/scene入口の稼働なし。例外を含む出力52レコードはすべて該当シーンへの停止要求以後であり、終了時例外の保留として残す。GPUメモリ未取得、20回すべての人間目視・12時間耐久は未確認。
+
+次の独立試験としてSpheresを既存入口で15分上限起動。run `spheres_usb_20260907_061446_031927`、trial `kids_trial_20260907_061447_164283500`。Manager23956/scene21332/wrapper17244/外側26752、SHM `harukaze_cam_23956_c4b44e01e3cf`。FIRST_FRAME1.765秒、C922n1280x720@30MJPG実測30.00。露出-4/zoom176を一時適用して実値一致、JSON保存なし。まだUSBは抜き差ししていない。次はC922nだけを抜いて5秒後に同じUSBへ戻し、30秒以内の生映像と中央の指反応復帰を人間に確認して待つ。他の設定や照明は変えない。再起動/残留/設定再反映はログ照合し、未回答で合格にしない。約06:29:55に上限終了。
+
+今回の変更は検証記録のみ。ロールバック先は製品変更のない直前cce7d52、GLFW修正を含む製品基準096bace、従来安全基準705b081を維持。main/stable変更なし。
+
 ## 2026-09-07 06:06 最新状態
 
 SaturnのGLFW修正後のタスクバー非表示と中央追従はユーザー `ok` で確認済み。通常終了・PID/SHM解放済み。現在は `mixed_repeat20_20260907_060604_788024/trial` でSpheres/Stormの20回自動切替を実施中。まだ完走扱いにしない。試験中はNextやUSB抜差しを混ぜない。終了ログと残留を確認してから、次のC922n物理再接続確認を一まとまりだけ提示して人間を待つ。製品変更なし。詳細はMIXED_SCENE_MVP_REVIEWとSATURN_MVP_REVIEW参照。
