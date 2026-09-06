@@ -1,6 +1,6 @@
 # Rebirth 2026 本番候補の作業記録
 
-**2026-09-06 13時台・最新の優先変更:** 安全なコード基準点を`705b081`に保ち、Bluetooth PANのAcer/M1 Mac実機検証を最優先にした。AcerにPANアダプターはあるが未接続。既存HTTPのAcer自己確認だけ成功し、MacのOS版・PAN項目・ペアリングはHuman Check Required。Wi-FiのMac HTTP未成功をWi-Fi障害とは断定しない。PAN経由のHTTP/SSH・再接続・短時間安定性は未実施。ネットワーク構成・購入・HTMLの変更へ進まず、[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に現状と再開条件を残す。
+**2026-09-06 13時台・最新の優先変更:** 安全なコード基準点を`705b081`に保ち、Bluetooth PANのAcer/M1 Mac実機検証を最優先にした。MacはTahoe 26.6.2との申告。13:24には両機でBluetoothペアリング成功を確認したが、AcerのPANアダプターはDisconnectedのまま。両機のVPNはユーザーがオフにしたと申告し、AcerのUpアダプターはWi-Fiだけ。PANの成立・IP・双方向疎通・HTTP/SSH・再接続・短時間安定性は未確認。既存HTTPの成功はAcer自己確認だけで、Wi-FiのMac HTTP未成功をWi-Fi障害とは断定しない。Macのネットワーク一覧にPANがあるか確認依頼中。[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に事実と次の一手を残す。
 
 **最新の継続検証（91b3200）:** Windows Job所有・退出観測・Mac疎通入口に加え、自然復帰を切替成功へ数える問題を再現・修正し、4コミットを通常push済み。全回帰はPython 3.11で120件 / 11.050秒、映像用3.12.10で120件 / 13.009秒、いずれもOK・exit0。前の版`270b315`でC922nの30分運転は正常終了し、対象PID/共有メモリ残留0。途中の切替とEsc終了を含み、30分無中断は未合格。修正後の実20回切替も完走し、Esc復帰3回を成功回数から除外した。実機結果・証拠は [Windows映像venvの継続検証](WINDOWS_VENV_RUNTIME_CHECK_20260906.md) に集約する。新環境作成は許可されたが、この継続では既存環境を維持した。
 

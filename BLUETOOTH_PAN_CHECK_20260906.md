@@ -2,7 +2,9 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**最新：MacからAcerの検出はユーザー確認済み。ペアリング結果待ちで、PANはまだ未成立。** MacはTahoe 26.6.2との申告。HTTP・SSH・再接続・短時間安定性のPAN経由の合格はまだない。13:11時点の保留後、ユーザー回答を受けて確認を再開した。
+**最新（13:24 JST）：Bluetoothペアリングは両機で確認済み。PANはまだ未成立。** MacはTahoe 26.6.2との申告。HTTP・SSH・再接続・短時間安定性のPAN経由の合格はまだない。次はMacのネットワーク一覧のBluetooth PAN項目を確認する。
+
+ユーザーから、Mac側でペアリング成功・接続済み表示、両機のVPNオフとの更新を受領。Acer側でもペアリング成功ダイアログと登録デバイスを確認した。13:24:37の実機読取では、PANアダプターとIPインターフェースはともにDisconnected、169.254系IPv4はTentative、有効なPANのユニキャスト経路はない。UpのアダプターはWi-Fiだけであり、Bluetoothデバイスとしての接続をPAN成功とは扱わない。PANのIP割当・双方向疎通・HTTPの検証前である。
 
 **13:14 JST追記:** ユーザーから「Tahoe 26.6.2、見えてない」と回答を受領。OS版は申告値として記録し、直前の確認質問に対してAcerの機器一覧にMacが表示されないとの回答として扱う。Acerの再読取でもPANはDisconnected、BluetoothサービスはRunning。PANプロファイル非対応とは断定せず、逆方向としてMacのBluetooth設定「近くのデバイス」にAcer名 `AYM_ILL` が表示されるかを追加確認した。
 
@@ -22,12 +24,12 @@
 |Bluetooth|Intel Wireless Bluetooth、サービス稼働、設定画面でオン|無線機能あり|
 |PANアダプター|Bluetooth Device (Personal Area Network)、ifIndex 8、Disconnected|PAN接続未成立|
 |PAN IPv4|169.254系の値はあるがインターフェース未接続|IP通信成功の証拠にしない|
-|Macペアリング|WindowsのPnP記録でMac/Apple名なし。設定画面の登録はトラックボールとコントローラー|この読取ではMacを確認できない|
+|Macペアリング|初回は記録なし。13:24にはMac側の成功申告、Windows側の成功ダイアログとデバイス登録を確認|Bluetoothペアリング成功、PANとは別|
 |既存HTTP|Wi-Fi側の明示IPv4、TCP 8767、PID 30328で待受|PANインターフェースの待受ではない|
 |Acer内HTTP|13:04:31 JST、既存URLへ直接GET、200 / 651 bytes|サーバー自己確認のみ|
 |HTTPアクセス記録|13:09時点の2件は両方Acer自身のIP|Mac到達の記録なし|
 |SSH|OpenSSH Serverインストールあり、sshdはStopped / Manual、TCP 22 listenerなし|SSH試験未開始|
-|Mac OS / PAN機能|13:14追記：M1・Tahoe 26.6.2（ユーザー申告）。実際のPAN項目は未取得|PAN機能はHuman Check Required|
+|Mac OS / PAN機能|M1・Tahoe 26.6.2（ユーザー申告）。13:24以降、ネットワーク一覧のPAN項目を確認依頼中|PAN機能はHuman Check Required|
 
 13:11:29 JSTの再読取で既存待受の予定終了を確認した。ログは「時間制限」で終了し、PID 30328とTCP 8767 listenerは存在しない。アクセスはAcer自身の2件のみ。ページの期限終了を接続失敗と数えない。
 
@@ -70,6 +72,7 @@ macOS Tahoe 26のInternet Sharing説明だけでは、当該MacにBluetooth PAN�
 - `pan_before_handoff_20260906.json`: 13:09のPAN・待受・HTTP記録。
 - `pan_probe_final_20260906.json`: 13:11の未接続、待受の期限終了とPID/port解放。
 - `pan_acer_after_mac_report_20260906.json`: Mac側情報を受領した13:14のPAN・Bluetooth・SSHサービス再読取。
+- `pan_after_pairing_20260906.json`: 13:24のペアリング後PAN状態・IPv4・経路・デバイス登録・有効アダプター・待受。機器識別子を含むためGit対象外。
 - `mac_link_standby_20260906_1210.jsonl`: 自己アクセスを含む既存待受の記録。予定終了は13:10:47 JST。
 
 コード・設定の基準点は `705b081` のまま。接続診断では戻すべきネットワーク設定変更はない。後続の文書コミットは履歴を消さずrevertできる。
