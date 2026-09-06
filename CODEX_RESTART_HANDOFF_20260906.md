@@ -1,6 +1,8 @@
 # Codex再起動用引継ぎ — Rebirth 2026 Acer本線
 
-更新時刻: 2026-09-07 05:10 Spheres操作側フォーカス移動OK・30分の終了待ち
+更新時刻: 2026-09-07 05:20 Spheres単一30分完走・最初の異種切替結果待ち
+
+05:20最優先：Spheres単一30分は05:19:07 duration_reached/exit0/1800.625秒/1promotion、途中再起動なし。対象4 PID稼働なし・SHM不在。終了時KeyboardInterrupt/通知ConnectionAbortedErrorは保留。次の2種類手動切替用trialを起動済み：`test_reports/mixed_visual_20260907_051941_163497/trial`、Manager6788/Spheres27560/wrapper27320/外側10936、SHM `harukaze_cam_6788_e199384fb591`。FIRST_FRAME1.859秒、露出-4/zoom176読戻しOK。05:49:49頃の30分上限、自動切替なし。新しい操作ページをCodex右側で開いた。現在はSpheres表示中で、ユーザーに「次のシーンへ」一回→XiaomiのStorm中央で開掌反発・古い窓/タスクバー残留なしだけを提示し、結果を待つ。こちらからNextは未送信。旧単一シーン用URLを使わせない。再開時は `test_reports/inspect_mixed_visual_20260907.py` で現状を読む。Storm左右帯方針・タスクバーMVP must・2人/子供/USB/12時間は保留。以下は履歴。
 
 05:10最優先：Acer側Codex入力欄のクリック後も、XiaomiのSpheresはタスクバー露出/最小化なしとユーザーOK。StormのタスクバーMVP mustは未解決。Spheres単一30分を途中で切らず、trial044858の05:19頃自動終了とPID/SHM不在を先に確認する。解析 `test_reports/analyze_spheres_final_20260907.py`、その後用の手動切替起動 `test_reports/start_mixed_visual_20260907.py` を準備。起動ガードは先行試験のduration_reached/exit0/1800秒/1promotion、既存Manager等不在、SHM不在。準備済み試験専用JSONはSpheres→Stormの2項目のみ、先読み/拍手/遷移/自動切替なし、露出-4/zoom176、本番JSON未変更。新試験開始後は人間へ「次のシーンへ」一回の確認だけ提示して待つ。既存単一シーンUIのNextは同じSpheresを再起動するので、現試験中に押させない。詳細はMIXED_SCENE_MVP_REVIEW_20260907.md。以下は履歴。
 

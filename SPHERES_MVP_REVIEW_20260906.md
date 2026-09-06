@@ -1,5 +1,14 @@
 # SpheresのMVP候補判定と次シーンへの確認順
 
+## 2026-09-07 05:20：単一30分を完走、終了時例外は別途保留
+
+- trial `kids_trial_20260907_044858_631260000` は05:19:07に `duration_reached`、exit0、trial_elapsed1800.625秒、completed_promotions1、completed_switches0で終了。途中のscene_exitなし。同じscene PID26992とManager20416、共有メモリを維持した単一30分を確認した。
+- 終了後は対象4 PID（11588/20416/1604/26992）の稼働なし、SHM `harukaze_cam_20416_e279e4356294` 不在。カメラread_failures/reopen_attempts0、最大フレーム間隔0.093秒。
+- Spheresの描画179サンプルは52.00〜56.57fps、中央値53.49。カメラ画像更新は13.99〜16.20fps、中央値16.08で別指標。2分以降のManagerハンドル914〜923、scene681〜692。Private Bytesの5〜10分中央値→25〜30分中央値はManager706109440→706035712、scene826212352→825131008で増加閾値を超えない。GDI/USERの継続増加なし。GPUメモリ未取得をGPUリークなしとは記録しない。
+- 05:19:07の停止要求と同時刻に `KeyboardInterrupt`、`Runner ERROR notification failed: ConnectionAbortedError` が残った。30分途中の予期しない再起動とは分けるが、終了時例外を解決済み・完全無エラーとは扱わない。今回この処理を変更していない。
+- 根拠 `test_reports/kids_trial_20260907_044858_631260000/spheres_mvp_summary.json`、同フォルダーruntime/scene_output、および終了後Get-Process。試験開始時commit `6b2743e` と今回候補のPython/configs差分は空で、途中のcommitは記録更新。
+- 単一30分を終了した後、既存コードの2種類設定で別Managerを起動した。これは次の異種切替試験の準備であり、この時点では切替未実施。詳細は `MIXED_SCENE_MVP_REVIEW_20260907.md`。
+
 ## 2026-09-07 05:10：Acer操作時のSpheres表示維持を確認
 
 - Acer側Codexの入力欄をクリックし、Xiaomiの下端と映像全体を見る確認にユーザーが `ok` と回答。Spheres表示が継続し、タスクバー露出・最小化なしをこの操作条件で合格とする。Stormや切替後の表示維持は未確認のまま。
