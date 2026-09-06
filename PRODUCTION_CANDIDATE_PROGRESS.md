@@ -1,14 +1,24 @@
 # Rebirth 2026 本番候補の作業記録
 
-**現在地：Acer単体・Xiaomi出力の候補`9e0c1c4`で2分試験を終え、15:21から別セッションの継続表示を開始した。** 本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（現在のOS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。安全基準点`705b081`は保持している。Bluetooth PANとMac–Acerネットワーク検証はユーザー指示で完全中止し、追加調査・設定変更を行わない。
+**現在地：球体候補`01c8076`と描画追加修正`18016ab`を通常pushし、Xiaomi実表示で短時間の描画改善を確認した。** 15:57:43の初回起動後、16:09台の再読み込みでrender 50.32～50.84fpsを記録した。手が映らない条件の値で、60fpsや操作性の合格ではない。本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（OS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。安全基準点`705b081`を保持し、Bluetooth PANとMac–Acerネットワークの追加調査・設定変更は中止したまま。
 
-新入口は `Start Rebirth Acer.cmd` → `scripts/start_kids_test.py --audience` → `configs/rebirth_acer_xiaomi.json`。最初の候補は `finger_colorfull_dots_acer.py` のみ。観客側のOS名を実モニターと照合し、操作UIはAcerの `127.0.0.1` へ限定する。HDMI接続後に内部名DISPLAY5・EDID名 `Mi TV(XMD)` を確認し、audience preflightは成功した。`9e0c1c4`までの全回帰はPython 3.11で143件 / 10.547秒、映像venv 3.12.10で143件 / 13.721秒、両方OK・終了コード0。実ロードはnumpy 2.2.6、cv2 4.12.0、pygame-ce実module 2.5.7／SDL 2.32.10、mediapipe 0.10.14。metadataのpygame 2.6.1を実ロード版と扱わない。根拠は [Acer単体・Xiaomi記録](WINDOWS_SINGLE_PC_CHECK_20260906.md) に集約する。
+入口は`Start Rebirth Acer.cmd`。未指定は従来のdots、`--scene spheres`を付けると`configs/rebirth_spheres_acer_xiaomi.json`の球体1本を選ぶ。両方ともAcerのローカルUIを`127.0.0.1`に限定する。`18016ab`の全回帰はPython 3.11で199件／12.839秒、映像3.12.10で199件／12.915秒、両方OK・exit0。前段階`01c8076`の199件、`9e0c1c4`の143件と実ロード版は [球体更新記録](SPHERES_VISUAL_UPDATE_20260906.md) と [Acer単体・Xiaomi記録](WINDOWS_SINGLE_PC_CHECK_20260906.md) へ保持する。
 
-2分試験`kids_trial_20260906_151719_217295700`はFIRST_FRAMEの`detail.elapsed_s=1.719`、初回フレーム後の試験開始から約120.609秒で`duration_reached`・`exit_code=0`。続いて`audience_continuous_session_20260906.json`に基づく`kids_trial_20260906_152123_937833500`を15:21から時間制限なしで開始し、FIRST_FRAMEは1.453秒。15:33:31時点のログでは継続中で、30分合格とはしない。別担当の15:32:44 JSTの追加照合では旧PID 7788／37664は不在、旧Manager 31312はexit0、旧シーン25232は3221225786（0xC000013A）で終了済みで、作成時刻も一致した。終了済みprocess objectは照会可能なので「全PID消失」とはしない。旧SHM `harukaze_cam_31312_c68238653520`は読取attachでFileNotFoundError／WinError 2となり存在しない。現表示15164などは除外し、操作・停止していない。
+球体の実試験IDは`test_reports/kids_trial_20260906_155744_219024000`。初回はFIRST_FRAME 1.953秒・frame 53・scene PID 31428／wrapper 13992／Manager 31968で、画面観測（SKY）はXiaomi上の1920×1080・原点(1920,0)。変更前15:58:11のrenderは34.3fps、camera_updateは15.9fps、取得失敗0だった。ユーザー回答「斜め回転に見える」で確認したのは軸の見え方だけで、手座標・複数人・子供・30分などは未確認。
 
-ユーザーの最初の申告は「反応しない」。後のスクリーンショットで白い円一つを観測し、手の検出は少なくとも一度あると判断したが、追従・遅延・中央と四隅の5点一致は未確認。「手のひらを5秒映す」確認依頼は未回答。DPI・子供・単一30分・Xiaomi構成の切替反復・実USB復帰・長時間運転もHuman Check Requiredとして残す。
+同一9,600点の`test_reports/spheres_alpha_probe_20260906.json`では、RGB24背景17.33ms／37.24fpsに対しdisplay形式へのconvert後は3.00ms／59.21fpsだった。実main＋SDL＋合成snapshotの`spheres_main_probe_20260906.json`でも35.95→57.08fps、背景corner RGBA一致、Feed／pygame解放成功。両方ともカメラ・物理画面なしの合成検査で、実機59fpsとは記録しない。最小convertと高分解能`perf_counter()`の修正を`18016ab`へ反映した。
 
-最新の追加依頼は`colorfull_dots_spheres.py`の増量と滑らかでリッチな描画。現在対応中で、仕様確定・実装完了・実機合格とは記録しない。起動・停止・確認順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、[OPERATOR_PANEL.md](OPERATOR_PANEL.md)、[ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。トークン付き操作URLは資料へ保存しない。
+16:09:18にローカルUI Nextで同一球体を再読み込みし、scene PID 21644／wrapper 21108へ交代した。Manager 31968とSHM `harukaze_cam_31968_dd1fd99cc3ee`は同じ。16:09:28～16:10:08のrenderは50.32～50.84fps、camera_updateは暖機後22.07～22.87fps、9,600点、hands 0。16:10:12のsampleはread_failures 0／reopen_attempts 0／last_error null、switch_count 1／promotion_count 2／switch_error null。根拠は`spheres_reload_20260906.json`と同一trialのログ。描画・画像更新の指標をパネルFPS・物理USB取得FPSと混同せず、60fpsや手の操作の合格へ広げない。
+
+再読み込み後のFIRST_FRAMEは16:09:20、2.421秒、frame 20698。旧sphere 31428／13992へ同時刻に`scene_switch`の停止要求が出て約0.2秒後に出力終了したが、旧出力にはKeyboardInterruptと`Runner ERROR notification failed: ConnectionAbortedError`のnoteがある。閉鎖済みcontrolへの終了時通知として残し、全エラーなしとはしない。新sceneは継続し、SKYの対象窓観測は球体1窓（8260830）とManager Control 1窓（1117412）。全資源解放の合格には読み替えない。
+
+旧dotsの2分試験はFIRST_FRAME 1.719秒、約120.609秒で`duration_reached`・exit0。その後の継続表示`kids_trial_20260906_152123_937833500`は15:57:22にローカルUIから`operator_quit`、exit0、trial_elapsed 2151.406秒（約35分51秒）、正常交代0で終了した。操作一致は未確認で、単一30分の総合合格にはしない。16:09:02の追加照合では旧Manager 15164はexit0、旧scene 34932は0xC000013Aで終了済み・作成時刻一致、wrapper 35320は不在。旧起動補助PID 24500は別プロセスへの再利用なので現在の同番号の終了コードを旧試験へ付けない。旧SHMは読取attachでWinError 2となり不在。これとは別の2分試験の終了済みPID／SHM照合も上記Acer記録へ保持し、「全PID消失」とは記録しない。
+
+旧dotsでの最初の申告は「反応しない」。後のスクリーンショットに白い円一つはあったが、追従・遅延・中央と四隅の5点一致は未確認で、「手のひらを5秒映す」確認依頼も未回答のまま。球体でも手座標・複数人・子供・単一30分・切替反復・実USB復帰・12時間はHuman Check Requiredとして残す。斜め回転の回答や手なしのFPS改善で置き換えない。
+
+16:20:09～16:20:29の球体ログでは`hands=1`を3回観測し、render 50.55～50.77fpsだった。取得失敗0は維持している。検出の記録と、人間が指付近の波・発光や位置一致を確認することは分け、操作確認の回答を待つ。
+
+球体の増量・斜め回転・描画改善は上記候補へ反映した。見え方と操作性の最終承認、本番昇格は別である。起動・停止・確認順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、[OPERATOR_PANEL.md](OPERATOR_PANEL.md)、[ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。トークン付き操作URLは資料へ保存しない。
 
 中止前に最後に観測したBluetooth試験設定は共有On・省電力Off。**中止後は再読取・復元していないため、現在も同じ値とは確認していない。** 以下に残すPAN／Mac／VNCの調査・設定・復元手順は履歴であり、現在の実行対象ではない。旧文中の「次は」「最新の優先順位」「接続準備を並行」は当時の記録として読み、ネットワーク作業を再開する指示にはしない。
 

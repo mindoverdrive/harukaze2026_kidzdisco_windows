@@ -1,6 +1,8 @@
 # Colorful Dots Spheres：高密度の発光と斜め回転
 
-2026-09-06。対象は実ファイル `colorfull_dots_spheres.py`。ユーザーの「粒子を増やし、滑らかでリッチな画に」「回転軸を斜めへ」という追加指示を反映した候補。作業ブランチは `codex/rebirth2026-production-candidate`、安全基準点 `705b081`、直前の2画面入口は `9e0c1c4`。
+2026-09-06。対象は実ファイル `colorfull_dots_spheres.py`。ユーザーの「粒子を増やし、滑らかでリッチな画に」「回転軸を斜めへ」という追加指示を反映した候補。作業ブランチは `codex/rebirth2026-production-candidate`、安全基準点 `705b081`、直前の2画面入口は `9e0c1c4`。球体候補`01c8076`は通常push済みで、15:57:43からXiaomiで実表示した。
+
+**16:10台までの実機更新:** 初回フレームへ到達し、ユーザーから「斜め回転に見える」と回答があった。確認済みなのは回転軸の見え方だけで、手の座標・複数人・子供・30分などの合格ではない。背景形式変換と高分解能時計の追加修正`18016ab`も通常pushし、同じManagerのローカルUIから再読み込みした。手なしの短時間で描画50.32～50.84fpsを記録したが、60fps合格とはしない。下記の約59fpsは別の合成計測値である。
 
 ## 描画と操作
 
@@ -26,7 +28,7 @@
 
 `configs/rebirth_spheres_acer_xiaomi.json` で球体ラッパー1本だけを選ぶ。`--scene`未指定は従来のdots。Acerを操作画面、Xiaomiを観客画面とする配置・C922n設定は同じ。`--scene spheres`は`--audience`を伴う入口でのみ使用する。元sceneの直接起動は共有カメラ必須のため対象外。TCPハンドシェイクを持つ共通ランナーへ統一した。
 
-## 検証
+## 01c8076までの検証
 
 - Python 3.11：199件／12.649秒、OK・終了コード0。
 - 既存映像venv Python 3.12.10：199件／12.478秒、OK・終了コード0。
@@ -44,6 +46,33 @@
 
 ## 実機と保留
 
-このチェックポイント作成時点では新球体のXiaomi試写は未実施。次に、短時間の初回表示・実render fps・camera更新・終了再取得を確認する。斜め回転の見え方、光量、操作位置、複数人、子供の理解、単一30分・切替反復・12時間はHuman Check Required。既存dotsの継続表示を球体の合格へ流用しない。
+`01c8076`で15:57:43に実起動し、試験IDは`test_reports/kids_trial_20260906_155744_219024000`。FIRST_FRAMEは`detail.elapsed_s=1.953`、frame_id 53、実シーンPID 31428、wrapper PID 13992、Manager PID 31968。画面観測（SKY）でXiaomi上のウィンドウは1920×1080、原点(1920,0)だった。15:58:11の`[SpheresMetrics]`はrender 34.3fps、camera_update 15.9fps、描画9,600点。取得失敗は0で、16:07:11のManager sampleもread_failures 0／reopen_attempts 0だった。描画ループとシーン内の画像更新の指標であり、パネルの実表示FPSや物理USBカメラの取得FPSとは分ける。
+
+ユーザーの「斜め回転に見える」は回転軸の見え方の確認として記録する。光量・滑らかさの最終承認、手への追従・中央と四隅の座標一致、複数人、子供の理解、単一30分・切替反復・USB復帰・12時間はHuman Check Required。既存dotsの継続表示を球体の合格へ流用しない。
+
+旧dotsの継続表示`kids_trial_20260906_152123_937833500`は15:57:22にローカルUIから`operator_quit`で終了し、`run_end.exit_code=0`、`trial_elapsed_s=2151.406`（約35分51秒）、`completed_switches=0`だった。時間経過と正常終了の記録は得られたが、操作位置の一致は未確認であり、単一30分の総合合格とはしない。新旧試験の終了後資源もそれぞれで照合する。
+
+16:09:02の追加照合で旧dotsのManager 15164は終了コード0、実シーン34932は0xC000013Aで終了済み、作成時刻も記録と一致した。wrapper 35320は不在。起動補助の旧PID 24500は別プロセスに再利用されていたため、現在の同番号の終了コードを旧試験に付けない。旧SHM `harukaze_cam_15164_dba3257436cf`は読取attachがWinError 2となり不在を確認した。これをspheresや全GPU資源の終了後確認へ流用しない。
+
+## 背景合成の切り分けと追加修正（18016ab）
+
+同一9,600点のカメラなし合成で、24bit RGB背景への透過合成に大きな時間を使うことを確認した。`test_reports/spheres_alpha_probe_20260906.json`は`camera_opened=false`、`physical_display_opened=false`の計測である。
+
+| 背景の形式 | 平均背景合成 | 平均粒子描画 | 合成ループ |
+|---|---|---|---|
+| RGB24のまま | 17.33ms | 9.50ms | 37.24fps |
+| display形式へconvert | 3.00ms | 9.32ms | 59.21fps |
+
+convert自体の平均約2.32msも含む比較で、粒子数は減らしていない。これは合成経路の差を示す限定診断であり、カメラ・認識・Xiaomi実表示を含む59fps成功ではない。mainへ背景の最小限のconvertと、動きの時刻更新を高分解能`perf_counter()`にする修正を加え、`18016ab`として通常pushした。
+
+修正後の全回帰はPython 3.11で199件／12.839秒、映像3.12.10で199件／12.915秒、両方OK・exit0。`test_reports/spheres_main_probe_20260906.json`では実mainを本物のSDLと合成snapshotで通し、35.95→57.08fps、背景cornerのRGBAは前後とも`[25,17,12,255]`で一致、Feedとpygameの解放成功を確認した。こちらもカメラ・物理画面は開いていないため、実機値とは分ける。
+
+16:09:18のローカルUI Nextで同じspheresを再読み込みした。根拠は`test_reports/spheres_reload_20260906.json`と同一trialの制御ログ。新しい実シーンPIDは21644、wrapperは21108で、Manager 31968とSHM `harukaze_cam_31968_dd1fd99cc3ee`を維持した。16:09:20のFIRST_FRAMEは`detail.elapsed_s=2.421`、frame_id 20698。
+
+同じ16:09:20に旧sphere 31428／13992へ`scene_switch`の停止要求が出て、約0.2秒後に`scene_output_end`を記録した。旧出力にはKeyboardInterruptと`Runner ERROR notification failed: ConnectionAbortedError`のnoteがある。閉鎖済みcontrolへの終了時通知で観測されたnoteとして保持し、「すべてエラーなし」とはしない。新sceneは継続し、switch_errorはなかった。追加のSKY観測では対象の球体1窓（id 8260830）とManager Control 1窓（id 1117412）を確認した。出力終了や窓数だけで全OS／GPU資源の解放を断定しない。
+
+16:09:28～16:10:08の`[SpheresMetrics]`はrender 50.32～50.84fps、camera_updateは最初の19.17fpsを経て暖機後22.07～22.87fps、9,600点、hands 0。16:10:12のsample（elapsed 748.062秒）はread_failures 0、reopen_attempts 0、last_error null、switch_count 1、promotion_count 2、switch_error nullだった。手が映っていない条件での短時間改善であり、実機60fps・手の操作・複数人・30分合格とはしない。
+
+16:20:09～16:20:29には`hands=1`のsampleを3回観測し、renderは50.55～50.77fps、camera_updateは16.88～20.09fpsだった。16:20:34時点でも取得失敗・再接続試行は0、switch_errorはnull。実カメラから手が検出された記録であり、指付近の波や発光が見えるか、映像と指先の位置が一致するかという確認依頼への回答はまだない。
 
 Bluetooth PANとMac–Acer接続検証は完全中止のまま。ネットワーク設定・購入・本番昇格は行わない。復帰はdots入口 `Start Rebirth Acer.cmd`、コードは候補commit単位のrevert、全体基準は `705b081`。main/stableの強制変更は行わない。
