@@ -40,7 +40,11 @@ def run_scene(script_name, profile="stage"):
     previous_argv = sys.argv[:]
     previous_break_handler = None
     control = None
+    lifecycle = scene_control.SceneLifecycle(script_path.name)
+    previous_lifecycle = scene_control._scene_lifecycle
+    failure = None
     try:
+        scene_control._scene_lifecycle = lifecycle
         for key, value in overrides.items():
             if key in os.environ:
                 continue
@@ -50,6 +54,7 @@ def run_scene(script_name, profile="stage"):
         parser.add_argument("--control-port", type=int)
         parser.add_argument("--launch-id")
         args, remaining = parser.parse_known_args(sys.argv[1:])
+        lifecycle.launch_id = args.launch_id
         if (args.control_port is None) != (args.launch_id is None):
             raise ValueError("--control-port and --launch-id must be supplied together")
         if hasattr(signal, "SIGBREAK"):
@@ -63,6 +68,7 @@ def run_scene(script_name, profile="stage"):
             control.wait_for_start()
         runpy.run_path(str(script_path), run_name="__main__")
     except BaseException as exc:
+        failure = exc
         if control is not None:
             try:
                 control.send("ERROR", reason=f"{type(exc).__name__}: {exc}"[:1500])
@@ -70,6 +76,8 @@ def run_scene(script_name, profile="stage"):
                 pass
         raise
     finally:
+        lifecycle.finish(failure)
+        scene_control._scene_lifecycle = previous_lifecycle
         if control is not None:
             control.close()
         scene_control._child_control = None

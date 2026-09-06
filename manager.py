@@ -362,6 +362,7 @@ class SceneManager:
         self.uncontained_process = None
         self.diagnostics = diagnostics
         self.completed_switches = 0
+        self.shutdown_reason = None
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
         self.all_scenes = list(scenes) if scenes is not None else self._scan_and_shuffle_scenes()
         print(f"[Manager] Found {len(self.all_scenes)} scenes")
@@ -404,7 +405,7 @@ class SceneManager:
         except BaseException:
             # Keep ownership even if Job assignment or diagnostic I/O fails.
             self.uncontained_process = proc
-            if self._kill_process(proc, "failed launch setup"):
+            if self._kill_process(proc, "failed launch setup", reason="launch_setup_failed"):
                 self.uncontained_process = None
             else:
                 self.fatal_error = "Scene process could not be stopped after launch setup failure"
@@ -430,11 +431,33 @@ class SceneManager:
         argv = [sys.executable, scene_path]
         argv.extend(control.argv())
         proc = self._spawn_process(argv, cwd=os.path.dirname(scene_path))
+        proc._scene_launch_id = control.launch_id
         return proc
 
-    def _kill_process(self, proc, scene_name):
+    def _record_stop_request(self, proc, scene_name, reason):
+        fields = {"scene": scene_name, "reason": reason, "launcher_pid": proc.pid,
+                  "scene_pid": vars(proc).get("_scene_pid"),
+                  "launch_id": vars(proc).get("_scene_launch_id")}
+        try:
+            print("[Manager] " + json.dumps({"event": "scene_stop_request", **fields}), flush=True)
+        except Exception:
+            pass
+        if getattr(self, "diagnostics", None) is not None:
+            try:
+                self.diagnostics.record("scene_stop_request", **fields)
+            except Exception:
+                # Cleanup must proceed even when its observation cannot be saved.
+                pass
+
+    def _kill_process(self, proc, scene_name, reason="manager_stop"):
         if proc is None:
             return True
+
+        def report(message):
+            try:
+                print(message, flush=True)
+            except Exception:
+                pass
 
         graceful_timeout = float(CONFIG.get("SCENE_GRACEFUL_TIMEOUT", 2.0))
         terminate_timeout = float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0))
@@ -451,7 +474,7 @@ class SceneManager:
             if proc.poll() is not None and (job is None or not job.is_alive()):
                 return stopped()
 
-            print(f"[Manager] Stopping scene: {scene_name}")
+            self._record_stop_request(proc, scene_name, reason)
             try:
                 if os.name == "nt" and hasattr(signal, "CTRL_BREAK_EVENT"):
                     proc.send_signal(signal.CTRL_BREAK_EVENT)
@@ -461,9 +484,9 @@ class SceneManager:
                 if stopped():
                     return True
             except subprocess.TimeoutExpired:
-                print(f"[Manager] Warning: graceful stop timed out: {scene_name}")
+                report(f"[Manager] Warning: graceful stop timed out: {scene_name}")
             except Exception as exc:
-                print(f"[Manager] Warning: graceful stop failed for {scene_name}: {exc}")
+                report(f"[Manager] Warning: graceful stop failed for {scene_name}: {exc}")
 
             if job is not None:
                 try:
@@ -471,7 +494,7 @@ class SceneManager:
                     proc.wait(timeout=terminate_timeout)
                     return stopped()
                 except Exception as exc:
-                    print(f"[Manager] Error: owned scene job stop failed for {scene_name}: {exc}")
+                    report(f"[Manager] Error: owned scene job stop failed for {scene_name}: {exc}")
                     return False
 
             try:
@@ -484,9 +507,9 @@ class SceneManager:
                 proc.wait(timeout=terminate_timeout)
                 return True
             except subprocess.TimeoutExpired:
-                print(f"[Manager] Warning: terminate timed out: {scene_name}")
+                report(f"[Manager] Warning: terminate timed out: {scene_name}")
             except Exception as exc:
-                print(f"[Manager] Warning: terminate failed for {scene_name}: {exc}")
+                report(f"[Manager] Warning: terminate failed for {scene_name}: {exc}")
 
             try:
                 if os.name == "nt":
@@ -501,14 +524,15 @@ class SceneManager:
                     proc.kill()
                 proc.wait(timeout=terminate_timeout)
             except Exception as exc:
-                print(f"[Manager] Error: force stop failed for {scene_name}: {exc}")
+                report(f"[Manager] Error: force stop failed for {scene_name}: {exc}")
                 return False
             return proc.poll() is not None
         finally:
             gc.collect()
 
     def kill_current(self):
-        stopped = self._kill_process(self.running_process, self.current_scene_name)
+        stopped = self._kill_process(self.running_process, self.current_scene_name,
+                                     reason=getattr(self, "shutdown_reason", None) or "scene_switch")
         if stopped:
             self.running_process = None
             self.running_scene_path = None
@@ -529,6 +553,7 @@ class SceneManager:
             stopped = self._kill_process(
                 self.preloaded_process,
                 self.preloaded_scene_name or "preloaded",
+                reason=getattr(self, "shutdown_reason", None) or "candidate_discard",
             )
         if stopped:
             self._clear_preloaded()
@@ -621,7 +646,7 @@ class SceneManager:
             if transition.poll() is not None:
                 self.transition_process = None
             elif now - self.transition_started_at > float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0)) + 1.0:
-                if self._kill_process(transition, "sakura_transition"):
+                if self._kill_process(transition, "sakura_transition", reason="transition_timeout"):
                     self.transition_process = None
                 else:
                     self.fatal_error = "transition overlay could not be stopped"
@@ -631,6 +656,8 @@ class SceneManager:
         try:
             control = self.preloaded_control
             state = control.poll(self.preloaded_process)
+            if type(control.child_pid) is int and control.child_pid > 0:
+                self.preloaded_process._scene_pid = control.child_pid
             if not self.switch_pending:
                 return
             if state == "READY":
@@ -673,6 +700,8 @@ class SceneManager:
 
     def cleanup(self):
         errors = []
+        if not getattr(self, "shutdown_reason", None):
+            self.shutdown_reason = "manager_shutdown"
 
         def run_step(label, action):
             try:
@@ -692,13 +721,14 @@ class SceneManager:
         if transition_process is not None:
             transition_stopped = run_step(
                 "transition overlay",
-                lambda: self._kill_process(transition_process, "sakura_transition"),
+                lambda: self._kill_process(transition_process, "sakura_transition", reason=self.shutdown_reason),
             )
             if transition_stopped:
                 self.transition_process = None
 
         uncontained = getattr(self, "uncontained_process", None)
-        if uncontained is not None and run_step("uncontained scene", lambda: self._kill_process(uncontained, "failed launch")):
+        if uncontained is not None and run_step("uncontained scene", lambda: self._kill_process(
+                uncontained, "failed launch", reason="launch_setup_failed")):
             self.uncontained_process = None
 
         if errors:
@@ -949,6 +979,8 @@ def main():
                         "scene": manager.current_scene_name,
                         "launcher_pid": exited_launcher.pid,
                         "launcher_exit_code": exited_launcher.poll(),
+                        "scene_pid": vars(exited_launcher).get("_scene_pid"),
+                        "launch_id": vars(exited_launcher).get("_scene_launch_id"),
                         "switch_pending": manager.switch_pending,
                     }
                     print("[Manager] " + json.dumps({"event": "scene_exit", **exit_detail}), flush=True)
@@ -1021,6 +1053,7 @@ def main():
                 exit_code = 1
         if manager is not None:
             try:
+                manager.shutdown_reason = stop_reason
                 if manager.cleanup() is False:
                     exit_code = 1
             except Exception as exc:

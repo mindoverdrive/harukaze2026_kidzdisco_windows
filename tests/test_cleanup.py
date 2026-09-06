@@ -26,6 +26,7 @@ class CleanupTests(unittest.TestCase):
         scene_manager._kill_process.assert_called_once_with(
             transition_process,
             "sakura_transition",
+            reason="manager_shutdown",
         )
 
     def test_camera_start_failure_closes_allocated_relay(self):

@@ -36,7 +36,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
-from scene_control import notify_first_frame
+from scene_control import notify_first_frame, notify_exit_request
 import math
 import cv2
 import mediapipe as mp
@@ -142,7 +142,11 @@ while running:
                 pygame.draw.line(screen, (30,30,30), (int(px), int(draw_y)), (int(next_px), int(py + next_offset)), 1)
 
     for event in pygame.event.get():
-        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and (event.key == pygame.K_ESCAPE or event.key == pygame.K_q)):
+        if event.type == pygame.QUIT:
+            notify_exit_request("pygame_quit")
+            running = False
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
+            notify_exit_request("key_escape" if event.key == pygame.K_ESCAPE else "key_q")
             running = False
 
     pygame.display.flip()

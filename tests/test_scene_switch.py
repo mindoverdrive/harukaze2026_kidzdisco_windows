@@ -38,7 +38,7 @@ class SceneSwitchTests(unittest.TestCase):
         self.assertIsNone(sm.preloaded_process)
         self.assertIsNone(sm.fatal_error)
         self.assertFalse(sm.switch_pending)
-        sm._kill_process.assert_called_once_with(candidate, "next_acer.py")
+        sm._kill_process.assert_called_once_with(candidate, "next_acer.py", reason="candidate_discard")
 
     def test_first_frame_from_another_camera_does_not_stop_current_scene(self):
         sm, old = self.prepared_manager()
@@ -54,12 +54,16 @@ class SceneSwitchTests(unittest.TestCase):
         sm, old = self.prepared_manager()
         candidate = sm.preloaded_process
         control = sm.preloaded_control
+        candidate._scene_launch_id = "promoted-launch"
+        control.child_pid = 23456
         control.poll.return_value = "FIRST_FRAME"
         sm.preload_enabled = False
         with mock.patch.dict(manager.CONFIG, {"TRANSITION_ENABLED": False}), mock.patch("builtins.print"):
             sm.tick()
-        sm._kill_process.assert_called_once_with(old, "old_acer.py")
+        sm._kill_process.assert_called_once_with(old, "old_acer.py", reason="scene_switch")
         self.assertIs(sm.running_process, candidate)
+        self.assertEqual(sm.running_process._scene_launch_id, "promoted-launch")
+        self.assertEqual(sm.running_process._scene_pid, 23456)
         self.assertFalse(sm.switch_pending)
         self.assertEqual(sm.scene_index, 1)
         control.close.assert_called_once_with()

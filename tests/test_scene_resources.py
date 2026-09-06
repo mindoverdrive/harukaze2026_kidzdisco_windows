@@ -18,7 +18,7 @@ def namespace():
     return dict(__name__="resource_test", atexit=mock.Mock(), ExitStack=ExitStack,
                 pygame=mock.Mock(), mp=mock.Mock(), cv2=mock.Mock(), display_utils=display,
                 math=math, WINDOW_WIDTH=640, WINDOW_HEIGHT=360, RenderCanvas=mock.Mock(),
-                gfx=mock.Mock())
+                gfx=mock.Mock(), notify_exit_request=mock.Mock())
 
 
 def run_exit_callbacks(ns):

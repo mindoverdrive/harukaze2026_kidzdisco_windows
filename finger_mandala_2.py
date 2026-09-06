@@ -36,7 +36,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
-from scene_control import notify_first_frame
+from scene_control import notify_first_frame, notify_exit_request
 import math
 import random
 import cv2
@@ -124,6 +124,7 @@ while running:
     # Handle Camera Input
     ret, frame = cap.read()
     if not ret:
+        notify_exit_request("camera_read_failed")
         break
 
     frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, w, h)
@@ -249,7 +250,11 @@ while running:
         prev_pos = None # Reset prev_pos if no hand detected or animating
 
     for event in pygame.event.get():
-        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and (event.key == pygame.K_ESCAPE or event.key == pygame.K_q)):
+        if event.type == pygame.QUIT:
+            notify_exit_request("pygame_quit")
+            running = False
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
+            notify_exit_request("key_escape" if event.key == pygame.K_ESCAPE else "key_q")
             running = False
         if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
             canvas.fill((0,0,0,0)) # Clear canvas with Space

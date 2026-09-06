@@ -17,7 +17,8 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
         sys.modules.setdefault("cv2", mock.MagicMock())
         sys.modules.setdefault("numpy", mock.MagicMock())
         import manager
-        process = SimpleNamespace(pid=456789, poll=lambda: launcher_exit_code)
+        process = SimpleNamespace(pid=456789, poll=lambda: launcher_exit_code,
+                                  _scene_pid=567890, _scene_launch_id="observed-exit")
         scene_manager = mock.Mock(
             running_process=process, current_scene_name="fixture_acer.py", switch_pending=False,
             fatal_error=None, completed_switches=1, last_switch_error=None,
@@ -47,6 +48,8 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
             self.assertEqual(exits[0]["scene"], "fixture_acer.py")
             self.assertEqual(exits[0]["launcher_pid"], process.pid)
             self.assertEqual(exits[0]["launcher_exit_code"], launcher_exit_code)
+            self.assertEqual(exits[0]["scene_pid"], 567890)
+            self.assertEqual(exits[0]["launch_id"], "observed-exit")
             self.assertIs(exits[0]["switch_pending"], False)
             self.assertTrue(any('"event": "scene_exit"' in str(call.args[0])
                                 and f'"launcher_exit_code": {launcher_exit_code}' in str(call.args[0])

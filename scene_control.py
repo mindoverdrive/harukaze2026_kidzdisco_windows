@@ -15,6 +15,50 @@ class SceneControlError(RuntimeError):
     pass
 
 
+class SceneLifecycle:
+    """Best-effort observations; runner return is not proof that process cleanup finished."""
+
+    def __init__(self, scene):
+        self.scene = scene
+        self.launch_id = None
+        self.started_at = time.monotonic()
+        self.exit_request_reason = None
+
+    def record(self, event, **fields):
+        try:
+            payload = {"event": event, "scene": self.scene, "launch_id": self.launch_id,
+                       "pid": os.getpid(), "elapsed_s": round(time.monotonic() - self.started_at, 3),
+                       **fields}
+            print("[SceneLifecycle] " + json.dumps(payload, ensure_ascii=False, default=str), flush=True)
+        except Exception:
+            # An unavailable output pipe must not change game or cleanup control flow.
+            pass
+
+    def request_exit(self, reason):
+        if self.exit_request_reason is None:
+            self.exit_request_reason = reason
+            self.record("exit_request", reason=reason)
+
+    def finish(self, failure=None):
+        fields = {"outcome": "return", "exit_request_reason": self.exit_request_reason}
+        if isinstance(failure, SystemExit):
+            fields.update(outcome="system_exit", system_exit_code=failure.code)
+        elif isinstance(failure, KeyboardInterrupt):
+            fields["outcome"] = "keyboard_interrupt"
+        elif failure is not None:
+            fields.update(outcome="exception", exception_type=type(failure).__name__)
+        self.record("runner_end", **fields)
+
+
+_scene_lifecycle = None
+
+
+def notify_exit_request(reason):
+    """Record the observed terminating event, without inferring who generated it."""
+    if _scene_lifecycle is not None:
+        _scene_lifecycle.request_exit(reason)
+
+
 class JsonChannel:
     def __init__(self, sock):
         self.sock = sock
