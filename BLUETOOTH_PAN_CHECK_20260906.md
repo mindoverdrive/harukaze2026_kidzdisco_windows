@@ -2,7 +2,11 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**最新（13:24 JST）：Bluetoothペアリングは両機で確認済み。PANはまだ未成立。** MacはTahoe 26.6.2との申告。HTTP・SSH・再接続・短時間安定性のPAN経由の合格はまだない。次はMacのネットワーク一覧のBluetooth PAN項目を確認する。
+**最終観測（13:31 JST）：Bluetoothペアリングは成功したが、PANは未成立。Macのネットワーク一覧とサービス追加候補の両方にBluetooth PANがなく、ここで検証を停止する。** MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性は合格していない。構成変更や別方式の採用へ自動で進まない。
+
+Mac側の既存一覧はWi-Fi・VPN・ファイアウォール・Thunderbolt Bridge・iPhone USBとのユーザー報告。続いて「サービスを追加」のインターフェイス候補はThunderbolt Bridge・Wi-Fi・PPPoE・6to4で、チェックはThunderbolt Bridgeに付いているとの報告を受けた（音声の「PPPOE624」はPPPoE / 6to4として整理）。Bluetooth PANの追加候補を確認できない。Thunderbolt BridgeをPANとして作成せず、現在のダイアログはキャンセルで閉じる案内とする。
+
+13:31:48のAcer再読取でもPANはDisconnected、IPv4はTentative、TCP 22/8767の待受なし、sshdはStopped。現在の標準UIでPANの接続経路を用意できる状態を確認できないことが停止理由である。内部の非対応原因を特定したわけではなく、macOS全般の非対応やBluetooth故障とは断定しない。
 
 ユーザーから、Mac側でペアリング成功・接続済み表示、両機のVPNオフとの更新を受領。Acer側でもペアリング成功ダイアログと登録デバイスを確認した。13:24:37の実機読取では、PANアダプターとIPインターフェースはともにDisconnected、169.254系IPv4はTentative、有効なPANのユニキャスト経路はない。UpのアダプターはWi-Fiだけであり、Bluetoothデバイスとしての接続をPAN成功とは扱わない。PANのIP割当・双方向疎通・HTTPの検証前である。
 
@@ -29,7 +33,7 @@
 |Acer内HTTP|13:04:31 JST、既存URLへ直接GET、200 / 651 bytes|サーバー自己確認のみ|
 |HTTPアクセス記録|13:09時点の2件は両方Acer自身のIP|Mac到達の記録なし|
 |SSH|OpenSSH Serverインストールあり、sshdはStopped / Manual、TCP 22 listenerなし|SSH試験未開始|
-|Mac OS / PAN機能|M1・Tahoe 26.6.2（ユーザー申告）。13:24以降、ネットワーク一覧のPAN項目を確認依頼中|PAN機能はHuman Check Required|
+|Mac OS / PAN機能|M1・Tahoe 26.6.2（ユーザー申告）。既存ネットワーク一覧とサービス追加の候補にBluetooth PANなし|現行標準UIでの手順を停止。PAN実通信未確認|
 
 13:11:29 JSTの再読取で既存待受の予定終了を確認した。ログは「時間制限」で終了し、PID 30328とTCP 8767 listenerは存在しない。アクセスはAcer自身の2件のみ。ページの期限終了を接続失敗と数えない。
 
@@ -41,7 +45,7 @@ WindowsのBluetooth設定を開き、「デバイスを追加する」ダイア�
 
 これはUI操作ツールの対象ウィンドウ制約であり、Bluetoothドライバー故障、OSの権限拒否、PAN非対応の証明ではない。Mac側を直接操作する接続もないため、ユーザーへOS版・PAN項目・デバイス検出の確認を依頼した。
 
-ネットワーク設定、固定IP、VPN、Firewall、SSH設定、共有設定、ドライバー、Python環境、カメラ、シーンは変更していない。HTML作業にも触れていない。
+Codexは固定IP、VPN、Firewall、SSH設定、共有設定、ドライバー、Python環境、カメラ、シーンを変更していない。ユーザーが両機のVPNをオフにし、Bluetoothペアリング操作を実施した。HTML作業にも触れていない。
 
 ## 公式資料と、その限界
 
@@ -53,12 +57,13 @@ Appleの現行手順にはiPhoneとMacのBluetooth経由テザリングが記載
 
 macOS Tahoe 26のInternet Sharing説明だけでは、当該MacにBluetooth PANの共有先やネットワーク項目があるか確定できない。正確な版番号と実機表示で判断する。[Apple: MacのInternet Sharing](https://support.apple.com/en-my/guide/mac-help/mchlp1540/26/mac/26)
 
-## 再開条件と確認順
+Macのサービス追加はApple公式の「アクション→サービスを追加→インターフェイス」の手順で候補を確認した。候補一覧の実機報告は上記のとおりで、サービスの作成は指示していない。[Apple: ネットワークサービスを設定する](https://support.apple.com/ja-jp/guide/mac-help/mchlp1176/mac)
 
-1. Macの正確なmacOS版、ネットワークのBluetooth PAN項目、Bluetooth共有側の選択可否を取得する。Acerの追加ダイアログでBluetoothを選び、対象Macが検出されるか確認する。
-2. 両機の表示を照合してペアリングし、実機で提供される共有側と接続側の組み合わせを確認する。PANの接続状態・両端IP・経路を記録する。PANに関する項目がない、接続を拒否されるなどの場合は、その表示と段階を記録して止める。
-3. PAN成立後、既存の接続確認用プログラムをPAN側の実IPへ明示bindしてHTTPを確認する。元の待受はWi-FiのIP限定なので、IP経路を確認せず元URLをPAN成功の根拠にしない。待受が期限終了していても障害とは扱わない。
-4. HTTP成功後にSSHの最小起動・認証を確認し、PAN切断→再接続→HTTP/SSH再接続を確認する。その後5分を目安にHTTP失敗数・遅延・PAN状態・SSH維持を記録する。既存Wi-Fi経由の成功が混ざらないよう、両端の経路と到達元を照合する。
+## 保留と再開条件
+
+ペアリングは完了済み。未達はPANのネットワーク接続であり、同じペアリングを無制限に繰り返さない。Mac側のBluetooth PANを提供・接続できる具体的な標準機能の手順が確認できた場合、その箇所から再開する。AcerをBluetooth共有側にする操作、MacのCLIでのインターフェイス列挙や作成、ドライバー変更などは今回実施しておらず、全方式を否定した結果とはしない。購入や別の本番接続方式は未決定のまま。
+
+再開できた場合に限り、PANのUp状態・両端IP・経路、双方向の到達、既存の接続確認用プログラムをPAN実IPへ明示bindしたHTTPの順で確認する。元の待受はWi-FiのIP限定なので、そのURLをPAN成功の根拠にしない。HTTP後にSSH、PAN切断→再接続、5分程度のHTTP失敗数・遅延・PAN状態・SSH維持を記録する。既存Wi-Fi経由の成功が混ざらないよう両端の経路と到達元を照合する。
 
 上記は未実施の次手順であり、合格記録ではない。169.254系のみの場合、既存HTTPプログラムはRFC1918/loopback以外を拒否する。その場合も勝手に全インターフェース公開やコード変更へ進まず、PAN/IP成立の証拠とこの制約を先に整理する。
 
@@ -73,6 +78,7 @@ macOS Tahoe 26のInternet Sharing説明だけでは、当該MacにBluetooth PAN�
 - `pan_probe_final_20260906.json`: 13:11の未接続、待受の期限終了とPID/port解放。
 - `pan_acer_after_mac_report_20260906.json`: Mac側情報を受領した13:14のPAN・Bluetooth・SSHサービス再読取。
 - `pan_after_pairing_20260906.json`: 13:24のペアリング後PAN状態・IPv4・経路・デバイス登録・有効アダプター・待受。機器識別子を含むためGit対象外。
+- `pan_no_mac_interface_20260906.json`: Macの追加候補にPANがないとの報告後、13:31のAcerのPAN・IPv4・SSH・HTTP待受を再確認。
 - `mac_link_standby_20260906_1210.jsonl`: 自己アクセスを含む既存待受の記録。予定終了は13:10:47 JST。
 
 コード・設定の基準点は `705b081` のまま。接続診断では戻すべきネットワーク設定変更はない。後続の文書コミットは履歴を消さずrevertできる。
