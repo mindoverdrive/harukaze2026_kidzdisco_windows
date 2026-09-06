@@ -1,3 +1,5 @@
+06:20最新：USB抜差し後に生映像が戻らずユーザーNG。黒い成功フレーム約1fps/再取得0を確認。通常終了・解放後にSpheres再起動、カメラ診断29.99fps。現在は再起動後の映像/指反応のみ人間確認待ち。自動USB復帰は未合格。詳細USB_RECOVERY_MVP_20260907.md。
+
 ## 2026-09-07 06:15 最新：異種20回完走、USB復帰の人間確認待ち
 
 Spheres/Stormの20秒間隔20回試験は06:14:04に switch_count_reached / exit0 / trial_elapsed471.078秒 / completed_switches20 / promotions21で終了。trialは `test_reports/mixed_repeat20_20260907_060604_788024/trial`、解析は同runのsummary.json。21件のFIRST_FRAME、旧シーン停止20件すべて新FIRST_FRAMEより後。同じManager17972/SHMを維持、camera read failure/reopen0、最大frame gap0.079秒、定常sampleは3 PID。一時重複sample最大5 PID。記録41プロセス世代は全て終了、SHM不在。別のCIM確認でもManager/scene入口の稼働なし。例外を含む出力52レコードはすべて該当シーンへの停止要求以後であり、終了時例外の保留として残す。GPUメモリ未取得、20回すべての人間目視・12時間耐久は未確認。
