@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from multiprocessing import shared_memory
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -31,6 +32,9 @@ FRAME_MAX_AGE_SECONDS = 2.0
 RECONNECT_INITIAL_DELAY = 0.25
 RECONNECT_MAX_DELAY = 5.0
 CAPTURE_JOIN_TIMEOUT = 2.0
+# Standalone callers may catch an open error and retry without retaining it.
+# Keep only their failed candidate here; successful opens transfer to the caller.
+_standalone_capture_owner = SimpleNamespace(cap=None, release_error=None)
 
 
 def enumerate_camera_devices():
@@ -180,6 +184,20 @@ def _measure_capture_fps(cap, sample_seconds=2.0):
     return (frames - 1) / elapsed, frames
 
 
+def _release_owned_capture(owner):
+    if owner.cap is None:
+        return True
+    try:
+        owner.cap.release()
+    except Exception as exc:
+        owner.release_error = f"camera release: {exc}"
+        print(f"[shared_camera] {owner.release_error}")
+        return False
+    owner.cap = None
+    owner.release_error = None
+    return True
+
+
 def _open_with_backends(
     camera_index,
     width,
@@ -191,6 +209,7 @@ def _open_with_backends(
     strict_backend=False,
     exposure=None,
     zoom=None,
+    capture_owner=None,
 ):
     def _setup_props(cap, backend):
         normalized_fourcc = _normalize_fourcc(fourcc)
@@ -219,29 +238,49 @@ def _open_with_backends(
             if not math.isfinite(actual) or abs(actual - zoom) > 0.5:
                 raise RuntimeError(f"Camera zoom mismatch: requested={zoom} actual={actual}")
 
+    owner = capture_owner if capture_owner is not None else _standalone_capture_owner
+    if not _release_owned_capture(owner):
+        raise RuntimeError(owner.release_error)
+
     indices = [camera_index]
     if fallback_to_default:
         indices.extend(idx for idx in (0, 1, 2) if idx != camera_index)
     for idx in indices:
         for backend in _backend_order(backend_preference, strict_backend=strict_backend):
+            if capture_owner is not None and capture_owner.stop_event.is_set():
+                raise RuntimeError("Camera stopped while opening capture")
             cap = None
             opened = False
+            open_error = None
             try:
                 print(f"[shared_camera] Trying camera index={idx} backend={backend}")
                 cap = cv2.VideoCapture(idx) if backend is None else cv2.VideoCapture(idx, backend)
+                # Register the native handle before isOpened/set/get can fail.
+                owner.cap = cap
+                if capture_owner is not None and capture_owner.stop_event.is_set():
+                    raise RuntimeError("Camera stopped while opening capture")
                 if cap.isOpened():
                     _setup_props(cap, backend)
                     actual_fourcc = _decode_fourcc(cap.get(cv2.CAP_PROP_FOURCC))
                     print(f"[shared_camera] Opened physical camera index={idx} "
                           f"backend={backend} fourcc={actual_fourcc}")
                     opened = True
+                    if capture_owner is None:
+                        owner.cap = None
                     return cap
-            except Exception as exc:
+            except BaseException as exc:
+                open_error = exc
                 print(f"[shared_camera] Open/setup failed index={idx} backend={backend}: {exc}")
+                if not isinstance(exc, Exception):
+                    raise
             finally:
                 if cap is not None and not opened:
-                    # Do not open another handle if releasing this one fails.
-                    cap.release()
+                    if not _release_owned_capture(owner):
+                        # Preserve both failures while the owner keeps the handle
+                        # for close/reconnect (or a standalone open retry).
+                        raise RuntimeError(
+                            f"open/setup: {open_error or 'camera did not open'}; {owner.release_error}"
+                        ) from open_error
 
     return None
 
@@ -449,15 +488,15 @@ class SharedCameraRelay:
             self.thread = threading.Thread(target=self._capture_loop, daemon=True)
             self.thread.start()
             return self
-        except BaseException:
+        except BaseException as exc:
+            self.last_error = f"start: {exc}"
             self.close()
             raise
 
     def _create_capture(self):
         if self.stop_event.is_set():
-            return None
-        # Retain ownership before first-read validation: start/reopen cleanup
-        # must still be able to release a handle when a native operation fails.
+            raise RuntimeError("Camera stopped before opening capture")
+        # The helper retains ownership before any native validation or setup.
         self.cap = _open_with_backends(
             camera_index=self.camera_index,
             width=self.width,
@@ -469,6 +508,7 @@ class SharedCameraRelay:
             strict_backend=self.strict_backend,
             exposure=self.exposure,
             zoom=self.zoom,
+            capture_owner=self,
         )
         if self.cap is not None:
             if self.stop_event.is_set():
@@ -545,17 +585,7 @@ class SharedCameraRelay:
             return False
 
     def _release_capture(self):
-        if self.cap is None:
-            return True
-        try:
-            self.cap.release()
-        except Exception as exc:
-            self.release_error = f"camera release: {exc}"
-            print(f"[shared_camera] {self.release_error}")
-            return False
-        self.cap = None
-        self.release_error = None
-        return True
+        return _release_owned_capture(self)
 
     def _mark_unavailable(self):
         with self.lock:

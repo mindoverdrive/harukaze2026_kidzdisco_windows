@@ -149,6 +149,185 @@ class CameraReconnectTests(unittest.TestCase):
         self.assertIsNone(result)
         cap.release.assert_called_once()
 
+    def test_start_retains_candidate_when_setup_and_release_both_fail(self):
+        relay = self.relay()
+        cap = mock.Mock()
+        cap.set.side_effect = RuntimeError("driver rejected properties")
+        cap.release.side_effect = RuntimeError("driver release failed")
+        try:
+            with (mock.patch.object(camera.cv2, "VideoCapture", return_value=cap) as physical_open,
+                  mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+                with self.assertRaises(RuntimeError):
+                    relay.start()
+                self.assertIs(relay.cap, cap)
+                self.assertIn("driver release failed", relay.release_error)
+                self.assertIsNone(relay.shm)
+                self.assertFalse(relay.close())
+                self.assertIs(relay.cap, cap)
+                with self.assertRaises(RuntimeError):
+                    relay.start()
+                self.assertIs(relay.cap, cap)
+                physical_open.assert_called_once()
+            cap.release.side_effect = None
+            self.assertTrue(relay.close())
+            self.assertIsNone(relay.cap)
+            self.assertIsNone(relay.release_error)
+        finally:
+            cap.release.side_effect = None
+
+    def test_reconnect_retries_retained_candidate_release_before_another_open(self):
+        relay = self.relay()
+        cap = mock.Mock()
+        cap.set.side_effect = RuntimeError("driver rejected properties")
+        cap.release.side_effect = RuntimeError("driver release failed")
+        recovered = mock.Mock()
+        recovered.get.return_value = 0
+        try:
+            with (mock.patch.object(camera.cv2, "VideoCapture", side_effect=[cap, recovered]) as physical_open,
+                  mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+                self.assertFalse(relay._reopen_capture())
+                self.assertIs(relay.cap, cap)
+                self.assertIn("driver release failed", relay.release_error)
+                self.assertFalse(relay._reopen_capture())
+                self.assertIs(relay.cap, cap)
+                physical_open.assert_called_once()
+
+                def release():
+                    physical_open.assert_called_once()
+
+                cap.release.side_effect = release
+                self.assertTrue(relay._reopen_capture())
+                self.assertIs(relay.cap, recovered)
+                self.assertIsNone(relay.release_error)
+                self.assertEqual(physical_open.call_count, 2)
+                self.assertTrue(relay.close())
+                recovered.release.assert_called_once()
+        finally:
+            cap.release.side_effect = None
+
+    def test_reconnect_retains_failed_candidate_from_each_native_open_probe(self):
+        for operation in ("isOpened", "set", "get", "not_opened"):
+            with self.subTest(operation=operation):
+                relay = self.relay()
+                cap = mock.Mock()
+                if operation == "not_opened":
+                    cap.isOpened.return_value = False
+                else:
+                    getattr(cap, operation).side_effect = RuntimeError(f"{operation} failed")
+                cap.release.side_effect = RuntimeError("driver release failed")
+                try:
+                    with (mock.patch.object(camera.cv2, "VideoCapture", return_value=cap) as physical_open,
+                          mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+                        self.assertFalse(relay._reopen_capture())
+                        self.assertIs(relay.cap, cap)
+                        self.assertIn("driver release failed", relay.release_error)
+                        self.assertIn("driver release failed", relay.last_error)
+                        if operation != "not_opened":
+                            self.assertIn(f"{operation} failed", relay.last_error)
+                        self.assertFalse(relay._reopen_capture())
+                        physical_open.assert_called_once()
+                finally:
+                    cap.release.side_effect = None
+                    self.assertTrue(relay.close())
+
+    def test_clean_candidate_release_allows_next_backend(self):
+        first, recovered = mock.Mock(), mock.Mock()
+        first.set.side_effect = RuntimeError("driver rejected properties")
+        recovered.get.return_value = 0
+
+        def open_capture(index, backend):
+            if backend == 123:
+                return first
+            first.release.assert_called_once()
+            return recovered
+
+        with (mock.patch.object(camera.cv2, "VideoCapture", side_effect=open_capture) as physical_open,
+              mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+            result = camera._open_with_backends(0, 2, 2, 30, "MJPG", "dshow", False)
+        self.assertIs(result, recovered)
+        self.assertEqual(physical_open.call_args_list, [mock.call(0, 123), mock.call(0, 456)])
+        recovered.release.assert_not_called()
+
+    def test_stop_during_candidate_setup_prevents_backend_fallback(self):
+        relay = self.relay()
+        cap = mock.Mock()
+
+        def fail_setup(*args):
+            relay.stop_event.set()
+            raise RuntimeError("driver rejected properties")
+
+        cap.set.side_effect = fail_setup
+        with (mock.patch.object(camera.cv2, "VideoCapture", return_value=cap) as physical_open,
+              mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+            self.assertFalse(relay._reopen_capture())
+        physical_open.assert_called_once()
+        cap.release.assert_called_once()
+        self.assertIsNone(relay.cap)
+
+    def test_stop_during_native_open_keeps_cleanup_ownership_without_setup(self):
+        relay = self.relay()
+        cap = mock.Mock()
+        cap.release.side_effect = RuntimeError("driver release failed")
+
+        def open_capture(*args):
+            relay.stop_event.set()
+            return cap
+
+        try:
+            with (mock.patch.object(camera.cv2, "VideoCapture", side_effect=open_capture) as physical_open,
+                  mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+                self.assertFalse(relay._reopen_capture())
+                self.assertIs(relay.cap, cap)
+                self.assertIn("driver release failed", relay.release_error)
+                self.assertFalse(relay._reopen_capture())
+                physical_open.assert_called_once()
+                cap.isOpened.assert_not_called()
+                cap.set.assert_not_called()
+                cap.get.assert_not_called()
+        finally:
+            cap.release.side_effect = None
+            self.assertTrue(relay.close())
+
+    def test_standalone_success_transfers_capture_ownership_to_caller(self):
+        first, second = mock.Mock(), mock.Mock()
+        first.get.return_value = second.get.return_value = 0
+        with (mock.patch.object(camera.cv2, "VideoCapture", side_effect=[first, second]),
+              mock.patch.object(camera, "_backend_order", return_value=[123])):
+            self.assertIs(camera._open_with_backends(0, 2, 2, 30, "MJPG", "dshow", False), first)
+            first.release.assert_not_called()
+            first.release()
+            self.assertIs(camera._open_with_backends(0, 2, 2, 30, "MJPG", "dshow", False), second)
+            first.release.assert_called_once()
+            second.release.assert_not_called()
+            second.release()
+
+    def test_standalone_source_retries_failed_release_before_another_open(self):
+        cap, recovered = mock.Mock(), mock.Mock()
+        cap.set.side_effect = RuntimeError("driver rejected properties")
+        cap.release.side_effect = RuntimeError("driver release failed")
+        recovered.get.return_value = 0
+        with (mock.patch.object(camera.SharedMemoryCamera, "from_env", return_value=None),
+              mock.patch.object(camera.SharedMemoryCamera, "from_session_file", return_value=None),
+              mock.patch.dict(camera.os.environ, {camera.ENV_REQUIRED: "0"}),
+              mock.patch.object(camera.cv2, "VideoCapture", side_effect=[cap, recovered]) as physical_open,
+              mock.patch.object(camera, "_backend_order", return_value=[123, 456])):
+            try:
+                with self.assertRaisesRegex(RuntimeError, "driver release failed"):
+                    camera.open_camera_source(0, 2, 2, 30)
+                with self.assertRaisesRegex(RuntimeError, "driver release failed"):
+                    camera.open_camera_source(0, 2, 2, 30)
+                physical_open.assert_called_once()
+
+                def release():
+                    physical_open.assert_called_once()
+
+                cap.release.side_effect = release
+                self.assertIs(camera.open_camera_source(0, 2, 2, 30), recovered)
+                self.assertEqual(physical_open.call_count, 2)
+                recovered.release.assert_not_called()
+            finally:
+                cap.release.side_effect = None
+
     def test_shared_reader_accepts_only_a_complete_fresh_snapshot(self):
         relay = self.relay()
         reader = camera.SharedMemoryCamera(relay.shm_name, 2, 2)
