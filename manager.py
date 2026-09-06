@@ -357,10 +357,12 @@ class SceneManager:
         self.transition_started_at = None
         self.switch_pending = False
         self.switch_cover_until = None
+        self.switch_had_live_scene = False
         self.last_switch_error = None
         self.fatal_error = None
         self.uncontained_process = None
         self.diagnostics = diagnostics
+        self.completed_promotions = 0
         self.completed_switches = 0
         self.shutdown_reason = None
         self.preload_enabled = int(CONFIG.get("PRELOAD_COUNT", 1)) > 0
@@ -623,6 +625,7 @@ class SceneManager:
         self.last_switch_error = None
         self.switch_pending = True
         self.switch_cover_until = None
+        self.switch_had_live_scene = False
         if not self._ensure_preloaded_scene():
             self.switch_pending = False
             return False
@@ -634,6 +637,7 @@ class SceneManager:
         print(f"[Manager] Candidate failed: {self.preloaded_scene_name}: {reason}")
         self.switch_pending = False
         self.switch_cover_until = None
+        self.switch_had_live_scene = False
         if not self._discard_preloaded():
             self.fatal_error = "failed candidate could not be stopped: " + reason
         elif not self.is_scene_running():
@@ -671,11 +675,15 @@ class SceneManager:
                 raise SceneControlError("FIRST_FRAME came from a different shared camera")
 
             if self.switch_cover_until is None:
-                overlay = self._start_transition_overlay() if self.is_scene_running() else None
+                self.switch_had_live_scene = self.is_scene_running()
+                overlay = self._start_transition_overlay() if self.switch_had_live_scene else None
                 delay = float(CONFIG.get("TRANSITION_COVER_DELAY", 1.5)) if overlay else 0.0
                 self.switch_cover_until = now + max(0.0, delay)
             if now < self.switch_cover_until:
                 return
+            # Initial starts and recovery promotions are observable, but only a
+            # still-live predecessor stopped after FIRST_FRAME completes a switch.
+            completes_switch = self.switch_had_live_scene and self.is_scene_running()
             if not self.kill_current():
                 raise SceneControlError("current scene could not be stopped; keeping its handle")
 
@@ -684,10 +692,13 @@ class SceneManager:
             self.current_scene_name = self.preloaded_scene_name
             print(f"[Manager] Promoted {self.current_scene_name} pid={self.running_process.pid} after FIRST_FRAME")
             self.scene_index += 1
-            self.completed_switches += 1
+            self.completed_promotions += 1
+            if completes_switch:
+                self.completed_switches += 1
             self._clear_preloaded()
             self.switch_pending = False
             self.switch_cover_until = None
+            self.switch_had_live_scene = False
             if self.preload_enabled:
                 self._ensure_preloaded_scene()
         except (OSError, SceneControlError) as exc:
@@ -822,7 +833,7 @@ def main():
     parser.add_argument("--report-dir", help="Write bounded trial logs and resource observations here")
     parser.add_argument("--duration-seconds", type=_positive_seconds, help="Stop this trial after the first scene has run this long")
     parser.add_argument("--switch-interval-seconds", type=_positive_seconds, help="Request a trial switch after each successful scene has run this long")
-    parser.add_argument("--switch-count", type=int, help="Stop after this many successful trial switches, excluding initial launch")
+    parser.add_argument("--switch-count", type=int, help="Stop after this many live-scene switches; initial launch and recovery do not count")
     parser.add_argument("--operator-host", default="127.0.0.1", help="Specific Acer PAN/LAN IPv4 for the browser panel")
     parser.add_argument("--operator-port", type=int, help="Enable the authenticated browser panel on this port")
     parser.add_argument(
@@ -866,7 +877,7 @@ def main():
     operator = None
     trial_started_at = None
     next_switch_at = None
-    observed_switches = 0
+    observed_promotions = 0
     next_sample_at = 0.0
     stop_reason = "error"
     exit_code = 0
@@ -950,8 +961,8 @@ def main():
                 trial_started_at = time.monotonic()
                 if diagnostics:
                     diagnostics.record("trial_started")
-            if manager is not None and manager.completed_switches != observed_switches:
-                observed_switches = manager.completed_switches
+            if manager is not None and manager.completed_promotions != observed_promotions:
+                observed_promotions = manager.completed_promotions
                 next_switch_at = time.monotonic() + args.switch_interval_seconds if args.switch_interval_seconds else None
             if diagnostics and now >= next_sample_at:
                 diagnostics.sample(camera_relay, manager)
@@ -959,7 +970,7 @@ def main():
             if args.duration_seconds and trial_started_at is not None and now - trial_started_at >= args.duration_seconds:
                 stop_reason = "duration_reached"
                 break
-            if (args.switch_count and manager is not None and manager.completed_switches >= args.switch_count + 1
+            if (args.switch_count and manager is not None and manager.completed_switches >= args.switch_count
                     and manager.transition_process is None and not manager.switch_pending):
                 stop_reason = "switch_count_reached"
                 break
@@ -1075,7 +1086,8 @@ def main():
             try:
                 diagnostics.record("run_end", reason=stop_reason, exit_code=exit_code,
                                    trial_elapsed_s=time.monotonic() - trial_started_at if trial_started_at else 0,
-                                   completed_switches=max(0, manager.completed_switches - 1) if manager else 0,
+                                   completed_switches=manager.completed_switches if manager else 0,
+                                   completed_promotions=manager.completed_promotions if manager else 0,
                                    human_check_required=True)
             except OSError as exc:
                 print(f"[Manager] Report error: {exc}")

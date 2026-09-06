@@ -52,6 +52,7 @@ class SceneSwitchTests(unittest.TestCase):
 
     def test_first_frame_promotes_candidate_and_closes_control(self):
         sm, old = self.prepared_manager()
+        sm.completed_promotions = 1
         candidate = sm.preloaded_process
         control = sm.preloaded_control
         candidate._scene_launch_id = "promoted-launch"
@@ -66,7 +67,86 @@ class SceneSwitchTests(unittest.TestCase):
         self.assertEqual(sm.running_process._scene_pid, 23456)
         self.assertFalse(sm.switch_pending)
         self.assertEqual(sm.scene_index, 1)
+        self.assertEqual(sm.completed_switches, 1)
+        self.assertEqual(sm.completed_promotions, 2)
         control.close.assert_called_once_with()
+
+    def test_initial_first_frame_is_not_a_completed_switch(self):
+        sm, _ = self.prepared_manager()
+        sm.running_process = None
+        sm.running_scene_path = None
+        sm.completed_promotions = 0
+        candidate = sm.preloaded_process
+        sm.preloaded_control.poll.return_value = "FIRST_FRAME"
+        sm.preload_enabled = False
+        with mock.patch("builtins.print"):
+            sm.tick()
+        self.assertIs(sm.running_process, candidate)
+        self.assertEqual(sm.completed_switches, 0)
+        self.assertEqual(sm.completed_promotions, 1)
+
+    def test_natural_exit_recovery_does_not_count_as_a_completed_switch(self):
+        for exit_code in (0, 23):
+            with self.subTest(exit_code=exit_code):
+                sm, old = self.prepared_manager()
+                sm.completed_promotions = 1
+                old.poll.return_value = exit_code
+                candidate = sm.preloaded_process
+                sm.preloaded_control.poll.return_value = "FIRST_FRAME"
+                sm.preload_enabled = False
+                with mock.patch("builtins.print"):
+                    sm.tick()
+                self.assertIs(sm.running_process, candidate)
+                self.assertIsNone(sm.last_switch_error)
+                self.assertEqual(sm.completed_switches, 0)
+                self.assertEqual(sm.completed_promotions, 2)
+
+    def test_old_scene_exit_before_first_frame_does_not_count_as_a_switch(self):
+        sm, old = self.prepared_manager()
+        sm.completed_promotions = 1
+        candidate = sm.preloaded_process
+        sm.preload_enabled = False
+        sm.preloaded_control.poll.return_value = "START_ACK"
+        with mock.patch("builtins.print"):
+            sm.tick()
+            sm._kill_process.assert_not_called()
+            old.poll.return_value = 0
+            sm.preloaded_control.poll.return_value = "FIRST_FRAME"
+            sm.tick()
+        self.assertIs(sm.running_process, candidate)
+        self.assertEqual(sm.completed_switches, 0)
+        self.assertEqual(sm.completed_promotions, 2)
+
+    def test_old_scene_exit_during_cover_delay_does_not_count_as_a_switch(self):
+        sm, old = self.prepared_manager()
+        sm.completed_promotions = 1
+        candidate = sm.preloaded_process
+        sm.preload_enabled = False
+        sm.preloaded_control.poll.return_value = "FIRST_FRAME"
+        sm._start_transition_overlay = mock.Mock(return_value=object())
+        with (mock.patch.dict(manager.CONFIG, {"TRANSITION_COVER_DELAY": 1}),
+              mock.patch.object(manager.time, "monotonic", side_effect=[100, 102]),
+              mock.patch("builtins.print")):
+            sm.tick()
+            sm._kill_process.assert_not_called()
+            old.poll.return_value = 0
+            sm.tick()
+        self.assertIs(sm.running_process, candidate)
+        self.assertEqual(sm.completed_switches, 0)
+        self.assertEqual(sm.completed_promotions, 2)
+
+    def test_failed_old_scene_stop_does_not_advance_either_counter(self):
+        sm, old = self.prepared_manager()
+        sm.completed_promotions = 1
+        sm.preload_enabled = False
+        sm.preloaded_control.poll.return_value = "FIRST_FRAME"
+        sm._kill_process.side_effect = [False, True]
+        with mock.patch.dict(manager.CONFIG, {"TRANSITION_ENABLED": False}), mock.patch("builtins.print"):
+            sm.tick()
+        self.assertIs(sm.running_process, old)
+        self.assertIn("current scene could not be stopped", sm.last_switch_error)
+        self.assertEqual(sm.completed_switches, 0)
+        self.assertEqual(sm.completed_promotions, 1)
 
     def test_real_manager_can_repeat_fixture_scene_switches(self):
         scene_path = str(Path(__file__).parent / "fixtures" / "handshake_scene_acer.py")

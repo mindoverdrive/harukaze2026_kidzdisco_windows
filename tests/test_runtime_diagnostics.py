@@ -21,7 +21,7 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
                                   _scene_pid=567890, _scene_launch_id="observed-exit")
         scene_manager = mock.Mock(
             running_process=process, current_scene_name="fixture_acer.py", switch_pending=False,
-            fatal_error=None, completed_switches=1, last_switch_error=None,
+            fatal_error=None, completed_switches=0, completed_promotions=1, last_switch_error=None,
         )
         scene_manager.is_scene_running.return_value = False
         scene_manager.cleanup.return_value = True
@@ -65,6 +65,24 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
 
     def test_spontaneous_nonzero_exit_is_logged_before_launching_next(self):
         self._assert_spontaneous_exit_is_logged(23)
+
+    def test_samples_distinguish_completed_switches_from_all_promotions(self):
+        from unittest import mock
+        from types import SimpleNamespace
+        diagnostics = RuntimeDiagnostics.__new__(RuntimeDiagnostics)
+        diagnostics.error = None
+        diagnostics._reap_readers = mock.Mock()
+        diagnostics.record = mock.Mock()
+        relay = SimpleNamespace(last_success_at=None, shm_name="fixture_camera", frame_id=42,
+                                read_failures_total=0, reopen_attempts=0, last_error=None, max_frame_gap=0)
+        scene_manager = SimpleNamespace(running_process=None, completed_switches=2, completed_promotions=5,
+                                        current_scene_name="fixture_acer.py", switch_pending=False,
+                                        last_switch_error=None)
+        with mock.patch("runtime_diagnostics.process_sample", return_value={}):
+            diagnostics.sample(relay, scene_manager)
+        self.assertEqual(diagnostics.record.call_args.args, ("sample",))
+        self.assertEqual(diagnostics.record.call_args.kwargs["switch_count"], 2)
+        self.assertEqual(diagnostics.record.call_args.kwargs["promotion_count"], 5)
 
     def test_duration_trial_waits_for_first_frame_before_counting_time(self):
         from unittest import mock
@@ -150,11 +168,96 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
             end = next(record for record in records if record["event"] == "run_end")
             self.assertEqual(end["reason"], "switch_count_reached")
             self.assertEqual(end["completed_switches"], 3)
+            self.assertEqual(end["completed_promotions"], 4)
             self.assertTrue(end["human_check_required"])
             first_frames = [record for record in records if record["event"] == "scene_control"
                             and record["detail"]["event"] == "FIRST_FRAME"]
             self.assertEqual(len(first_frames), 4)
         relay.close.assert_called_once()
+
+    def _run_trial_with_natural_restarts(self, switch_interval, switch_count, quit_after, restart_count=3):
+        from unittest import mock
+        from types import SimpleNamespace
+        sys.modules.setdefault("cv2", mock.MagicMock())
+        sys.modules.setdefault("numpy", mock.MagicMock())
+        import manager
+        real_scene_manager = manager.SceneManager
+        scene_managers = []
+        now = [100.0]
+        waits = [0]
+
+        def build_scene_manager(**kwargs):
+            sm = real_scene_manager(**kwargs)
+            serial = [100]
+
+            def prepare():
+                serial[0] += 1
+                process = mock.Mock(pid=serial[0])
+                process.poll.return_value = None
+                control = mock.Mock(child_pid=serial[0])
+                control.poll.return_value = "FIRST_FRAME"
+                control.first_frame = {"shm_name": "fixture_camera"}
+                sm.preloaded_process = process
+                sm.preloaded_scene_path = "fixture_acer.py"
+                sm.preloaded_scene_name = "fixture_acer.py"
+                sm.preloaded_control = control
+                return True
+
+            sm._ensure_preloaded_scene = prepare
+            sm._kill_process = mock.Mock(return_value=True)
+            scene_managers.append(sm)
+            return sm
+
+        def wait_key(_):
+            waits[0] += 1
+            now[0] += 1
+            if waits[0] <= restart_count:
+                scene_managers[0].running_process.poll.return_value = 0
+            return ord("q") if waits[0] >= quit_after else -1
+
+        relay = mock.Mock(thread=None)
+        relay.export_env.return_value = {"HARUKAZE_CAMERA_SHM": "fixture_camera"}
+        relay.close.return_value = True
+        diagnostics = mock.Mock()
+        diagnostics.close.return_value = True
+        config = dict(manager.DEFAULT_CONFIG, CLAP_MONITOR_ENABLED=False, PRELOAD_COUNT=0, TRANSITION_ENABLED=False)
+        with (
+            mock.patch.object(manager, "CONFIG", config),
+            mock.patch.object(manager, "resolve_production_scenes", return_value=["fixture_acer.py"]),
+            mock.patch.object(manager, "SharedCameraRelay", return_value=relay),
+            mock.patch.object(manager, "SceneManager", side_effect=build_scene_manager),
+            mock.patch.object(manager, "RuntimeDiagnostics", return_value=diagnostics),
+            mock.patch.object(manager, "time", SimpleNamespace(monotonic=lambda: now[0])),
+            mock.patch.multiple(manager.cv2, namedWindow=mock.Mock(), resizeWindow=mock.Mock(),
+                                putText=mock.Mock(), imshow=mock.Mock(), destroyAllWindows=mock.Mock()),
+            mock.patch.object(manager.cv2, "waitKey", side_effect=wait_key),
+            mock.patch.object(sys, "argv", ["manager.py", "--report-dir", "unused-mock-directory",
+                                           "--switch-interval-seconds", str(switch_interval),
+                                           "--switch-count", str(switch_count)]),
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(manager.main(), 0)
+        end = next(call.kwargs for call in diagnostics.record.call_args_list if call.args[0] == "run_end")
+        exits = [call for call in diagnostics.record.call_args_list if call.args[0] == "scene_exit"]
+        return end, scene_managers[0], exits
+
+    def test_natural_restarts_do_not_satisfy_trial_switch_count(self):
+        end, scene_manager, exits = self._run_trial_with_natural_restarts(60, 20, 22, restart_count=20)
+        self.assertEqual(end["reason"], "user_quit")
+        self.assertEqual(end["completed_switches"], 0)
+        self.assertEqual(end["completed_promotions"], 21)
+        self.assertEqual(len(exits), 20)
+        self.assertEqual(scene_manager.completed_switches, 0)
+        self.assertEqual(scene_manager.completed_promotions, 21)
+
+    def test_trial_timer_restarts_after_recovery_and_counts_the_later_live_switch(self):
+        end, scene_manager, exits = self._run_trial_with_natural_restarts(3, 1, 10)
+        self.assertEqual(len(exits), 3)
+        self.assertEqual(end["reason"], "switch_count_reached")
+        self.assertEqual(end["completed_switches"], 1)
+        self.assertEqual(end["completed_promotions"], 5)
+        self.assertEqual(scene_manager.completed_switches, 1)
+        self.assertEqual(scene_manager.completed_promotions, 5)
 
 
 if __name__ == "__main__":

@@ -166,6 +166,7 @@ class RuntimeDiagnostics:
                     running_pid=scene_manager.running_process.pid if scene_manager and scene_manager.running_process else None,
                     switch_pending=scene_manager.switch_pending if scene_manager else False,
                     switch_count=scene_manager.completed_switches if scene_manager else 0,
+                    promotion_count=scene_manager.completed_promotions if scene_manager else 0,
                     switch_error=scene_manager.last_switch_error if scene_manager else None)
 
     def close(self):
