@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import runpy
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,8 +43,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Check imports only; do not open camera/windows")
     parser.add_argument("--audience", action="store_true", help="Use Acer local control and the configured Xiaomi extended display")
-    parser.add_argument("--scene", choices=("dots", "spheres"), default="dots",
-                        help="Scene candidate; spheres requires --audience")
+    parser.add_argument("--scene", choices=("dots", "spheres", "grid"), default="dots",
+                        help="Scene candidate; spheres and grid require --audience")
     parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
     parser.add_argument("--switch-every", type=float, help="Trial switch interval in seconds")
     parser.add_argument("--switch-count", type=int, help="Number of successful trial switches")
@@ -51,8 +52,8 @@ def main():
     parser.add_argument("--operator-port", type=int, default=8766)
     parser.add_argument("--no-ui", action="store_true", help="Disable the browser operator panel")
     args = parser.parse_args()
-    if args.scene == "spheres" and not args.audience:
-        parser.error("--scene spheres requires --audience")
+    if args.scene in ("spheres", "grid") and not args.audience:
+        parser.error(f"--scene {args.scene} requires --audience")
     sys.path.insert(0, str(ROOT))
     os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
     config_name = "rebirth_acer_xiaomi.json" if args.audience else "kids_test_acer.json"
@@ -69,7 +70,23 @@ def main():
         os.environ.update(AUDIENCE_DPI_ENV)
         try:
             configure_audience_dpi()
-            displays = resolve_audience_displays(json.loads(config_path.read_text(encoding="utf-8")))
+            audience_config = json.loads(config_path.read_text(encoding="utf-8"))
+            if args.scene == "grid":
+                audience_config.update(
+                    PRODUCTION_SCENES=["finger_grid_interaction_acer.py"],
+                    PRELOAD_COUNT=0, TRANSITION_ENABLED=False, CLAP_MONITOR_ENABLED=False,
+                    SHARED_CAMERA_ENABLED=True, DISPLAY_TARGET="audience",
+                )
+                profile_dir = ROOT / "test_reports"
+                profile_dir.mkdir(exist_ok=True)
+                # Retain the trial input for diagnosis; later launches create a fresh copy.
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=profile_dir,
+                    prefix="kids_grid_profile_", suffix=".json", delete=False,
+                ) as profile:
+                    json.dump(audience_config, profile, ensure_ascii=False, indent=2)
+                    config_path = Path(profile.name)
+            displays = resolve_audience_displays(audience_config)
         except Exception as exc:
             display_failures.append(f"audience display: {type(exc).__name__}: {exc}")
     report = check_runtime()
