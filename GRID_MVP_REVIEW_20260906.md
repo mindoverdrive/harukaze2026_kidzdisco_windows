@@ -1,5 +1,13 @@
 # Finger Grid Interactionの成人基礎操作確認
 
+## 2026-09-07 04:49：四隅OK・正味30分完了
+
+- ユーザーが四隅付近で人差し指と白い輪/水色マーカーが重なる確認に `ok` と回答。成人の四隅一致を合格として記録。中央/pinch/退出/両手の既存合格は維持。
+- trial `kids_trial_20260907_041040_336399400` は04:40:48にduration_reached、exit0、trial_elapsed1800.75秒、promotion_count1、途中scene_exitなし。同じsceneで正味30分の継続を確認。
+- camera failure/reopen0、最大frame gap0.079秒。描画179サンプル17.25〜29.01fps、中央値26.9。暖機後scene working set226,426,880〜244,502,528 bytes、handles662〜669。Manager working set165,195,776〜171,692,032 bytes、handles915〜924。集計は同trial/grid_mvp_summary.json。
+- 終了後の対象4 PIDと共有メモリ不在を確認。MediaPipe wait_until_idleのKeyboardInterruptとrunner ConnectionAbortedErrorは終了時に残るため完全無エラーとはしない。子供・2人同時・現場条件・12時間・異種切替は未確認。タスクバー露出のMVP必須対応は別管理。
+- 次はSpheresの未確認の両手反応だけ。Gridの成人基礎項目を重ねて要求しない。以下の30分未合格は前回の履歴。
+
 ## 2026-09-07 04:11：四隅と正味30分の不足確認を開始
 
 - 中央操作・pinch・退出修復・両手の既存OKは維持。専用の確認記録がない四隅のみをユーザーへ提示し、結果待ち。白い輪/水色マーカーが映った人差し指に四隅付近でも重なることを確認する。操作不能な帯など新たな指摘があれば別に記録し、画面全域の合格へ推測で広げない。
