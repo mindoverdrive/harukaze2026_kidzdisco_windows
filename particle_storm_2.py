@@ -121,7 +121,7 @@ class ParticleStormApp:
         self.cam_tex = gfx.Texture(np.zeros((WINDOW_HEIGHT, WINDOW_WIDTH, 4), dtype=np.uint8), dim=2)
         self.bg_plane = gfx.Mesh(
             gfx.plane_geometry(WINDOW_WIDTH, WINDOW_HEIGHT),
-            gfx.MeshBasicMaterial(map=self.cam_tex)
+            gfx.MeshBasicMaterial(map=self.cam_tex, depth_write=False)
         )
         self.bg_plane.local.z = 0
         self.bg_scene.add(self.bg_plane)

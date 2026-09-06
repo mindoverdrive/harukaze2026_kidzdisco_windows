@@ -16,6 +16,26 @@ def load_callback(filename, class_name, method_name, namespace):
 
 
 class FirstFrameRenderTests(unittest.TestCase):
+    def test_particle_camera_background_does_not_occlude_particles(self):
+        path = Path(__file__).resolve().parents[1] / "particle_storm_2.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        constructors = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "MeshBasicMaterial"
+            and any(keyword.arg == "map" for keyword in node.keywords)
+        ]
+
+        self.assertEqual(len(constructors), 1)
+        depth_write = next(
+            (keyword.value for keyword in constructors[0].keywords if keyword.arg == "depth_write"),
+            None,
+        )
+        self.assertIsInstance(depth_write, ast.Constant)
+        self.assertIs(depth_write.value, False)
+
     def test_particle_render_failure_is_not_reported_as_first_frame(self):
         for failed_pass in (0, 1, 2, None):
             with self.subTest(failed_pass=failed_pass):
