@@ -23,6 +23,7 @@ from scene_profile_runner import resolve_scene_path
 from windows_process import WindowsSceneJob, get_scene_job
 from runtime_diagnostics import RuntimeDiagnostics
 from operator_panel import OperatorPanel
+from stage_display import AUDIENCE_DPI_ENV, DisplayConfigurationError, apply_audience_displays, configure_audience_dpi
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -383,9 +384,12 @@ class SceneManager:
         env.update(self.camera_env)
         if all(key in CONFIG for key in ("DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT")):
             env["KIDZDISCO_DISPLAY_TARGET"] = "stage"
-        for key in ("DISPLAY_TARGET", "DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT"):
+        for key in ("DISPLAY_TARGET", "DISPLAY_NAME", "CONTROL_DISPLAY_NAME", "DISPLAY_X", "DISPLAY_Y", "DISPLAY_WIDTH", "DISPLAY_HEIGHT"):
             if key in CONFIG:
                 env[f"KIDZDISCO_{key}"] = str(CONFIG[key])
+        if CONFIG.get("DISPLAY_TARGET") == "audience":
+            env.update(AUDIENCE_DPI_ENV)
+            env["KIDZDISCO_DISPLAY_RESOLVED"] = "true"
         return env
 
     def _spawn_process(self, argv, cwd):
@@ -834,7 +838,7 @@ def main():
     parser.add_argument("--duration-seconds", type=_positive_seconds, help="Stop this trial after the first scene has run this long")
     parser.add_argument("--switch-interval-seconds", type=_positive_seconds, help="Request a trial switch after each successful scene has run this long")
     parser.add_argument("--switch-count", type=int, help="Stop after this many live-scene switches; initial launch and recovery do not count")
-    parser.add_argument("--operator-host", default="127.0.0.1", help="Specific Acer PAN/LAN IPv4 for the browser panel")
+    parser.add_argument("--operator-host", default="127.0.0.1", help="Browser panel bind address; audience operation uses 127.0.0.1")
     parser.add_argument("--operator-port", type=int, help="Enable the authenticated browser panel on this port")
     parser.add_argument(
         "--camera-only",
@@ -860,6 +864,17 @@ def main():
     elif CONFIG_LOAD_ERROR is not None:
         print(f"[Manager] Configuration error: {CONFIG_LOAD_ERROR}")
         return 2
+
+    if CONFIG.get("DISPLAY_TARGET") == "audience":
+        try:
+            if args.operator_host != "127.0.0.1":
+                raise DisplayConfigurationError("Audience operation requires the local operator UI at 127.0.0.1")
+            configure_audience_dpi()
+            CONFIG = apply_audience_displays(CONFIG)
+            print("[Manager] Displays: " + json.dumps(CONFIG["_DISPLAY_OBSERVATION"], ensure_ascii=False))
+        except DisplayConfigurationError as exc:
+            print(f"[Manager] Display configuration error: {exc}")
+            return 2
 
     production_scenes = None
     if not args.camera_only:
@@ -942,7 +957,12 @@ def main():
         try:
             cv2.namedWindow("Manager Control", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Manager Control", 440, 120)
+            if CONFIG.get("DISPLAY_TARGET") == "audience":
+                control_display = CONFIG["_DISPLAY_OBSERVATION"]["control"]
+                cv2.moveWindow("Manager Control", control_display["x"] + 20, control_display["y"] + 40)
         except cv2.error as exc:
+            if CONFIG.get("DISPLAY_TARGET") == "audience":
+                raise RuntimeError("Could not place Manager Control on the operator display") from exc
             manager_window_available = False
             print(f"[Manager] Warning: Manager Control window disabled: {exc}")
 

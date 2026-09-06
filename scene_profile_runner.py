@@ -40,9 +40,11 @@ def run_scene(script_name, profile="stage"):
     previous_argv = sys.argv[:]
     previous_break_handler = None
     control = None
+    previous_control = scene_control._child_control
     lifecycle = scene_control.SceneLifecycle(script_path.name)
     previous_lifecycle = scene_control._scene_lifecycle
     failure = None
+    secondary_failures = []
     try:
         scene_control._scene_lifecycle = lifecycle
         for key, value in overrides.items():
@@ -50,6 +52,13 @@ def run_scene(script_name, profile="stage"):
                 continue
             previous[key] = os.environ.get(key)
             os.environ[key] = str(value)
+        if os.environ.get("KIDZDISCO_DISPLAY_TARGET") == "audience":
+            from stage_display import AUDIENCE_DPI_ENV, configure_audience_dpi
+
+            for key, value in AUDIENCE_DPI_ENV.items():
+                previous[key] = os.environ.get(key)
+                os.environ[key] = value
+            configure_audience_dpi()
         parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
         parser.add_argument("--control-port", type=int)
         parser.add_argument("--launch-id")
@@ -72,20 +81,38 @@ def run_scene(script_name, profile="stage"):
         if control is not None:
             try:
                 control.send("ERROR", reason=f"{type(exc).__name__}: {exc}"[:1500])
-            except (OSError, scene_control.SceneControlError):
-                pass
+            except BaseException as notification_failure:
+                secondary_failures.append(("ERROR notification", notification_failure))
         raise
     finally:
-        lifecycle.finish(failure)
+        def finalize(step, action, *args):
+            try:
+                action(*args)
+            except BaseException as cleanup_failure:
+                secondary_failures.append((step, cleanup_failure))
+
+        # Each owned cleanup is attempted even if an earlier observation or close fails.
+        finalize("lifecycle.finish", lifecycle.finish, failure)
         scene_control._scene_lifecycle = previous_lifecycle
         if control is not None:
-            control.close()
-        scene_control._child_control = None
+            finalize("control.close", control.close)
+        scene_control._child_control = previous_control
         sys.argv = previous_argv
         if previous_break_handler is not None:
-            signal.signal(signal.SIGBREAK, previous_break_handler)
+            finalize("signal restore", signal.signal, signal.SIGBREAK, previous_break_handler)
         for key, old_value in previous.items():
             if old_value is None:
-                os.environ.pop(key, None)
+                finalize(f"environment restore ({key})", os.environ.pop, key, None)
             else:
-                os.environ[key] = old_value
+                finalize(f"environment restore ({key})", os.environ.__setitem__, key, old_value)
+        if secondary_failures:
+            primary = failure if failure is not None else secondary_failures[0][1]
+            for step, secondary in secondary_failures:
+                if secondary is not primary:
+                    try:
+                        BaseException.add_note(primary, f"Runner {step} failed: {type(secondary).__name__}")
+                    except BaseException:
+                        # Reporting a secondary failure must not replace the original exception.
+                        pass
+            if failure is None:
+                raise primary

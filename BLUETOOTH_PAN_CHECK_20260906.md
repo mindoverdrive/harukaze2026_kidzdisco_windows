@@ -2,7 +2,15 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**最新：MacのInterfaceNamerを正常に読み取れたが、Bluetooth PANの登録なし。14:06のAcerもPANはDisconnected。PANリンクは未成立。** 直前のAcer UI確認はBluetooth共有On・省電力Off・接続台数0/7。MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性の合格はまだない。本番の接続方式を採用した記録とはしない。画面操作は既設UltraVNCを使うユーザー方針を追加し、PAN検証を継続する。
+**最新のユーザー指示：Bluetooth PANおよびMac–Acerネットワーク検証を完全中止。追加調査・設定変更は行わない。** 本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（現在のOS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。`705b081`を基準として、Acerローカル運用の実装・検証へ本線を戻した。
+
+中止前に最後に観測した試験設定はBluetooth共有On・省電力Offだった。**中止後は再読取・復元を行っておらず、設定の現在値は確認していない。** 以下のPAN／Mac／VNCの調査・設定・復元手順はすべて履歴であり、現在の実行対象ではない。
+
+HDMI接続後にXiaomiの内部名DISPLAY5とEDID名 `Mi TV(XMD)` を読み取り、新しい `scripts/start_kids_test.py --audience --check` のpreflightは成功した。これはカメラなしの依存・画面構成確認で、実映像・DPI・子供の操作・無中断30分・USB復帰・Xiaomi長時間の合格ではない。現行手順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、操作は [OPERATOR_PANEL.md](OPERATOR_PANEL.md) を参照。新しい変更の最終回帰件数は集計中であり、旧120件を今回の検証結果へ読み替えない。
+
+## 中止前の最終観測（以下は履歴・実行対象外）
+
+**14:06まで：MacのInterfaceNamerを正常に読み取れたが、Bluetooth PANの登録なし。AcerもPANはDisconnectedで、PANリンクは未成立だった。** 直前のAcer UI確認はBluetooth共有On・省電力Off・接続台数0/7。MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性の合格はなかった。当時は画面操作に既設UltraVNCを使い、PAN検証を継続する方針だったが、上記の最新指示で中止した。
 
 ## Acerを共有側にした再開試験
 

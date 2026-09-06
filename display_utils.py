@@ -61,6 +61,9 @@ def _load_display_config():
             pass
     env_overrides = {
         "DISPLAY_TARGET": str,
+        "DISPLAY_NAME": str,
+        "CONTROL_DISPLAY_NAME": str,
+        "DISPLAY_RESOLVED": _parse_bool_env,
         "DISPLAY_INDEX": int,
         "DISPLAY_X": int,
         "DISPLAY_Y": int,
@@ -91,6 +94,17 @@ _DISPLAY_CFG = _load_display_config()
 
 def get_second_monitor():
     display_target = str(_DISPLAY_CFG.get("DISPLAY_TARGET", "")).strip().lower()
+    if display_target == "audience":
+        from stage_display import DisplayConfigurationError, resolve_audience_displays
+
+        stage = resolve_audience_displays(_DISPLAY_CFG)["audience"]
+        geometry = tuple(stage[key] for key in ("x", "y", "width", "height"))
+        if _DISPLAY_CFG.get("DISPLAY_RESOLVED"):
+            expected = tuple(_DISPLAY_CFG.get(f"DISPLAY_{key}") for key in ("X", "Y", "WIDTH", "HEIGHT"))
+            if geometry != expected:
+                raise DisplayConfigurationError("Audience layout changed since Manager startup; stop and check the displays")
+        print(f"[display_utils] Audience screen: {stage['name']} ({stage['width']}x{stage['height']} at {stage['x']},{stage['y']})")
+        return geometry
     if display_target == "primary":
         try:
             from screeninfo import get_monitors

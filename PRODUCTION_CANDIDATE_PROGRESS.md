@@ -1,5 +1,13 @@
 # Rebirth 2026 本番候補の作業記録
 
+**現在地：ユーザー指示でBluetooth PANとMac–Acerネットワーク検証を完全中止し、Acerローカル運用の本線を再開。** 追加のネットワーク調査・設定変更は行わない。本番はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（現在のOS内部名 `\\.\DISPLAY5`）を観客映像専用にする。Macは本番対象外。コードの基準点は `705b081` を維持し、新しい候補入口の実装・検証を進めている。
+
+新入口は `Start Rebirth Acer.cmd` → `scripts/start_kids_test.py --audience` → `configs/rebirth_acer_xiaomi.json`。最初の候補は `finger_colorfull_dots_acer.py` のみ。観客側のOS名を実モニターと照合し、操作UIはAcerの `127.0.0.1` へ限定する。HDMI接続後に内部名DISPLAY5・EDID名 `Mi TV(XMD)` を確認し、新しいaudience preflightは成功した。これはカメラなしの依存・表示構成検査で、実映像・DPI・5点一致・子供・無中断30分・切替反復・実USB復帰・Xiaomi長時間の合格ではない。新しい変更の最終回帰件数は集計中。起動・停止・確認順は [KIDS_TEST_START.md](KIDS_TEST_START.md)、[OPERATOR_PANEL.md](OPERATOR_PANEL.md)、[ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照。
+
+中止前に最後に観測したBluetooth試験設定は共有On・省電力Off。**中止後は再読取・復元していないため、現在も同じ値とは確認していない。** 以下に残すPAN／Mac／VNCの調査・設定・復元手順は履歴であり、現在の実行対象ではない。旧文中の「次は」「最新の優先順位」「接続準備を並行」は当時の記録として読み、ネットワーク作業を再開する指示にはしない。
+
+## 前段階の記録（以下は履歴）
+
 **PAN追加試験・14:06更新:** Macのscutil対話形式でInterfaceNamerの読み取りに成功。PANの登録名はなく、en6〜en8の機器種別はこの辞書だけでは不明。Acerは引き続きDisconnected、192.168.138.1もTentative。直前のUIはBluetooth共有On・省電力Off・接続台数0/7で、再接続してもPANは未成立だった。最初の一行エラーはecho直後の空白不足による入力の問題として切り分けた。次はMacの実インターフェース／BNEP登録を読み取り確認する。現場操作は既設UltraVNCでAcerのDISPLAY1、XiaomiはDISPLAY2とするユーザー方針。UltraVNC 1.6.4.0は既設だが停止中、実接続とXiaomiは未確認。通信方式は未決定。コードは`705b081`を維持し、[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に証拠・試験設定・復元方法・VNCの確認限界を記録する。下記13:31の停止は再指示前の履歴。
 
 **2026-09-06 13時台・最新の優先変更:** 安全なコード基準点を`705b081`に保ち、Bluetooth PANのAcer/M1 Mac実機検証を実施した。MacはTahoe 26.6.2との申告。両機のペアリング成功後もAcerのPANはDisconnected。Mac側の既存ネットワーク一覧とサービス追加候補の両方にBluetooth PANがないとの報告を受け、13:31にPAN未成立のまま検証を停止した。両機のVPNはユーザーがオフにした。PAN経由のIP・双方向疎通・HTTP/SSH・再接続・短時間安定性は未確認。既存HTTP成功はAcer自己確認だけで、Wi-Fi障害やmacOSの一律非対応とは断定しない。購入・別の本番接続方式は未決定。[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に停止理由と確認の限界を残す。
