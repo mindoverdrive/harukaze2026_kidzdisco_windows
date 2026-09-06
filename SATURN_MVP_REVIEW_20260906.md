@@ -24,6 +24,8 @@
 
 ## 人間による目視確認
 
+23:32更新：ユーザーが四隅の位置一致に`ok`と回答。生映像の左上・右上・左下・右下で、指先とカーソルが重なることを確認済み。退出・再入場は未確認。1397.968秒時点でcamera read failure 0、reopen 0、last_error null、最大frame gap 0.079秒。直近SceneMetrics 28.36fps、描画・検出エラーログなし。scene/Managerの生存も確認し、30分試験は継続中。
+
 23:29更新：ユーザーが両手確認に`ok`と回答。金色カーソルで球、水色カーソルで輪へ別々に作用することを確認済み。成人一人の両手確認であり、2人同時・子供の確認には広げない。四隅、退出再入場は未確認。1197.703秒時点でcamera read failure 0、reopen 0、last_error null、最大frame gap 0.079秒。直近SceneMetrics 28.3fps、描画・検出エラーログなし。30分試験は継続中。
 
 23:17更新：ユーザーがpinch確認に`ok`と回答。球の中央でつまんで横へ動かすと粒子を引け、指を開くと徐々に球へ戻ることを確認済み。2手、四隅、退出再入場は未確認。526.781秒時点でcamera read failure 0、reopen 0、last_error null、最大frame gap 0.079秒。直近SceneMetrics 26.86fps、描画・検出エラーログなし。30分試験は継続中。
