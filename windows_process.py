@@ -90,7 +90,10 @@ class WindowsSceneJob:
     def __init__(self, process):
         if os.name != "nt":
             raise OSError("Scene jobs require Windows")
+        if get_scene_job(process) is not None:
+            raise ValueError("Launched process already has a scene job owner")
         self.kernel = _kernel()
+        self._adopted_jobs = []
         self.handle = _check(self.kernel.CreateJobObjectW(None, None))
         self.root_pid = process.pid
         try:
@@ -99,6 +102,9 @@ class WindowsSceneJob:
             _check(self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)))
             # Popen's existing Windows handle identifies this exact launched process.
             _check(self.kernel.AssignProcessToJobObject(self.handle, int(process._handle)))
+            # Register as soon as the root is owned. A later adoption and cleanup
+            # failure must remain reachable even though this constructor raises.
+            process._scene_job = self
             # Include interpreters already created by a fast native redirector,
             # before waiting for READY or risking a startup timeout.
             parents = _process_parents(self.kernel)
@@ -109,39 +115,78 @@ class WindowsSceneJob:
                     except OSError as exc:
                         if getattr(exc, "winerror", None) != 87:  # Process already exited.
                             raise
-        except BaseException:
-            self.close()
+        except BaseException as exc:
+            try:
+                self.close()
+            except OSError as cleanup_error:
+                exc.add_note(f"Scene job cleanup failed: {cleanup_error}")
             raise
 
     def adopt_scene_pid(self, pid):
-        if type(pid) is not int or pid <= 0:
+        handles = self._job_handles()
+        if type(pid) is not int or pid <= 0 or not handles:
             return False
         access = 0x100000 | 0x1000 | 0x100 | 0x1  # synchronize, query, set quota, terminate
         process_handle = _check(self.kernel.OpenProcess(access, False, pid))
         try:
             if self.kernel.WaitForSingleObject(process_handle, 0) != 258:  # WAIT_TIMEOUT means alive
                 return False
-            inside = wt.BOOL()
-            _check(self.kernel.IsProcessInJob(process_handle, self.handle, ctypes.byref(inside)))
-            if inside.value:
-                return True
+            for handle in handles:
+                inside = wt.BOOL()
+                _check(self.kernel.IsProcessInJob(process_handle, handle, ctypes.byref(inside)))
+                if inside.value:
+                    return True
             # A redirector may create the interpreter before Popen returns and
             # before the root is assigned. Adopt only a verified descendant.
             if not _is_descendant(self.kernel, pid, self.root_pid):
                 return False
-            _check(self.kernel.AssignProcessToJobObject(self.handle, process_handle))
+            if not self.kernel.AssignProcessToJobObject(handles[0], process_handle):
+                error = ctypes.get_last_error()
+                inside = wt.BOOL()
+                _check(self.kernel.IsProcessInJob(process_handle, None, ctypes.byref(inside)))
+                if (error != 5 or not inside.value or
+                        self.kernel.WaitForSingleObject(process_handle, 0) != 258):
+                    raise ctypes.WinError(error)
+                # A pre-existing venv launcher job can be outside the root job's
+                # hierarchy. An empty job can nest in that hierarchy without
+                # breaking out of its restrictions. Keep every such job owned.
+                self._adopt_in_separate_job(process_handle)
             return True
         finally:
             self.kernel.CloseHandle(process_handle)
 
-    def active_pids(self):
-        if self.handle is None:
-            return []
+    def _job_handles(self):
+        root = getattr(self, "handle", None)
+        return ([root] if root is not None else []) + list(getattr(self, "_adopted_jobs", []))
+
+    def _close_job_handle(self, handle):
+        _check(self.kernel.CloseHandle(handle))
+        if handle == self.handle:
+            self.handle = None
+        else:
+            self._adopted_jobs.remove(handle)
+
+    def _adopt_in_separate_job(self, process_handle):
+        handle = _check(self.kernel.CreateJobObjectW(None, None))
+        self._adopted_jobs.append(handle)
+        try:
+            limits = _ExtendedLimits()
+            limits.basic.flags = 0x2000
+            _check(self.kernel.SetInformationJobObject(handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)))
+            _check(self.kernel.AssignProcessToJobObject(handle, process_handle))
+        except BaseException as exc:
+            try:
+                self._close_job_handle(handle)
+            except OSError as cleanup_error:
+                exc.add_note(f"Additional scene job cleanup failed: {cleanup_error}")
+            raise
+
+    def _query_pids(self, handle):
         count = 8
         pointer_size = ctypes.sizeof(ctypes.c_size_t)
         while count <= 4096:
             buffer = ctypes.create_string_buffer(8 + count * pointer_size)
-            if self.kernel.QueryInformationJobObject(self.handle, 3, buffer, len(buffer), None):
+            if self.kernel.QueryInformationJobObject(handle, 3, buffer, len(buffer), None):
                 raw = buffer.raw
                 returned = int.from_bytes(raw[4:8], "little")
                 return [int.from_bytes(raw[8 + i * pointer_size:8 + (i + 1) * pointer_size], "little")
@@ -150,6 +195,9 @@ class WindowsSceneJob:
                 raise ctypes.WinError(ctypes.get_last_error())
             count *= 2
         raise OSError("Unexpectedly large scene process tree")
+
+    def active_pids(self):
+        return sorted({pid for handle in self._job_handles() for pid in self._query_pids(handle)})
 
     def is_alive(self):
         return bool(self.active_pids())
@@ -163,13 +211,24 @@ class WindowsSceneJob:
         return True
 
     def terminate(self):
-        if self.handle is not None:
-            _check(self.kernel.TerminateJobObject(self.handle, 1))
+        errors = []
+        for handle in self._job_handles():
+            try:
+                _check(self.kernel.TerminateJobObject(handle, 1))
+            except OSError as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]
 
     def close(self):
-        if getattr(self, "handle", None) is not None:
-            _check(self.kernel.CloseHandle(self.handle))
-            self.handle = None
+        errors = []
+        for handle in reversed(self._job_handles()):
+            try:
+                self._close_job_handle(handle)
+            except OSError as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]
 
     def __del__(self):
         try:
