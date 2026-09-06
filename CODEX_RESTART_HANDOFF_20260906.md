@@ -2,7 +2,9 @@
 
 追加記憶（2026-09-07）：ユーザーがParticle Stormの時間経過で画面内の粒子が疎らになる点を指摘。画面外へ出た辺りの粒子を中心から再発生させる案を、後の演出調整用としてPOST_MVP_INTERACTION_GUIDANCE.mdへ保存。現在は実装せず、タスクバー修正後の目視確認を優先する。この追加要望はタスクバー再確認への合格回答ではない。
 
-更新時刻: 2026-09-07 05:52 Storm修正後目視OK・逆方向切替確認待ち
+更新時刻: 2026-09-07 05:57 逆方向切替OK・Saturn表示修正影響の確認待ち
+
+05:57最優先：Storm→Spheresの逆方向切替、白い円/指反応、旧Storm/タスクバー非残留をユーザーOK。trial055116は05:55:28 operator_quit/exit0/switch2/promotion3、対象PID稼働なし・SHM不在で終了。現在はSaturnへの共通GLFW配置修正の影響だけ結果待ち。trial `kids_trial_20260907_055537_173816900`、run `saturn_reentry_20260907_055535_820485`、Manager19580/scene23484/wrapper10480/外側19508、露出-4/zoom176一時適用、FIRST_FRAME3.781秒、06:11頃に15分上限終了。新しい操作ページを右側に開いた。Acer側Codexクリック→中央で人差し指を動かし、Xiaomi下端にタスクバーなし・金色カーソルと近くの粒子が追従するか一まとまりだけ提示し待つ。実測でSaturn全面一致/下端3点Saturnだが人間の合格にはしない。再開時 `test_reports/inspect_saturn_mvp_20260906.py`（applyなし）で現状確認。以下は履歴。
 
 05:52最優先：ユーザーがStorm修正後「タスクバーが出ず、粒子が手から押し広げられる」と明示確認。先行混在trial051941は05:49:50 duration_reached/exit0/switch3/promotion4で終了し、稼働PID/SHM残留なし。次の逆方向確認用trialは `test_reports/mixed_visual_20260907_055116_887043/trial`。Manager25012/外側17516、表示Storm実PID27308/wrapper3636、SHM `harukaze_cam_25012_3b24e0835c6e`。エージェントが最初のSpheres→StormをAPIで一度切替済み（switch1/promotion2）。人間には右側の新操作パネルでNext一回→Spheresの白い円/指の反応・旧Storm/タスクバー残留なしの一まとまりだけ提示して待つ。06:21:25頃に上限終了。旧PID27308は旧wrapper、新27308は新StormへのPID再利用。露出-4/zoom176、camera failure/reopen0。Storm左右帯、他GLFWの表示、20回反復/USB/子供等は保留。以下は履歴。
 
