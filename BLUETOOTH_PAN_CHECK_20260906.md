@@ -2,7 +2,7 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**最新：省電力Off・Bluetooth共有Onを維持した状態でMacを再接続したが、13:54のPANはDisconnected、接続台数0/7。PANリンクは未成立。** MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性の合格はまだない。本番の接続方式を採用した記録とはしない。画面操作は既設UltraVNCを使うユーザー方針を追加し、PAN検証を継続する。
+**最新：MacのInterfaceNamerを正常に読み取れたが、Bluetooth PANの登録なし。14:06のAcerもPANはDisconnected。PANリンクは未成立。** 直前のAcer UI確認はBluetooth共有On・省電力Off・接続台数0/7。MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性の合格はまだない。本番の接続方式を採用した記録とはしない。画面操作は既設UltraVNCを使うユーザー方針を追加し、PAN検証を継続する。
 
 ## Acerを共有側にした再開試験
 
@@ -88,11 +88,19 @@ macOS Tahoe 26のInternet Sharing説明だけでは、当該MacにBluetooth PAN�
 
 Macのサービス追加はApple公式の「アクション→サービスを追加→インターフェイス」の手順で候補を確認した。候補一覧の実機報告は上記のとおりで、サービスの作成は指示していない。[Apple: ネットワークサービスを設定する](https://support.apple.com/ja-jp/guide/mac-help/mchlp1176/mac)
 
+## Macの内部登録の確認
+
+ユーザー写真で、最初の一行には`echo`直後の空白がなく、シェルが連結された文字列をコマンド名として扱っていたことが分かった。これは入力の構文上の問題であり、PAN機能のエラーではない。`scutil`を単独起動し、その`>`プロンプトで`show Plugin:InterfaceNamer`を実行する方法へ分けた。
+
+後続写真ではコマンド成功と辞書の末尾、次の`>`まで確認した。キーは`*COMPLETE*`、`*QUIET&NAMED*`、`*QUIET*`、`*STACK*`、`*START*`、`en0`〜`en4`、`en6`〜`en8`。`_Bluetooth PAN_`などPANと識別できる登録はない。`en6`〜`en8`の値は時刻に相当する数値であり、この辞書から機器種別・現在の実在・リンク状態を判定しない。Macのscutil起動前プロンプト時刻は14:00:31だが、辞書取得そのものの時刻は写真だけでは確定できない。
+
+14:06:25のAcer読み取りでもPANはDisconnected、192.168.138.1/24と169.254系はTentative、有効なユニキャスト経路なし。TCP 22/8767/5900/5800の待受もない。Macの内部登録を読めたことをIP疎通の成功とは扱わない。
+
 ## 保留と再開条件
 
-ペアリングは完了済み。未達はPANのネットワーク接続であり、同じペアリングを無制限に繰り返さない。省電力Off後の再接続でも未成立だったため、次はMacの内部インターフェース登録を読み取りで確認する。MacのCLIによるポート一覧は取得したが、ネットワークサービス作成・ドライバー変更は実施していない。購入や別の本番接続方式は未決定のまま。
+ペアリングは完了済み。未達はPANのネットワーク接続であり、同じペアリングを無制限に繰り返さない。省電力Off後の再接続でも未成立で、Macの内部登録にもPAN名がなかった。次は実インターフェースまたはBNEPドライバーの登録の読み取りで、列挙名だけでは不明な点を確認する。Macのネットワークサービス作成・ドライバー変更は実施していない。購入や別の本番接続方式は未決定のまま。
 
-Macの次の一手は以下。管理者権限や設定変更を伴わない。結果はまだ受領していない。
+実行した読み取りの一行表記は以下。管理者権限や設定変更を伴わない。実際の成功結果は上記の対話形式で取得した。
 
 ```sh
 echo 'show Plugin:InterfaceNamer' | scutil
@@ -120,6 +128,7 @@ Appleの公開configd実装は`Plugin:InterfaceNamer`内の`_Bluetooth PAN_`と�
 - `pan_windows_nap_enabled_20260906.json`: 標準UIからBluetooth共有Onにした後、13:39のIP・サービス・接続状態。
 - `pan_after_nap_mac_reconnect_20260906.json`: 最初のMac再接続後、13:43のPAN未接続。UIでは共有がOffだったため、条件不一致の試行。
 - `pan_after_controlled_mac_reconnect_20260906.json`: 省電力Off後の再接続というユーザー確認、13:54のPAN・IP・経路・隣接一覧、共有On/省電力Off/0台のUI観測。
+- `pan_after_mac_interfacenamer_20260906.json`: Macの内部登録の写真受領後、14:06のAcer PAN・IPv4・経路・TCP待受。
 - `mac_link_standby_20260906_1210.jsonl`: 自己アクセスを含む既存待受の記録。予定終了は13:10:47 JST。
 
 コード・アプリ設定の基準点は `705b081` のまま。OSのBluetooth共有設定を戻す手順は上記の再開試験に記載。後続の文書コミットは履歴を消さずrevertできる。

@@ -1,6 +1,6 @@
 # Rebirth 2026 本番候補の作業記録
 
-**PAN追加試験・13:54更新:** AcerのBluetooth共有On・省電力Offを維持し、ユーザーがMacを再接続したが、PANはDisconnected、接続台数0/7。192.168.138.1もTentativeで通信成功ではない。最初の再接続時には共有がOffになっていたため、今回とは条件を分ける。Macの内部登録を読み取り確認する次の一手へ進む。現場操作は既設UltraVNCでAcerのDISPLAY1、XiaomiはDISPLAY2とするユーザー方針を追加。UltraVNC 1.6.4.0は既設だが停止中、実接続とXiaomiは未確認。通信方式は未決定。コードは`705b081`を維持し、[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に試験設定・復元方法・VNCの確認限界を記録する。下記13:31の停止は再指示前の履歴。
+**PAN追加試験・14:06更新:** Macのscutil対話形式でInterfaceNamerの読み取りに成功。PANの登録名はなく、en6〜en8の機器種別はこの辞書だけでは不明。Acerは引き続きDisconnected、192.168.138.1もTentative。直前のUIはBluetooth共有On・省電力Off・接続台数0/7で、再接続してもPANは未成立だった。最初の一行エラーはecho直後の空白不足による入力の問題として切り分けた。次はMacの実インターフェース／BNEP登録を読み取り確認する。現場操作は既設UltraVNCでAcerのDISPLAY1、XiaomiはDISPLAY2とするユーザー方針。UltraVNC 1.6.4.0は既設だが停止中、実接続とXiaomiは未確認。通信方式は未決定。コードは`705b081`を維持し、[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に証拠・試験設定・復元方法・VNCの確認限界を記録する。下記13:31の停止は再指示前の履歴。
 
 **2026-09-06 13時台・最新の優先変更:** 安全なコード基準点を`705b081`に保ち、Bluetooth PANのAcer/M1 Mac実機検証を実施した。MacはTahoe 26.6.2との申告。両機のペアリング成功後もAcerのPANはDisconnected。Mac側の既存ネットワーク一覧とサービス追加候補の両方にBluetooth PANがないとの報告を受け、13:31にPAN未成立のまま検証を停止した。両機のVPNはユーザーがオフにした。PAN経由のIP・双方向疎通・HTTP/SSH・再接続・短時間安定性は未確認。既存HTTP成功はAcer自己確認だけで、Wi-Fi障害やmacOSの一律非対応とは断定しない。購入・別の本番接続方式は未決定。[PAN検証記録](BLUETOOTH_PAN_CHECK_20260906.md)に停止理由と確認の限界を残す。
 
