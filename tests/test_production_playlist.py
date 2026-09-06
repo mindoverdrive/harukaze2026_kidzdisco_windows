@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -11,6 +12,33 @@ import manager
 
 
 class ProductionPlaylistTests(unittest.TestCase):
+    def test_missing_or_empty_json_playlist_fails_before_camera_or_scene_allocation(self):
+        for user_config in ({}, {"CAMERA_FPS": 30}, {"PRODUCTION_SCENES": None},
+                            {"PRODUCTION_SCENES": []}):
+            with self.subTest(config=user_config), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "config.json"
+                path.write_text(json.dumps(user_config), encoding="utf-8")
+                with (
+                    mock.patch.object(manager, "CONFIG", dict(manager.CONFIG)),
+                    mock.patch.object(sys, "argv", ["manager.py", "--config", str(path)]),
+                    mock.patch.object(manager, "SharedCameraRelay", side_effect=AssertionError("camera allocation")) as relay,
+                    mock.patch.object(manager, "SceneManager", side_effect=AssertionError("scene allocation")) as scenes,
+                    mock.patch("builtins.print"),
+                    mock.patch.object(sys, "stderr"),
+                ):
+                    result = manager.main()
+                self.assertEqual(result, 2)
+                relay.assert_not_called()
+                scenes.assert_not_called()
+
+    def test_json_playlist_preserves_only_the_explicit_scene_order(self):
+        requested = ["spider_cursor_acer.py", "finger_colorfull_dots_acer.py"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps({"PRODUCTION_SCENES": requested}), encoding="utf-8")
+            resolved = manager.resolve_production_scenes(manager.load_config(path))
+        self.assertEqual([Path(scene).name for scene in resolved], requested)
+
     def test_manager_uses_only_explicit_production_entrypoints(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

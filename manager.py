@@ -28,16 +28,6 @@ from operator_panel import OperatorPanel
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
-DEFAULT_PRODUCTION_SCENES = [
-    "finger_colorfull_dots_acer.py",
-    "finger_mandala_acer.py",
-    "particle_storm_acer.py",
-    "fractal_moving_acer.py",
-    "finger_grid_interaction_acer.py",
-    "saturn_particles_acer.py",
-    "spider_cursor_acer.py",
-]
-
 
 class ConfigurationError(RuntimeError):
     pass
@@ -85,7 +75,8 @@ DEFAULT_CONFIG = {
     "CAMERA_NAME_HINTS": ["c922", "pro stream webcam"],
     "CAMERA_EXCLUDE_HINTS": ["nizima", "virtual", "logi capture"],
     "SCENE_DIR": ".",
-    "PRODUCTION_SCENES": list(DEFAULT_PRODUCTION_SCENES),
+    # Scene launch requires an explicit list from the selected configuration.
+    "PRODUCTION_SCENES": None,
     "SHARED_CAMERA_ENABLED": True,
     "CLAP_MONITOR_ENABLED": True,
     "CLAP_DIST_THRESHOLD": 0.15,
