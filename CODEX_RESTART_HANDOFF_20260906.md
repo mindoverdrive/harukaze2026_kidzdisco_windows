@@ -1,6 +1,8 @@
 # Codex再起動用引継ぎ — Rebirth 2026 Acer本線
 
-更新時刻: 2026-09-07 05:02 Spheres両手OK・操作側フォーカス移動の確認待ち
+更新時刻: 2026-09-07 05:10 Spheres操作側フォーカス移動OK・30分の終了待ち
+
+05:10最優先：Acer側Codex入力欄のクリック後も、XiaomiのSpheresはタスクバー露出/最小化なしとユーザーOK。StormのタスクバーMVP mustは未解決。Spheres単一30分を途中で切らず、trial044858の05:19頃自動終了とPID/SHM不在を先に確認する。解析 `test_reports/analyze_spheres_final_20260907.py`、その後用の手動切替起動 `test_reports/start_mixed_visual_20260907.py` を準備。起動ガードは先行試験のduration_reached/exit0/1800秒/1promotion、既存Manager等不在、SHM不在。準備済み試験専用JSONはSpheres→Stormの2項目のみ、先読み/拍手/遷移/自動切替なし、露出-4/zoom176、本番JSON未変更。新試験開始後は人間へ「次のシーンへ」一回の確認だけ提示して待つ。既存単一シーンUIのNextは同じSpheresを再起動するので、現試験中に押させない。詳細はMIXED_SCENE_MVP_REVIEW_20260907.md。以下は履歴。
 
 05:02最優先：Spheresの成人両手同時反応はユーザーOK。次は同じ表示のままAcer側Codexをクリックし、Xiaomiのタスクバー露出/最小化の有無だけを確認して結果を待つ。まだこの操作の合格回答はない。trial `kids_trial_20260907_044858_631260000` は05:01:57時点778.969秒、promotion1、camera failure/reopen0。30分と終了後残留は未判定、05:19頃終了予定。Spheresの結果でStormのタスクバーMVP mustや異種切替後の表示を代用しない。Storm左右帯方針も保留。製品コード/設定変更なし。以下は過去の再開位置。
 
