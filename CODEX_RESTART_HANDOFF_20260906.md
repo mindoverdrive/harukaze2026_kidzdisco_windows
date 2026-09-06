@@ -107,6 +107,8 @@
 
 ## 関連資料
 
+2026-09-07 02:02更新：Saturn退出再入場OKを記録後、operator_quitで終了（exit0、766.516秒）。対象PID/共有メモリ残留なし。次のSpider単独入口を `1dfca5e` でpushし、`kids_trial_20260907_020159_984874500` を30分上限で起動。中央の目視確認待ち。露出-4/zoom176は一時適用。詳細 `SPIDER_MVP_REVIEW_20260907.md`。再開時は現PID/ログを確認し二重起動を避ける。
+
 - `PARTICLE_STORM_MVP_REVIEW_20260906.md`
 - `DOTS_MVP_REVIEW_20260906.md`
 - `GRID_MVP_REVIEW_20260906.md`
