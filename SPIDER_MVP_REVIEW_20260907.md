@@ -1,5 +1,12 @@
 # Spider MVP実機確認
 
+## 02:30 診断再試験
+
+- ユーザーは不明なターミナルでCtrl+Cを押したと申告。旧ログの通常returnとは直接結び付けられず、原因確定にはしない。旧launcherは既にCREATE_NO_WINDOW/CREATE_NEW_PROCESS_GROUPを使用していた。
+- `04fcdac`で既存notify_exit_requestを3つの終了経路（pygame_quit、escape_key、camera_read_failed）に追加。終了条件・映像・操作は変更せず、次回の理由判別のみを目的とする。Python3.11回帰222件成功。
+- 旧試験はoperator_quitで停止、exit0、1674.515秒、promotion_count=5（初回以外4回）。共有メモリ不在。単一30分合格ではない。
+- 新trial `kids_trial_20260907_023010_280243200`、30分上限。FIRST_FRAME1.547秒。露出-4/zoom176一時適用、保存なし。ユーザーにはターミナルでCtrl+C/Escを押さず通常の手操作で確認するよう依頼。原因・連続安定性は保留。
+
 ## 02:19 更新：成人の操作確認と再起動の保留
 
 - ユーザーが中央の表示・追従、両手による2匹の独立操作、四隅の指位置一致、10秒退出後の円消失・映像継続・再入場時の追従再開をそれぞれOKと回答。
