@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rebirth — カメラ調整</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#0d1020;color:#eff2ff}*{box-sizing:border-box}body{margin:0;padding:32px 20px}main{max-width:800px;margin:auto}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}.eyebrow{color:#c5b1ff;letter-spacing:.14em;font-size:12px}h1{font-size:28px;margin:8px 0}p{color:#bcc6df;line-height:1.7}.status{padding:8px 14px;border-radius:30px;background:#252c46;font-size:14px;white-space:nowrap}.status.ok{background:#14463a}.status.error{background:#612638}.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{padding:24px;border:1px solid #343d57;border-radius:18px;background:#171d32}h2{font-size:18px;margin:0 0 12px}.value{display:flex;align-items:center;gap:12px;margin:20px 0}input[type=number]{font:inherit;font-size:26px;width:120px;background:#0d1020;color:inherit;border:1px solid #657390;border-radius:10px;padding:10px}input[type=range]{width:100%;accent-color:#c7afff}button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid #657390;padding:13px 18px;background:#252f4b;color:inherit;min-height:48px}button.primary{background:#d6c2ff;color:#211d35;border-color:#d6c2ff;font-weight:650}button:disabled{opacity:.45;cursor:default}button:focus-visible,input:focus-visible{outline:3px solid #d6c2ff;outline-offset:3px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0}.notes{font-size:13px}.actual{color:#b7ebd5}#message{min-height:48px;padding:12px 0;line-height:1.6}footer{margin-top:28px;border-top:1px solid #343d57;padding-top:20px}.danger{color:#ffc5ca}label{display:block}small{color:#bcc6df}@media(max-width:560px){.cards{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}body{padding:24px 16px}}
+</style>
+<main>
+<header><div><div class="eyebrow">REBIRTH 2026 · ACER</div><h1>カメラ調整</h1><small>C922n USBカメラ</small></div><span id="status" class="status" role="status">接続を確認中</span></header>
+<p>Acerの映像を見ながら調整します。「適用」で今回の映像へ反映し、気に入った値をJSONに保存できます。</p>
+<section class="cards" aria-label="カメラパラメーター">
+<div class="card"><h2><label for="exposure">露出</label></h2><small>値を大きくすると明るくなります。動きの残像や速度も確認してください。</small><div class="value"><input id="exposure" type="number" min="-13" max="0" step="1" value="-5"><span class="actual" id="exposure-actual">実際の値 —</span></div><input id="exposure-range" aria-label="露出スライダー" type="range" min="-13" max="0" step="1" value="-5"><label class="notes"><input id="exposure-enabled" type="checkbox" checked> この値を適用する</label></div>
+<div class="card"><h2><label for="zoom">ズーム</label></h2><small>画角を調整します。子供の手や体が画面から切れない範囲にしてください。</small><div class="value"><input id="zoom" type="number" min="100" max="500" step="1" value="100"><span class="actual" id="zoom-actual">実際の値 —</span></div><input id="zoom-range" aria-label="ズームスライダー" type="range" min="100" max="500" step="1" value="100"><label class="notes"><input id="zoom-enabled" type="checkbox" checked> この値を適用する</label></div>
+</section>
+<div class="actions"><button id="apply" class="primary" disabled>映像に適用</button><button id="save" disabled>適用済みの値をJSON保存</button></div>
+<div id="message" role="status" aria-live="polite">起動時に表示された操作URLで開いてください。</div>
+<p class="notes">保存先: <span id="config">—</span>。実際の値の表示は、起動・再接続・設定適用時に確認した値です。起動時に別の値を指定している場合は、その指定が優先されます。保存しない調整もドライバーによっては機器に残ります。対応しない値はエラー表示します。</p>
+<footer><div class="actions"><button id="next" disabled>次のシーンへ</button><button id="quit" class="danger" disabled>Managerを終了</button></div><p class="notes">接続は起動ごとの操作URLで確認します。映像・顔・手のデータはこの操作画面へ送信しません。</p></footer>
+</main>
+<script>
+const $=id=>document.getElementById(id),token=new URLSearchParams(location.hash.slice(1)).get('token');
+let initialized=false,connected=false,busy=false,sending=false,sequence=null,pending=null,changed=false;
+for(const name of ['exposure','zoom']){for(const suffix of ['','-range'])$(name+suffix).addEventListener('input',()=>{$(name+(suffix?'':'-range')).value=$(name+suffix).value;changed=true;$('save').disabled=true})}
+async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||r.status);return d}
+function message(text,error=false){$('message').textContent=text;$('message').style.color=error?'#ffc5ca':'#eff2ff'}
+function buttons(){ $('apply').disabled=!connected||busy||sending;$('save').disabled=!connected||busy||sending||sequence===null||changed;for(const n of ['next','quit'])$(n).disabled=!connected||sending;for(const n of ['exposure','zoom'])for(const s of ['','-range','-enabled'])$(n+s).disabled=!connected||busy||sending; }
+async function poll(){if(!token){message('起動時に表示された操作URL（#token付き）で開いてください。',true);return}try{const d=await api('/api/status');connected=true;const c=d.camera;busy=['pending','applying'].includes(c.status);$('status').textContent=busy?'反映中':c.status==='failed'?'設定エラー':'接続中';$('status').className='status '+(c.status==='failed'?'error':'ok');$('config').textContent=d.config;
+for(const name of ['exposure','zoom']){const v=c.actual[name];$(name+'-actual').textContent=v===null||v===undefined?'実際の値 取得不可':'実際の値 '+v;if(!initialized&&v!==null&&v!==undefined){$(name).value=$(name+'-range').value=v}}
+if(!initialized){message('現在の映像と実際の値を確認して調整してください。');initialized=true}
+if(c.status==='failed'){message(c.error,true);sequence=null;pending=null}else if(c.status==='applied'&&pending===c.sequence){sequence=c.sequence;pending=null;changed=false;message('映像へ反映しました。Acerの画面で確認してから保存してください。')}
+if(d.camera_error)message('カメラ: '+d.camera_error,true);buttons();}catch(e){connected=false;$('status').textContent='未接続';$('status').className='status error';message(e.message,true);buttons()}finally{setTimeout(poll,1000)}}
+$('apply').onclick=async()=>{sending=true;buttons();try{const data={};for(const n of ['exposure','zoom'])if($(n+'-enabled').checked){if(!$(n).value.trim()||!$(n).checkValidity())throw Error('入力した値を確認してください');data[n]=Number($(n).value)}const d=await api('/api/camera',data);pending=d.sequence;sequence=null;busy=true;message('カメラの取得処理へ調整を送信しました。')}catch(e){message(e.message,true)}finally{sending=false;buttons()}};
+$('save').onclick=async()=>{sending=true;buttons();try{await api('/api/save',{sequence});message('次回起動用の設定をJSONに保存しました。')}catch(e){message(e.message,true)}finally{sending=false;buttons()}};
+for(const action of ['next','quit'])$(action).onclick=async()=>{if(action==='quit'&&!confirm('AcerのManagerとシーンを終了しますか？'))return;sending=true;buttons();try{await api('/api/action',{action});message(action==='quit'?'終了を要求しました。':'次のシーンを要求しました。')}catch(e){message(e.message,true)}finally{sending=false;buttons()}};
+poll();
+</script>
+</html>

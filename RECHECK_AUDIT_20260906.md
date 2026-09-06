@@ -1,5 +1,7 @@
 # 共通基盤の再監査と最初のシーン
 
+**2026-09-06 08:54の状態:** 以下は初回再監査時の記録。PB-01はその後解消済みで、Codexのlean-ctx連携も解除した。[解除・整合性記録](LEAN_CTX_REMOVAL_20260906.md)と[実機記録](CAMERA_RUNTIME_CHECK_20260906.md)を先に参照する。
+
 対象はproduction entrypoint、manager.py、scene_profile_runner.py、shared_camera.py、display_utils.py、7個のAcerラッパーとその `_2.py` 実体。推測の修正を避け、再現できたものから変更した。Acer/C922の実描画はまだ確認していない。
 
 |重要度|箇所|確認した障害条件|最小変更と自動検証|

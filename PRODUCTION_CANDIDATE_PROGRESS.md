@@ -1,5 +1,9 @@
 # Rebirth 2026 本番候補の作業記録
 
+**操作UI追加:** 回帰77件通過。Acer内のブラウザで露出・ズームの実適用/復元、JSON保存、シーン切替、通常終了を確認。Mac PAN・透過率の対象・子供の操作・30分/12時間は保留。[最新実機記録](CAMERA_RUNTIME_CHECK_20260906.md)と[操作手順](OPERATOR_PANEL.md)を先に読む。16/30fpsの差と途中終了は原因未確定。
+
+**2026-09-06 08:54更新:** Codexのlean-ctx連携を解除。既存映像Pythonのpreflight、`py -0p`、Ruffの直接起動、関連テスト9件を確認。現在の設定と保留の扱いは[解除・整合性記録](LEAN_CTX_REMOVAL_20260906.md)を参照。
+
 作業ブランチ: `codex/rebirth2026-production-candidate`。本番昇格・main/stable統合は行っていない。
 
 **08時台更新:** PB-01はユーザー許可による1実行ファイルのallowlist追加で解消。既存Pythonでpreflight成功、C922n実取得・30秒起動・3回切替は正常終了。回帰66件。約16fpsの未解決点とMacBook向けパラメーターUIの追加要望は [実機確認記録](CAMERA_RUNTIME_CHECK_20260906.md) を参照。下記の権限不足は解消前の履歴。
@@ -22,6 +26,8 @@
 |Windows起動と所有権|venv中継PIDを挟む構成で起動拒否を再現。nonceとWindowsの所有プロセス照合で実Python PIDを検証し、Job Objectで子を保持/終了。累計57テスト通過。|`6aec719`|
 |基礎/耐久試験準備|30分自動終了と指定回数の切替、容量制限付きstdout/stderrと制御イベント、10秒ごとのWindows資源/カメラ記録。累計60テスト通過。12時間は未実施。|`0b8dafb`|
 |最終確認|ログ初期化失敗時のプロセス参照保持、試験引数の誤記拒否、初回成功後からの計時。累計63テスト通過。|最終報告を含むチェックポイント|
+|C922nの実機起動|MJPG再適用、露出指定、実機preflightと短時間3回切替。累計66件。|`140ec05`|
+|Mac向け共通UI|露出・ズーム適用/読戻し/保存、保存競合/復元NaN、HTTP認証、scene_exit観測。累計77件。実機UIはAcer内で確認。|操作UI追加チェックポイント|
 
 P1 #1 は実際の localhost TCP、実際の runner 子プロセス、5回のManager切替、初期化例外・タイムアウト・接続断・不一致ID・分割JSONを検証した。GPU callback は実ソースから読み出して描画失敗を注入し、成功通知されないことを確認した。物理カメラや実GPU表示の成功を示す試験ではない。
 
@@ -31,7 +37,7 @@ P1 #3は実際の共有メモリとスレッドに疑似カメラを接続して
 
 `.shared_camera_session.json` は生成物なのでGit追跡を解除。既存ローカルファイル自体は削除していない。再起動ごとに固有の共有メモリ名を使い、終了時は自分の名前に一致するセッションだけ削除する。
 
-## 現在の観測と保留
+## 初回監査時の観測と保留（履歴）
 
 - 最初の1シーンの手順は [KIDS_TEST_START.md](KIDS_TEST_START.md)。`Start Kids Test.cmd --check` で依存確認してから起動する。専用configは1280×720、30fpsの候補値。通常configの値とは別であり、どちらも今回の実測ではない。
 - 2026-09-06 07:10 JST: 許可されたPython 3.11.9でpreflightを実行。numpy / cv2 / pygame / mediapipe / screeninfo / pygrabber が不足して停止した。`test_reports/kids_preflight_20260906_071021.json` に実行環境と不足一覧を保存。カメラや画面は開いていない。
@@ -55,4 +61,4 @@ P1 #3は実際の共有メモリとスレッドに疑似カメラを接続して
 4. 30分/20回切替/12時間の実機実施（Human Check Required）。記録・起動手段は [ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) に整備した。カメラなしで実Manager・実子プロセスによる3回切替、ログ排出/終了を確認。Windowsカウンター100回の照会でハンドルが増えないことを確認。
 5. 安全に進められる合意済み演出差分。目視での選択・品質判断は保留として残す。
 
-全変更、変更ファイル、実行/rollback、保留、確認順を [PRODUCTION_CANDIDATE_REPORT_20260906.md](PRODUCTION_CANDIDATE_REPORT_20260906.md) に集約。最初の実地テスト開始はPB-01とH-01が残る。基準シーンの無操作中の時間変化と退出後の入力解除まで実装し、他の正確なscene選定/見た目の変更はHuman Check Requiredとしている。
+全変更、変更ファイル、実行/rollback、保留、確認順を [PRODUCTION_CANDIDATE_REPORT_20260906.md](PRODUCTION_CANDIDATE_REPORT_20260906.md) に集約。PB-01は解消済みで、H-01の人間による操作・表示確認は残る。基準シーンの無操作中の時間変化と退出後の入力解除まで実装し、他の正確なscene選定/見た目の変更はHuman Check Requiredとしている。

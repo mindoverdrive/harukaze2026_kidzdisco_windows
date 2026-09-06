@@ -2,6 +2,10 @@
 
 ## 現在の到達点
 
+**操作UI追加時点の到達点（2026-09-06）:** Acer内のブラウザからC922nの露出・ズームを適用/読戻し/復元し、プレビューJSONへの保存、シーン切替、Managerの通常終了を確認した。自動回帰77件通過。MacBookのPAN通信、子供の操作、30分無中断、12時間は未確認。起動ごとの約16/30fps差と操作要求外のシーン終了は未確定として残す。最新の手順は [操作UI](OPERATOR_PANEL.md)、実測は [実機記録](CAMERA_RUNTIME_CHECK_20260906.md)。以下の63件/66件は前段階の履歴。**
+
+**2026-09-06 08:54更新:** Codexのlean-ctx連携を解除し、既存映像Pythonのpreflightと関連テスト9件を再確認した。PB-01は解消済み。現在のツール運用と解除範囲は[解除・整合性記録](LEAN_CTX_REMOVAL_20260906.md)を参照。以下は各時点の実装・試験報告であり、解除後のカメラ実地試験を追加したものではない。
+
 **最初の候補は `finger_colorfull_dots_acer.py`。専用の起動入口、映像/指先の共通座標変換、共有カメラ、起動同期、終了処理、試験ログを実装し、自動テスト63件が通過した。実C922の映像を出して子供が遊べることはまだ確認できていない。**
 
 **08時台の更新: ユーザー許可でlean-ctxへ既存映像Pythonを1件だけ追加し、PB-01を解消した。preflightと実C922nでの30秒起動・3回切替が成功。自動回帰は66件通過。以下の初回報告に対する更新・ログ・残る約16fpsの問題は [実機確認記録](CAMERA_RUNTIME_CHECK_20260906.md) を正とする。子供の操作確認・30分・12時間は未合格。**
@@ -65,7 +69,7 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 & '.\Start Kids Test.cmd' --switch-every 20 --switch-count 20 --duration-minutes 30
 ```
 
-このパスは実行中プロセスから存在を確認したもの。今回の候補が同じ環境で起動できると確認したわけではない。新しく作った `.venv-kids-test` はPythonの作成までで、映像用依存未導入・実行未確認。自動的にそちらへ切り替えていない。
+このパスは既存映像用Pythonであり、その環境でpreflightと今回の候補の実C922n起動を確認した。新しく作った `.venv-kids-test` は映像用依存未導入で、本候補の実行環境へ切り替えていない。
 
 `Start Kids Test.cmd` は専用configの1シーンだけを使い、先読み、ジェスチャー切替、遷移を無効にする。表示先はAcer primary。要求カメラ値は1280×720/MJPG/30fpsの候補値。C922の名前を特定できなければ停止する。Manager Controlのq、またはコンソールCtrl+Cで全体終了する。
 
@@ -76,12 +80,14 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 |状態/ID|残っていること|根拠/次の確認|
 |---|---|---|
 |RESOLVED PB-01|映像用Pythonの実行とimport確認|ユーザー許可後に公式CLIで実行ファイルを1件追加。既存環境のpreflightと実シーン起動を確認。詳細は実機確認記録|
-|HUMAN_CHECK_REQUIRED H-01|C922実取得、5点の映像/指先一致、子供が遊べること|OSの機器存在とコード上の共通変換まで確認。実映像/表示DPI/遅延は未確認|
+|HUMAN_CHECK_REQUIRED H-01|5点の映像/指先一致、子供が遊べること|実C922n取得と初回描画通知は確認済み。パネル上の座標、表示DPI、体感遅延、子供の操作は未確認|
 |HUMAN_CHECK_REQUIRED H-02|30分単一シーン、20回切替、USB復帰、終了後再取得|疑似入力での機構試験は通過。実カメラ/熱/ドライバー待ち/資源の長時間傾向は実機が必要|
 |HUMAN_CHECK_REQUIRED H-03|Xiaomi L32M8-A2TWNへの全画面とGPU2シーン|表示モード、DPI、GPU負荷、実パネルの表示品質が未確認|
 |HUMAN_CHECK_REQUIRED H-04|採用する正確な各sceneと演出品質|`finger_mandala_3.py`と現行 `_2.py` 等の選定、個人と左右の手の対応、妖精ガイド、桜遷移の見た目を確定する必要がある|
 |HUMAN_CHECK_REQUIRED H-05|12時間再起動なし|まず基礎試験を人間が評価。試験コマンドを用意したことを耐久合格にしない|
-|設計/実機保留 H-06|MacBook PAN操作UI、Python↔TouchDesigner切替、一発差し替え|過去の希望を保持。PAN接続/必要なUI操作、採用runtime TOE、Xiaomi、カメラ所有権移譲とrollbackの実機確認が必要。今回の1シーン優先に合わせ、この候補へ本番切替機構を自動昇格していない|
+|設計/実機保留 H-06|MacBook PAN通信、Python↔TouchDesigner切替、一発差し替え|露出・ズームの共通UIはAcer内で確認済み。MacBook通信、採用runtime TOE、Xiaomi、カメラ所有権移譲とrollbackは未確認|
+|確認待ち H-07|Macから共通透過率スライダー|ウィンドウ全体かカメラ背景かを確認中。[調査メモ](OPACITY_CONTROL_PLAN.md)に接続点と実機確認を整理。未実装|
+|診断継続 H-08|約16/30fps差、操作要求外のシーン終了|同じ要求プロファイルでも実測が変動。終了コードが過去ログにないため、次回用にscene_exitを追加。原因を推測で決めない|
 
 Permission Blockedのほか、今回のコード調査で解決不能として放棄したP1はない。実機合格がないため、P1の「実運用上の完全解決」とはしていない。追加実機データを必要とするものをBlock Me相当の保留とし、根拠なく再試行や演出増量を続けない。
 
@@ -145,3 +151,15 @@ windows_process.py
 ```
 
 未コミットのローカル実行物は、無視対象の `test_reports/`、`__pycache__/`、新規 `.venv-kids-test/`。モデルファイルは存在とサイズまで読み取り、変更していない。requirementsや既存映像環境のパッケージ更新、本番データ/TOE変更は行っていない。
+
+## 操作UIの追加チェックポイント
+
+- `camera_controls.py`：カメラの取得スレッドへ最新の設定を渡す。要求/読戻し、失敗時復元、同時保存、古い設定番号、未確認の値の保存を管理。
+- `operator_panel.py` / `operator_panel.html`：起動ごとの認証、明示IPv4、露出・ズームのスライダー、適用・JSON保存、Next・終了。物理カメラやカメラ映像をブラウザへ公開しない。
+- `manager.py` / `shared_camera.py` / `scripts/start_kids_test.py`：起動・終了へUIを接続し、変更値をカメラ再取得へ継承。予期しないscene終了はlauncher PIDと終了コードを記録。
+- `tests/test_operator_panel.py` / `tests/test_camera_profile.py` / `tests/test_runtime_diagnostics.py`：取得スレッドでの適用、認証、保存前確認、競合、復元NaN、正常/非ゼロの終了ログを確認。
+- [操作手順](OPERATOR_PANEL.md)、[実機記録](CAMERA_RUNTIME_CHECK_20260906.md)、[透過率の未確定要件](OPACITY_CONTROL_PLAN.md)とiPhone引き継ぎを更新。別作業で追加された[lean-ctx解除記録](LEAN_CTX_REMOVAL_20260906.md)は保持した。
+
+統合時の回帰は **77 tests / OK**。追加した保存競合/復元/終了ログの5テストは修正前に失敗し、修正後に通過した。途中のHTTP認証試験でWinError 10053が1回発生したが、認証を含む9テストの追加5回はすべて通過し原因未確定。無制限な試行や根拠のないネットワーク変更は行っていない。
+
+この段階のUIを戻す場合はManagerを終了して `Start Kids Test.cmd --no-ui`。カメラ値は変更前の値を明示して復元する。コード全体を戻す場合はUI追加直前の `140ec05` と比較し、必要な候補コミットをrevertする。main/stableへは統合しない。

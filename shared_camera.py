@@ -9,6 +9,7 @@ from multiprocessing import shared_memory
 
 import cv2
 import numpy as np
+from camera_controls import CameraControlMailbox
 
 
 HEADER_FORMAT = "<8sIIIIQQd"
@@ -189,6 +190,7 @@ def _open_with_backends(
     fallback_to_default,
     strict_backend=False,
     exposure=None,
+    zoom=None,
 ):
     def _setup_props(cap, backend):
         normalized_fourcc = _normalize_fourcc(fourcc)
@@ -210,6 +212,12 @@ def _open_with_backends(
             if not math.isfinite(actual) or abs(actual - exposure) > 0.5:
                 raise RuntimeError(f"Camera exposure mismatch: requested={exposure} actual={actual}")
             print(f"[shared_camera] Exposure previous={previous} requested={exposure} actual={actual}")
+        if zoom is not None:
+            if not cap.set(cv2.CAP_PROP_ZOOM, zoom):
+                raise RuntimeError(f"Camera zoom rejected: requested={zoom}")
+            actual = cap.get(cv2.CAP_PROP_ZOOM)
+            if not math.isfinite(actual) or abs(actual - zoom) > 0.5:
+                raise RuntimeError(f"Camera zoom mismatch: requested={zoom} actual={actual}")
 
     indices = [camera_index]
     if fallback_to_default:
@@ -354,6 +362,7 @@ class SharedCameraRelay:
         strict_backend=True,
         require_name_match=False,
         exposure=None,
+        zoom=None,
     ):
         self.requested_camera_index = int(camera_index)
         self.camera_index = choose_camera_index(
@@ -377,6 +386,8 @@ class SharedCameraRelay:
         self.explicit_index = explicit_index
         self.require_name_match = require_name_match
         self.exposure = exposure
+        self.zoom = zoom
+        self.controls = CameraControlMailbox()
         self.frame_bytes = self.width * self.height * self.channels
         self.shm_name = f"harukaze_cam_{os.getpid()}_{uuid.uuid4().hex[:12]}"
         self.shm = shared_memory.SharedMemory(create=True, size=HEADER_SIZE + self.frame_bytes, name=self.shm_name)
@@ -443,7 +454,7 @@ class SharedCameraRelay:
             raise
 
     def _create_capture(self):
-        return _open_with_backends(
+        cap = _open_with_backends(
             camera_index=self.camera_index,
             width=self.width,
             height=self.height,
@@ -453,7 +464,11 @@ class SharedCameraRelay:
             fallback_to_default=self.fallback_to_default,
             strict_backend=self.strict_backend,
             exposure=self.exposure,
+            zoom=self.zoom,
         )
+        if cap is not None:
+            self.controls.observe(cap)
+        return cap
 
     def _reopen_capture(self):
         if not self._release_capture() or self.stop_event.is_set():
@@ -513,6 +528,14 @@ class SharedCameraRelay:
                     if not self._reopen_capture():
                         continue
                 try:
+                    changed = self.controls.apply_pending(self.cap)
+                    if changed:
+                        if "exposure" in changed:
+                            self.exposure = changed["exposure"]
+                        if "zoom" in changed:
+                            self.zoom = changed["zoom"]
+                    if self.stop_event.is_set():
+                        break
                     ret, frame = self.cap.read()
                     if self.stop_event.is_set():
                         break
@@ -581,6 +604,7 @@ class SharedCameraRelay:
             "KIDZDISCO_CAMERA_FPS": str(int(self.fps)),
             "KIDZDISCO_CAMERA_FOURCC": self.fourcc,
             "KIDZDISCO_CAMERA_EXPOSURE": "" if self.exposure is None else str(self.exposure),
+            "KIDZDISCO_CAMERA_ZOOM": "" if self.zoom is None else str(self.zoom),
             "KIDZDISCO_CAMERA_BACKEND": str(self.backend_preference),
             "KIDZDISCO_CAMERA_STRICT_BACKEND": str(self.strict_backend).lower(),
             "KIDZDISCO_CAMERA_ALLOW_FALLBACK": str(self.fallback_to_default).lower(),
@@ -618,6 +642,7 @@ class SharedCameraRelay:
         errors = []
         self.running = False
         self.stop_event.set()
+        self.controls.close()
 
         thread = getattr(self, "thread", None)
         if thread and thread is not threading.current_thread():

@@ -22,6 +22,7 @@ from scene_control import SceneLaunchControl, SceneControlError
 from scene_profile_runner import resolve_scene_path
 from windows_process import WindowsSceneJob, get_scene_job
 from runtime_diagnostics import RuntimeDiagnostics
+from operator_panel import OperatorPanel
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +75,7 @@ DEFAULT_CONFIG = {
     "CAMERA_FPS": 60,
     "CAMERA_FOURCC": "MJPG",
     "CAMERA_EXPOSURE": None,
+    "CAMERA_ZOOM": None,
     "CAMERA_DIAGNOSTIC_SECONDS": 2.0,
     "CAMERA_STRICT_BACKEND": True,
     "CAMERA_BACKEND": "dshow",
@@ -112,6 +114,7 @@ CAMERA_ENV_CASTERS = {
     "CAMERA_FPS": int,
     "CAMERA_FOURCC": str,
     "CAMERA_EXPOSURE": _parse_optional_float_setting,
+    "CAMERA_ZOOM": _parse_optional_float_setting,
     "CAMERA_DIAGNOSTIC_SECONDS": float,
     "CAMERA_STRICT_BACKEND": _parse_bool_setting,
     "CAMERA_BACKEND": str,
@@ -140,6 +143,9 @@ def validate_runtime_config(cfg):
         exposure = cfg["CAMERA_EXPOSURE"]
         if exposure is not None and (not math.isfinite(exposure) or not -13 <= exposure <= 0):
             raise ValueError("CAMERA_EXPOSURE must be finite, between -13 and 0, or null")
+        zoom = cfg["CAMERA_ZOOM"]
+        if zoom is not None and (not math.isfinite(zoom) or not 100 <= zoom <= 500):
+            raise ValueError("CAMERA_ZOOM must be finite, between 100 and 500, or null")
         for key in ("SCENE_GRACEFUL_TIMEOUT", "SCENE_TERMINATE_TIMEOUT", "SCENE_READY_TIMEOUT",
                     "SCENE_START_ACK_TIMEOUT", "SCENE_FIRST_FRAME_TIMEOUT", "TRANSITION_TOTAL_DURATION"):
             value = float(cfg[key])
@@ -796,12 +802,16 @@ def main():
     parser.add_argument("--duration-seconds", type=_positive_seconds, help="Stop this trial after the first scene has run this long")
     parser.add_argument("--switch-interval-seconds", type=_positive_seconds, help="Request a trial switch after each successful scene has run this long")
     parser.add_argument("--switch-count", type=int, help="Stop after this many successful trial switches, excluding initial launch")
+    parser.add_argument("--operator-host", default="127.0.0.1", help="Specific Acer PAN/LAN IPv4 for the browser panel")
+    parser.add_argument("--operator-port", type=int, help="Enable the authenticated browser panel on this port")
     parser.add_argument(
         "--camera-only",
         action="store_true",
         help="Start only the shared camera relay for manual scene editing.",
     )
     args = parser.parse_args()
+    if args.operator_port is not None and not 1 <= args.operator_port <= 65535:
+        parser.error("--operator-port must be between 1 and 65535")
     if args.switch_count is not None and (args.switch_count <= 0 or args.switch_interval_seconds is None):
         parser.error("--switch-count requires a positive count and --switch-interval-seconds")
     if args.camera_only and (args.switch_count or args.switch_interval_seconds):
@@ -832,6 +842,7 @@ def main():
     manager = None
     monitor = None
     diagnostics = None
+    operator = None
     trial_started_at = None
     next_switch_at = None
     observed_switches = 0
@@ -857,8 +868,12 @@ def main():
             explicit_index=CONFIG.get("CAMERA_OPENCV_INDEX"),
             require_name_match=CONFIG.get("CAMERA_REQUIRE_NAME_MATCH", False),
             exposure=CONFIG.get("CAMERA_EXPOSURE"),
+            zoom=CONFIG.get("CAMERA_ZOOM"),
         )
         camera_relay.start()
+        if args.operator_port is not None:
+            operator = OperatorPanel(camera_relay, args.config or CONFIG_PATH, args.operator_host, args.operator_port)
+            operator.start()
 
         camera_env = camera_relay.export_env()
         print(
@@ -935,7 +950,27 @@ def main():
                 manager.switch_scene()
 
             if manager is not None and not manager.is_scene_running() and not manager.switch_pending:
+                exited_launcher = manager.running_process
+                if exited_launcher is not None:
+                    # The Windows venv launcher may be a redirector; this is its
+                    # return code, not a claim about the interpreter's exit cause.
+                    exit_detail = {
+                        "scene": manager.current_scene_name,
+                        "launcher_pid": exited_launcher.pid,
+                        "launcher_exit_code": exited_launcher.poll(),
+                        "switch_pending": manager.switch_pending,
+                    }
+                    print("[Manager] " + json.dumps({"event": "scene_exit", **exit_detail}), flush=True)
+                    if diagnostics:
+                        diagnostics.record("scene_exit", **exit_detail)
                 print(f"[Manager] Scene '{manager.current_scene_name}' exited. Launching next...")
+                manager.switch_scene()
+
+            action = operator.consume_action() if operator is not None else None
+            if action == "quit":
+                stop_reason = "operator_quit"
+                break
+            if action == "next" and manager is not None:
                 manager.switch_scene()
 
             key = -1
@@ -979,6 +1014,13 @@ def main():
                 pass
     finally:
         print("[Manager] Shutting down...")
+        if operator is not None:
+            try:
+                if operator.close() is False:
+                    exit_code = 1
+            except Exception as exc:
+                print(f"[Manager] Operator panel cleanup error: {exc}")
+                exit_code = 1
         if monitor:
             try:
                 if monitor.stop() is False:

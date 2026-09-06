@@ -20,6 +20,7 @@ class CameraProfileTests(unittest.TestCase):
         relay.camera_index, relay.width, relay.height, relay.fps = 1, 1280, 720, 30
         relay.fourcc, relay.backend_preference = "MJPG", "dshow"
         relay.fallback_to_default, relay.strict_backend, relay.exposure = False, True, -5
+        relay.zoom, relay.controls = None, mock.Mock()
         with mock.patch.object(shared_camera, "_open_with_backends") as open_capture:
             relay._create_capture()
             self.assertEqual(open_capture.call_args.kwargs["exposure"], -5)
@@ -180,6 +181,7 @@ class CameraProfileTests(unittest.TestCase):
         relay.fps = 60.0
         relay.fourcc = "MJPG"
         relay.exposure = -5
+        relay.zoom = None
         relay.camera_index = 2
         relay.backend_preference = "dshow"
         relay.strict_backend = True

@@ -39,6 +39,9 @@ def main():
     parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
     parser.add_argument("--switch-every", type=float, help="Trial switch interval in seconds")
     parser.add_argument("--switch-count", type=int, help="Number of successful trial switches")
+    parser.add_argument("--operator-host", default="127.0.0.1", help="Specific Acer PAN IPv4 for MacBook access")
+    parser.add_argument("--operator-port", type=int, default=8766)
+    parser.add_argument("--no-ui", action="store_true", help="Disable the browser operator panel")
     args = parser.parse_args()
     sys.path.insert(0, str(ROOT))
     os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -58,6 +61,8 @@ def main():
     trial_dir = report_dir / (time.strftime("kids_trial_%Y%m%d_%H%M%S_") + str(time.time_ns() % 1_000_000_000))
     sys.argv = [str(ROOT / "manager.py"), "--config", str(ROOT / "configs" / "kids_test_acer.json"),
                 "--report-dir", str(trial_dir)]
+    if not args.no_ui:
+        sys.argv.extend(["--operator-host", args.operator_host, "--operator-port", str(args.operator_port)])
     if args.duration_minutes is not None:
         sys.argv.extend(["--duration-seconds", str(args.duration_minutes * 60)])
     if args.switch_every is not None:
