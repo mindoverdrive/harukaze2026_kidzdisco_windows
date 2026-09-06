@@ -42,7 +42,8 @@ def main():
         renderer = SphereRenderer(screen)
         smoother = TipSmoother()
         clock = pygame.time.Clock()
-        started = previous = metrics_started = time.monotonic()
+        # perf_counter is monotonic too, with sub-ms resolution on this Python/Windows.
+        started = previous = metrics_started = time.perf_counter()
         draw_count = camera_count = 0
         camera_surface = cached_snapshot = presented_snapshot = None
         running = True
@@ -56,7 +57,7 @@ def main():
                     running = False
             if not running:
                 break
-            now = time.monotonic()
+            now = time.perf_counter()
             elapsed = now - started
             dt, previous = min(0.1, max(0.0, now - previous)), now
             snapshot = feed.latest()
@@ -64,6 +65,9 @@ def main():
                 cached_snapshot = camera_surface = None
             elif snapshot is not cached_snapshot:
                 camera_surface = pygame.image.frombuffer(snapshot.rgb_bytes, snapshot.size, "RGB")
+                # RGB24 global-alpha blending is expensive on the Windows RGB32 display.
+                # Convert once per camera update, then reuse the fast display-format surface.
+                camera_surface = camera_surface.convert(screen)
                 camera_surface.set_alpha(70)
                 cached_snapshot = snapshot
             tips = smoother.update(snapshot.tips if snapshot is not None else (), dt)
@@ -88,7 +92,7 @@ def main():
                         "particles": renderer.field.particle_count,
                         "drawn_particles": visible,
                         "hands": len(tips),
-                        "camera_age_s": None if snapshot is None else max(0.0, now - snapshot.timestamp),
+                        "camera_age_s": None if snapshot is None else max(0.0, time.monotonic() - snapshot.timestamp),
                     }), flush=True)
                 except (OSError, ValueError):
                     pass

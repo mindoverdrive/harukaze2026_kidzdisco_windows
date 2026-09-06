@@ -36,6 +36,7 @@ class FakeScene:
         self.screen.fill.side_effect = self.record("fill")
         self.screen.blit.side_effect = self.record("camera_blit")
         self.camera_surface = mock.Mock()
+        self.camera_surface.convert.return_value = self.camera_surface
         self.frombuffer = mock.Mock(side_effect=self.record("camera_surface", self.camera_surface))
         self.flip = mock.Mock(side_effect=self.record("flip"))
         self.tick = mock.Mock(side_effect=self.record("tick"))
@@ -64,7 +65,8 @@ class FakeScene:
         timestamps = iter([100.0] + [100.0 + (i + 1) / 60 for i in range(len(snapshots))])
         namespace = dict(
             ExitStack=ExitStack, json=json,
-            time=SimpleNamespace(monotonic=lambda: next(timestamps)),
+            # GetTickCount64 can remain unchanged across several short frames.
+            time=SimpleNamespace(monotonic=lambda: 100.0, perf_counter=lambda: next(timestamps)),
             SpheresCameraFeed=self.make_feed, SphereRenderer=self.make_renderer,
             TipSmoother=TipSmoother,
             notify_first_frame=self.notify_frame, notify_exit_request=self.notify_exit,
