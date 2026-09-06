@@ -178,11 +178,18 @@ class SphereRenderer:
         # Convert once in NumPy, avoiding per-particle NumPy scalar allocations.
         points = positions.astype(self.field.np.int32).tolist()
         sprite_indices = indices.tolist()
-        batch = [(self.sprites[index], (point[0] - self.half_sizes[index],
-                                       point[1] - self.half_sizes[index]),
-                  None, self.pg.BLEND_RGB_ADD)
-                 for point, index in zip(points, sprite_indices)]
-        screen.blits(batch, doreturn=False)
+        fblits = getattr(screen, "fblits", None)
+        if callable(fblits):
+            batch = [(self.sprites[index], (point[0] - self.half_sizes[index],
+                                           point[1] - self.half_sizes[index]))
+                     for point, index in zip(points, sprite_indices)]
+            fblits(batch, self.pg.BLEND_RGB_ADD)
+        else:
+            batch = [(self.sprites[index], (point[0] - self.half_sizes[index],
+                                           point[1] - self.half_sizes[index]),
+                      None, self.pg.BLEND_RGB_ADD)
+                     for point, index in zip(points, sprite_indices)]
+            screen.blits(batch, doreturn=False)
         for x, y in tips:
             center = (round(x), round(y))
             radius = max(6, round((11.0 + math.sin(seconds * 3.0)) * self.field.scale))

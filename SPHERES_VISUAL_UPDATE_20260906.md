@@ -75,4 +75,16 @@ convert自体の平均約2.32msも含む比較で、粒子数は減らしてい�
 
 16:20:09～16:20:29には`hands=1`のsampleを3回観測し、renderは50.55～50.77fps、camera_updateは16.88～20.09fpsだった。16:20:34時点でも取得失敗・再接続試行は0、switch_errorはnull。実カメラから手が検出された記録であり、指付近の波や発光が見えるか、映像と指先の位置が一致するかという確認依頼への回答はまだない。
 
+## 画素を保った粒子描画の軽量化
+
+`SphereRenderer.draw`の一括描画だけを変更した。`Surface.fblits`が呼出可能なら2要素tupleと共通の加算フラグを使い、それ以外では従来の4要素tupleと`blits`を使用する。粒子数・投影・色・回転時刻・指先の円は同じ。現在のpygame-ceで使えるAPIを選ぶだけで、依存環境は変更していない。
+
+採用判断は`test_reports/spheres_fblits_comparison_20260906.json`の一組の比較による。1920×1080・9,600点、手なし、同一atlas、12組暖機後の120組をAB／BA交互に測定した。投影とbatch作成を含む描画中央値は9.023→6.601ms（26.8%短縮）、120組中94組で高速だった。カメラ・認識・物理表示を含まないため、全体FPSの26.8%改善とは解釈しない。
+
+変更した実RendererをSDL dummyで実行し、通常のSurfaceと`fblits`を隠したnative Surface subtypeで従来経路を比較した。手なし・合成指先6か所の両方で9,600点を描画し、全RGBAの差は0画素。手なし画像は変更前の比較画像SHA-256とも一致した。根拠は`test_reports/spheres_fblits_renderer_verification_20260906.json`。標準pygameの別環境を新設して実行した検証ではない。
+
+全回帰はPython 3.11で199件／13.290秒、映像Python 3.12.10で199件／12.637秒、両方OK・exit0。3.12の初回ログ表示補助が文字コードで失敗したため、補助出力をUTF-8に統一して同じ全回帰を再実行した。根拠は`test_reports/spheres_fblits_unittest_py311_20260906.txt`、`spheres_fblits_unittest_py312_20260906.txt`および後者の`_exit.json`。実Renderer検証時のソースSHA-256は`0936496afbb107ae54eb27ce7c5adcc61d7d2431a6aec6e175b02a4b8f189820`。
+
+**表示への反映状況:** いま人間の操作確認に使っているscene PID 21644は`18016ab`のまま継続し、この追加軽量化はまだ再読み込みしていない。次の同一シーン切替または起動時に読み込む。読み込み後のFIRST_FRAME・実render fps・取得失敗・旧子プロセス終了は次の検証項目であり、上記50fpsの値をこの追加変更の実機結果に流用しない。変更を戻す場合は、この軽量化commit単位をrevertする。
+
 Bluetooth PANとMac–Acer接続検証は完全中止のまま。ネットワーク設定・購入・本番昇格は行わない。復帰はdots入口 `Start Rebirth Acer.cmd`、コードは候補commit単位のrevert、全体基準は `705b081`。main/stableの強制変更は行わない。
