@@ -1,5 +1,13 @@
 # Spider MVP実機確認
 
+## 03:42 更新：修正後の30分結果と目視待ち
+
+- 修正後trial `kids_trial_20260907_030519_915958100` は03:35:28にduration_reached、exit0、trial_elapsed1800.547秒で終了。同一scene PID17848、途中scene_exit0、promotion_count1。単一シーン30分の再起動なしをログで確認した。
+- 共有映像の読取失敗2回は同一sceneで復帰（出力時刻差16ms/31ms）。物理camera failure/reopen0、最大frame gap0.079秒。179個の描画サンプルは37.3〜43.3fps、中央値42.4fps。これらは目視品質を保証しない。
+- 終了後の対象4 PIDと共有メモリは不在。終了時にMediaPipe wait_until_idleのKeyboardInterrupt、runner ERROR notification failed: ConnectionAbortedErrorあり。完全無エラーとはしない。GPU値nullでGPUリークの合否は未確認。
+- 次は工程表1の「修正後の見え方」だけ。既存コード/比較条件を維持して10分上限のtrial `kids_trial_20260907_034242_304284400` を起動。FIRST_FRAME1.25秒、露出-4/zoom176一時適用・保存なし。約1分の手操作による追従/瞬断の確認を依頼し、ユーザー回答待ち。読取失敗が起きなかった短時間の目視だけで、失敗発生時の全ての見え方を合格にしない。
+- 今後は未確認項目だけを一まとまり提示し、人間の結果を待つ。今回の起動以外のシーン切替・USB操作・新機能実装へ先行しない。
+
 ## 03:00終了の診断と最小修正
 
 - 最終停止は03:00:18、duration_reached、exit0、trial_elapsed1800.547秒。しかし02:57:41にcamera_read_failedで通常returnし、再起動が1回あった。Ctrl+Cに起因する終了ではなく、シーンの読取失敗経路であることを確認。物理カメラ取得失敗/reopenは0で、共有メモリの競合か鮮度などの詳細原因までは未特定。

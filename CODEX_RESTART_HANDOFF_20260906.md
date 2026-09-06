@@ -107,6 +107,8 @@
 
 ## 関連資料
 
+2026-09-07 03:42最新：Spider修正後trial030519は単一30分/再起動0・camera failure/reopen0、対象PID/SHM残留なし。終了時KeyboardInterrupt/ConnectionAbortedErrorは保留。工程1の修正後目視用にtrial `kids_trial_20260907_034242_304284400` を10分上限で起動（Manager19836/scene21332/wrapper23448/外側19572）。露出-4/zoom176一時適用。人間の約1分の結果待ち。最新指示は未確認だけ一まとまりを提示し回答を待つこと。次シーンを先行起動しない。
+
 2026-09-07 02:19更新：Spiderの中央、両手独立、四隅、退出再入場を成人ユーザーがOK。片手の右下100px第2目標も確認し維持。ただし現trialで02:06:08/02:08:19/02:13:10の3回scene_exit（code0、理由null）と再起動を検出。操作の有無は確認待ち。連続30分合格としない。最新camera failure/reopen0、描画35fps。詳細はSPIDER_MVP_REVIEW_20260907.md冒頭。
 
 2026-09-07 02:02更新：Saturn退出再入場OKを記録後、operator_quitで終了（exit0、766.516秒）。対象PID/共有メモリ残留なし。次のSpider単独入口を `1dfca5e` でpushし、`kids_trial_20260907_020159_984874500` を30分上限で起動。中央の目視確認待ち。露出-4/zoom176は一時適用。詳細 `SPIDER_MVP_REVIEW_20260907.md`。再開時は現PID/ログを確認し二重起動を避ける。
