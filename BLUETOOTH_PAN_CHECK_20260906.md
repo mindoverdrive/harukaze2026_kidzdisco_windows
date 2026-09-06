@@ -2,7 +2,36 @@
 
 2026-09-06。基準点は `705b081`、候補ブランチは `codex/rebirth2026-production-candidate`。
 
-**最終観測（13:31 JST）：Bluetoothペアリングは成功したが、PANは未成立。Macのネットワーク一覧とサービス追加候補の両方にBluetooth PANがなく、ここで検証を停止する。** MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性は合格していない。構成変更や別方式の採用へ自動で進まない。
+**最新：省電力Off・Bluetooth共有Onを維持した状態でMacを再接続したが、13:54のPANはDisconnected、接続台数0/7。PANリンクは未成立。** MacはTahoe 26.6.2との申告。PAN経由のIP・双方向疎通・HTTP・SSH・再接続・短時間安定性の合格はまだない。本番の接続方式を採用した記録とはしない。画面操作は既設UltraVNCを使うユーザー方針を追加し、PAN検証を継続する。
+
+## Acerを共有側にした再開試験
+
+前段階ではMacのネットワーク追加候補にPANがなく13:31に停止した。その後のユーザー再指示に基づき、役割を変えてAcer側の標準モバイルホットスポットを確認した。
+
+- UIの変更前：モバイルホットスポットOff、共有元Wi-Fi、共有方式Wi-Fi。
+- Bluetoothの選択肢が実際にあったため、共有方式をBluetoothへ変更してOnにした。UIは接続台数0/7。
+- 13:39:20の読取：SharedAccess・icssvc稼働、上流Wi-FiはUp。PANに192.168.138.1/24が追加されたがTentative、PANはDisconnectedのまま。IP文字列があることだけをPAN成功とは扱わない。
+- Macの`networksetup -listallhardwareports`結果をユーザー写真で確認。Ethernet Adapter(en3/en4)、Thunderbolt Bridge(bridge0)、Wi-Fi(en0)、Thunderbolt 1(en1)、Thunderbolt 2(en2)があり、Bluetooth PANはない。画像の機器MACアドレスは共有文書へ転記しない。
+- 最初のMac切断→再接続後、13:43にはAcer側の共有がOffになっていた。停止の原因は未確定。当時は省電力Onだったが、その機能が原因と断定しない。この試行を「共有Onを維持した再接続失敗」の根拠にはしない。
+- AcerのBluetooth共有を再びOnにし、省電力をOffにした。ユーザーがその後にMacのAYM_ILLを切断→接続したと明示確認した。登録解除やBluetooth無線全体の再起動は実施していない。
+- 13:54:49の再読取でもPANはDisconnected。192.168.138.1/24と169.254系はともにTentative、有効なユニキャスト経路やMacの隣接登録なし。続くWindows UI再取得でも共有On・Bluetooth・省電力Off・接続台数0/7を確認した。共有の自動停止を除いた条件でもPAN成立を確認できなかった。
+- 再送されたMac写真はプロンプト時刻13:37:54の同一結果。省電力Off後の新しいハードウェア一覧とは扱わない。
+
+共有のCOM列挙は、正しく`EnumEveryConnection()`を呼んでもE_ACCESSDENIED(0x80070005)となった。共有の有無をfalseと推定せず、取得不能として記録。既存のWindows標準UIからBluetooth共有の選択と有効化ができたため、全体の停止理由にはしなかった。管理者権限・Firewall設定の変更はしていない。
+
+現在の試験設定はBluetooth共有On・省電力Off。復元時は共有Onのうちに省電力を元のOnへ戻し、モバイルホットスポットをOffにし、共有方式を元のWi-Fiへ戻してアダプター/IP状態を照合する。上流Wi-Fiの接続や接続先、固定IPを手動で変更していない。
+
+## 現場の画面操作にUltraVNCを使う方針
+
+ユーザーは春風で、同じWi-Fi上のMacからUltraVNC経由でAcerのディスプレイ1を操作し、ディスプレイ2をXiaomiの映像出力にしていた。今回もVNCで操作する方針を受領。これは操作ソフトの方針であり、PAN成立や本番の通信方式決定を意味しない。
+
+読み取り専用の並行調査で、AcerにUltraVNC 1.6.4.0が既設であることを確認した。配置は`C:\Program Files\uvnc bvba\UltraVNC`。該当サービス登録・Server/Viewerプロセス・TCP 5900/5800待受は0。非秘密の設定値は`primary=1 / secondary=0`、固定5900、`InputsEnabled=1`。設定上は主画面操作を再利用する候補だが、OS列挙ではDISPLAY1だけで、Xiaomi接続時の画面対応は未確認。
+
+`BlankMonitorEnabled=1`はViewerによる画面消灯要求を許す設定であるため、本番映像を維持できるかの確認項目に残す。設定項目の意味は[UltraVNC公式INI資料](https://uvnc.com/docs/ultravnc-server/69-ultravnc-ini.html)と照合した。認証値は出力・転記していない。Server起動、設定変更、サービス登録は実施していない。
+
+PAN成立後に既設Serverを通常起動し、実際の5900待受先とMacからの到達を確認する。Macの既存クライアント種類・認証・DISPLAY1の入力・Xiaomi表示維持・実用性能はHuman Check Required。HTTPの到達成功とVNCの合格も別に判定する。
+
+## 前段階の観測
 
 Mac側の既存一覧はWi-Fi・VPN・ファイアウォール・Thunderbolt Bridge・iPhone USBとのユーザー報告。続いて「サービスを追加」のインターフェイス候補はThunderbolt Bridge・Wi-Fi・PPPoE・6to4で、チェックはThunderbolt Bridgeに付いているとの報告を受けた（音声の「PPPOE624」はPPPoE / 6to4として整理）。Bluetooth PANの追加候補を確認できない。Thunderbolt BridgeをPANとして作成せず、現在のダイアログはキャンセルで閉じる案内とする。
 
@@ -20,7 +49,7 @@ Mac側の既存一覧はWi-Fi・VPN・ファイアウォール・Thunderbolt Bri
 
 `705b081`に至る両Python環境120テスト、C922nの正常交代20回、同試験中の取得失敗・再接続試行・終了後所有資源残留0は過去の証拠として維持する。無中断30分、実映像・子供・複数人、Xiaomi、実USB復帰、12時間試験は引き続きHuman Check Required。試験中の再接続試行0は実USB再接続の成功を意味しない。
 
-## 実機で読み取った事実
+## 初回から13:31までに読み取った事実
 
 |項目|観測|判定|
 |---|---|---|
@@ -45,13 +74,13 @@ WindowsのBluetooth設定を開き、「デバイスを追加する」ダイア�
 
 これはUI操作ツールの対象ウィンドウ制約であり、Bluetoothドライバー故障、OSの権限拒否、PAN非対応の証明ではない。Mac側を直接操作する接続もないため、ユーザーへOS版・PAN項目・デバイス検出の確認を依頼した。
 
-Codexは固定IP、VPN、Firewall、SSH設定、共有設定、ドライバー、Python環境、カメラ、シーンを変更していない。ユーザーが両機のVPNをオフにし、Bluetoothペアリング操作を実施した。HTML作業にも触れていない。
+13:31までCodexはネットワーク設定を変更していなかった。再開試験で上記のBluetooth共有だけを変更した。固定IP、VPN、Firewall、SSH設定、ドライバー、Python環境、カメラ、シーンは変更していない。ユーザーが両機のVPNをオフにし、Bluetoothペアリング操作を実施した。HTML作業にも触れていない。
 
 ## 公式資料と、その限界
 
 Windowsの公式接続手順は、相手にBluetooth共有機能があり、ペアリング後にWindowsからPANへ参加する構成を説明している。ペアリングだけでIP通信が成立するとは扱わない。[Microsoft: Bluetoothネットワークへの接続](https://support.microsoft.com/en-us/windows/hardware/bluetooth/connect-to-a-bluetooth-network-in-windows)
 
-WindowsのMobile hotspot資料にはBluetooth経由の共有が記載されている。ただし、このAcerの設定画面で共有先として選択可能かは未確認。[Microsoft: Mobile hotspot](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/use-your-windows-device-as-a-mobile-hotspot)
+WindowsのMobile hotspot資料にはBluetooth経由の共有が記載されている。再開試験でこのAcerにも選択肢があり、Onにできることを確認した。クライアントのPAN接続成功は別確認。[Microsoft: Mobile hotspot](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/use-your-windows-device-as-a-mobile-hotspot)
 
 Appleの現行手順にはiPhoneとMacのBluetooth経由テザリングが記載されているが、Windowsと当該M1 Macの組み合わせを保証する記述ではない。[Apple: iPhone/iPadの接続共有](https://support.apple.com/guide/mac-help/iphone-internet-connection-mac-mchl7403f0ee/mac)
 
@@ -61,7 +90,15 @@ Macのサービス追加はApple公式の「アクション→サービスを追
 
 ## 保留と再開条件
 
-ペアリングは完了済み。未達はPANのネットワーク接続であり、同じペアリングを無制限に繰り返さない。Mac側のBluetooth PANを提供・接続できる具体的な標準機能の手順が確認できた場合、その箇所から再開する。AcerをBluetooth共有側にする操作、MacのCLIでのインターフェイス列挙や作成、ドライバー変更などは今回実施しておらず、全方式を否定した結果とはしない。購入や別の本番接続方式は未決定のまま。
+ペアリングは完了済み。未達はPANのネットワーク接続であり、同じペアリングを無制限に繰り返さない。省電力Off後の再接続でも未成立だったため、次はMacの内部インターフェース登録を読み取りで確認する。MacのCLIによるポート一覧は取得したが、ネットワークサービス作成・ドライバー変更は実施していない。購入や別の本番接続方式は未決定のまま。
+
+Macの次の一手は以下。管理者権限や設定変更を伴わない。結果はまだ受領していない。
+
+```sh
+echo 'show Plugin:InterfaceNamer' | scutil
+```
+
+Appleの公開configd実装は`Plugin:InterfaceNamer`内の`_Bluetooth PAN_`という登録名を定義している。これを確認箇所の根拠とするが、公開ソースの存在を当該Tahoe実機の対応保証と解釈しない。登録がある場合も実インターフェース・IP・リンクは別途確認し、登録がない場合もそれだけでOS全般の非対応と断定しない。[Apple公開実装](https://github.com/apple-oss-distributions/configd/blob/main/Plugins/common/plugin_shared.h)
 
 再開できた場合に限り、PANのUp状態・両端IP・経路、双方向の到達、既存の接続確認用プログラムをPAN実IPへ明示bindしたHTTPの順で確認する。元の待受はWi-FiのIP限定なので、そのURLをPAN成功の根拠にしない。HTTP後にSSH、PAN切断→再接続、5分程度のHTTP失敗数・遅延・PAN状態・SSH維持を記録する。既存Wi-Fi経由の成功が混ざらないよう両端の経路と到達元を照合する。
 
@@ -79,8 +116,12 @@ Macのサービス追加はApple公式の「アクション→サービスを追
 - `pan_acer_after_mac_report_20260906.json`: Mac側情報を受領した13:14のPAN・Bluetooth・SSHサービス再読取。
 - `pan_after_pairing_20260906.json`: 13:24のペアリング後PAN状態・IPv4・経路・デバイス登録・有効アダプター・待受。機器識別子を含むためGit対象外。
 - `pan_no_mac_interface_20260906.json`: Macの追加候補にPANがないとの報告後、13:31のAcerのPAN・IPv4・SSH・HTTP待受を再確認。
+- `pan_windows_nap_before_20260906.json`: 共有変更前のUI・PAN状態と、COM列挙が取得不能だった事実。
+- `pan_windows_nap_enabled_20260906.json`: 標準UIからBluetooth共有Onにした後、13:39のIP・サービス・接続状態。
+- `pan_after_nap_mac_reconnect_20260906.json`: 最初のMac再接続後、13:43のPAN未接続。UIでは共有がOffだったため、条件不一致の試行。
+- `pan_after_controlled_mac_reconnect_20260906.json`: 省電力Off後の再接続というユーザー確認、13:54のPAN・IP・経路・隣接一覧、共有On/省電力Off/0台のUI観測。
 - `mac_link_standby_20260906_1210.jsonl`: 自己アクセスを含む既存待受の記録。予定終了は13:10:47 JST。
 
-コード・設定の基準点は `705b081` のまま。接続診断では戻すべきネットワーク設定変更はない。後続の文書コミットは履歴を消さずrevertできる。
+コード・アプリ設定の基準点は `705b081` のまま。OSのBluetooth共有設定を戻す手順は上記の再開試験に記載。後続の文書コミットは履歴を消さずrevertできる。
 
 優先変更前のrunner終了処理の赤い回帰テストは、未実装の作業として `test_reports/paused_runner_finalization_20260906/` へ移動前後のSHA-256一致を確認して保全済み。7テスト・11失敗は未修正の再現記録であり、新しい修正の合格記録ではない。既存testsの収集対象と製品コードへ未完の作業を混ぜず、PAN確認の保留理由とコード修正の残件を区別する。
