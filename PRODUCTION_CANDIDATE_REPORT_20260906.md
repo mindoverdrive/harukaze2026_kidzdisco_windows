@@ -4,7 +4,11 @@
 
 **最新のユーザー方針:** 部屋の暗さが低fpsに影響している可能性を踏まえ、FPSの追加調査は後回しにする。露出・ズームをMacのUIから現場で調整し保存する導線を優先する。暗さを唯一の原因と断定せず、既に検証した指定値補正は保持する。現在の作業を止めず、ユーザーが準備できるMacとの接続確認を並行する。
 
-**最新チェックポイント（09:30の実機結果）:** C922nの初回フレーム後の露出戻りを再現・修正し、基準シーンで30秒・約30fps・途中終了なし・正常終了を確認した。全84テスト通過。Acer内のカメラUIも確認済み。MacBook PAN、透過対象、子供の操作、30分/12時間は保留。[追加修正記録](C922_EXPOSURE_DRIFT_20260906.md)を先に読む。
+**最新チェックポイント:** 完了監査で、本番シーン一覧の省略時に7本へ広がる問題と、カメラ初期設定・解放の二重失敗で所有参照を失う問題を再現し、`40db032`・`d94ba5d`で最小修正・通常pushした。全回帰 **94件 / 9.256秒 / OK、終了コード0**。実際の `Start Kids Test.cmd --check` も既存映像用Pythonで成功した。この追加修正後の実カメラ試験は未実施。[P1完了監査](P1_CANDIDATE_COMPLETION_AUDIT_20260906.md)を現在の根拠とする。
+
+**前段階（09:30の実機結果）:** C922nの初回フレーム後の露出戻りを再現・修正し、基準シーンで30.719秒・約30fps・途中終了なし・正常終了を確認した。当時の回帰は84件。Acer内のカメラUIも確認済み。MacBookとの実通信、透過対象、子供の操作、30分/12時間は保留。[露出補正の記録](C922_EXPOSURE_DRIFT_20260906.md)を今回の追加修正後の実機再検証とは扱わない。
+
+**別タスクとの分担:** ユーザー報告により動的HTML作業は完了。`20260906-current-status.html`、`status_dashboard/README.md`、`status_dashboard/status_server.py`は別タスクの成果物として保持し、このチェックポイントに混在させない。MCP・フック解除は維持されている一方、旧lean-ctxスキルの再出現表示は要再確認。環境設定を再変更する根拠にはしていない。
 
 **操作UI追加時点の到達点（2026-09-06）:** Acer内のブラウザからC922nの露出・ズームを適用/読戻し/復元し、プレビューJSONへの保存、シーン切替、Managerの通常終了を確認した。自動回帰77件通過。MacBookのPAN通信、子供の操作、30分無中断、12時間は未確認。起動ごとの約16/30fps差と操作要求外のシーン終了は未確定として残す。最新の手順は [操作UI](OPERATOR_PANEL.md)、実測は [実機記録](CAMERA_RUNTIME_CHECK_20260906.md)。以下の63件/66件は前段階の履歴。**
 
@@ -28,16 +32,16 @@
 
 |段階|主な変更|実施した検証|
 |---|---|---|
-|P1 #2|production候補を明示リスト化。ラッパー/元source/acer profile/存在/構文/パスを起動前に検証|対象外混入、重複、パス逸脱、欠落、誤profile、不正設定を拒否|
-|P1 #6|初期化開始時から取得済み資源の解放を登録。終了処理を独立実行し、停止失敗時の参照を保持|7シーンの実ソースで初期化失敗を注入。release失敗時も後続の資源を解放|
+|P1 #2|production候補を明示リスト化。ラッパー/元source/acer profile/存在/構文/パスを起動前に検証。一覧省略による暗黙の補完を禁止|対象外混入、重複、パス逸脱、欠落、誤profile、不正設定を拒否。実JSON入口から省略/null/空をカメラ生成前に拒否|
+|P1 #6|初期化開始時から取得済み資源の解放を登録。終了処理を独立実行し、停止失敗時の参照を保持。VideoCapture取得直後から所有を登録|7シーンの実ソースで初期化失敗を注入。release失敗時も後続の資源を解放。カメラ初期設定とreleaseの二重失敗後もcapを保持|
 |P1 #9|Managerの解決したcamera値を子へ継承。Managerが物理カメラを所有し、管理下の子の物理fallbackを禁止|環境優先、profile上書き防止、名前/番号の矛盾、共有必須を検証|
 |P1 #1|READY→START→START_ACK→FIRST_FRAME。受信準備と描画処理成功を分け、初回成功まで旧シーンを保持|実TCP/実runner/分割JSON/接続断/期限/別カメラ/描画エラー。固定sleepだけで同期しない|
-|P1 #3|再取得失敗後も継続。停止イベント、再試行間隔、フレーム鮮度、固有共有メモリ名と所有セッション|実共有メモリとスレッド＋疑似captureで切断→取得失敗→復帰、read/open中の停止を検証|
+|P1 #3|再取得失敗後も継続。停止イベント、再試行間隔、フレーム鮮度、固有共有メモリ名と所有セッション。旧capの解放成功まで新規openを禁止|実共有メモリとスレッド＋疑似captureで切断→取得失敗→復帰、read/open中の停止、release失敗→成功後の再取得を検証|
 |Windows追加|venv中継PIDを識別し、所有Jobで実Pythonと子プロセスを管理|実OSで中継起動、READY前の子、親のみ終了、Job close、無関係PID拒否。ユーザーの既存プロセスは対象外|
 |1シーン|専用config、C922の名前照合、依存preflight、同一mirror/layoutによる画像と指先の投影|中央/四隅/異なる縦横比/1px越境、検出→退出→フレーム喪失を検証|
 |試験準備|時間指定終了、切替回数指定、制御/子出力/資源ログを容量制限付きで保存|カメラなしの実Managerで3回切替、初回フレーム後から計時、ログ排出/世代保存、Windowsカウンター100回照会|
 
-P1初回報告時の実行コマンドは `python -m unittest discover -s tests -q`、結果は **63 tests / OK**。UIと初回設定補正を加えた最新回帰は同じコマンドで **84 tests / OK**。関連Pythonの構文検査と `git diff --check` も通過した。リポジトリ直下の旧テストを無差別に実行していない。
+P1初回報告時の実行コマンドは `python -m unittest discover -s tests -q`、結果は **63 tests / OK**。UIと初回設定補正の段階は84件、今回の一覧省略・二重失敗修正後は **94 tests / 9.256秒 / OK、終了コード0**。関連Pythonの構文検査と `git diff --check` も通過した。回帰後の46ファイルのSHA-256は `test_reports/p1_completion_sources_20260906.json` に保存し、現在のソースと一致した。リポジトリ直下の旧テストを無差別に実行していない。
 
 OpenCV/NumPy/MediaPipe/pygame/pygfxの描画処理は疑似実装を用いた試験であり、GPU描画・C922実取得の証拠ではない。物理カメラを開かずに、Windowsのプロセス/Job/カウンター、TCP、共有メモリ、スレッド、数値変換を実行した。
 
@@ -59,7 +63,9 @@ OpenCV/NumPy/MediaPipe/pygame/pygfxの描画処理は疑似実装を用いた試
 |`567b32c`|ログ設定失敗時のプロセス参照保持、試験引数の誤記拒否、初回成功後からの試験計時、初回の最終引き継ぎ|
 |`140ec05`|C922nのMJPG再適用と露出指定、実機preflightと短時間切替|
 |`45c1d29`|Mac向けカメラ調整UI、保存検証、実機引き継ぎ。回帰77件|
-|本更新を含む追加チェックポイント|初回取得後の指定値補正・解放、回帰84件と実機30秒の記録。FPS追加調査は後回し|
+|`c9cc221`|初回取得後の指定値補正・解放、回帰84件と実機30秒の記録。FPS追加調査は後回し|
+|`40db032`|本番シーン一覧の省略/null/空をカメラ取得前に拒否。JSON入口と明示順序の試験を追加|
+|`d94ba5d`|カメラ取得直後に所有を登録。初期設定とreleaseの二重失敗でも保持し、解放成功後だけ再取得。全回帰94件|
 
 ## 最初の起動と自動試験手順
 
@@ -92,11 +98,11 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 |HUMAN_CHECK_REQUIRED H-03|Xiaomi L32M8-A2TWNへの全画面とGPU2シーン|表示モード、DPI、GPU負荷、実パネルの表示品質が未確認|
 |HUMAN_CHECK_REQUIRED H-04|採用する正確な各sceneと演出品質|`finger_mandala_3.py`と現行 `_2.py` 等の選定、個人と左右の手の対応、妖精ガイド、桜遷移の見た目を確定する必要がある|
 |HUMAN_CHECK_REQUIRED H-05|12時間再起動なし|まず基礎試験を人間が評価。試験コマンドを用意したことを耐久合格にしない|
-|設計/実機保留 H-06|MacBook PAN通信、Python↔TouchDesigner切替、一発差し替え|露出・ズームの共通UIはAcer内で確認済み。MacBook通信、採用runtime TOE、Xiaomi、カメラ所有権移譲とrollbackは未確認|
+|設計/実機保留 H-06|MacBookとの通信、Python↔TouchDesigner切替、一発差し替え|露出・ズームの共通UIはAcer内で確認済み。接続方式はホットスポット/Bluetooth PAN/同じWi-Fiから選択待ち。MacBook通信、採用runtime TOE、Xiaomi、カメラ所有権移譲とrollbackは未確認|
 |確認待ち H-07|Macから共通透過率スライダー|ウィンドウ全体かカメラ背景かを確認中。[調査メモ](OPACITY_CONTROL_PLAN.md)に接続点と実機確認を整理。未実装|
 |追加確認 H-08|露出補正後の継続動作、操作要求外のシーン終了|初回取得後の露出戻りは再現・修正し30秒で約30fps。再取得は疑似試験済み、実USBは保留。以前のMandala単独10分の途中2回はlauncher code 0、操作理由は未確定。FPSの追加追究は後回し、露出は現場でMacから調整|
 
-Permission Blockedのほか、今回のコード調査で解決不能として放棄したP1はない。実機合格がないため、P1の「実運用上の完全解決」とはしていない。追加実機データを必要とするものをBlock Me相当の保留とし、根拠なく再試行や演出増量を続けない。
+現在、未解決のPermission Blockedや、コード上で解決不能として放棄したP1はない。実機合格がないため、P1の「実運用上の完全解決」とはしていない。native open/read/releaseの停止、実USB復帰、長時間資源の増加など、追加実機データを必要とする項目は上表のHuman Check Requiredとして残す。
 
 次の実機順は **finger_colorfull_dots_acer → finger_grid_interaction_acer → particle_storm_acer**。入口の座標/因果、CPUと複数手、WGPU/モデル/描画資源を順に確かめるため。最初の単一シーンが最優先であり、後の2本を本番採用したことにはしない。
 
@@ -109,7 +115,7 @@ Permission Blockedのほか、今回のコード調査で解決不能として�
 
 ## 変更ファイル一覧
 
-基点 `260ee87` から本報告まで。Acerラッパー7本は本文を読んだが変更していない。`.shared_camera_session.json` は生成物としてGit追跡を解除し、元のローカルファイルを残した。
+基点 `260ee87` から本報告までの55ファイル。Git差分と下記一覧の過不足がないことを照合した。Acerラッパー7本は本文を読んだが変更していない。`.shared_camera_session.json` は生成物としてGit追跡を解除し、元のローカルファイルを残した。
 
 ```text
 .gitignore
@@ -121,8 +127,10 @@ KIDS_TEST_START.md
 LEAN_CTX_REMOVAL_20260906.md
 OPACITY_CONTROL_PLAN.md
 OPERATOR_PANEL.md
+P1_CANDIDATE_COMPLETION_AUDIT_20260906.md
 PRODUCTION_CANDIDATE_PROGRESS.md
 PRODUCTION_CANDIDATE_REPORT_20260906.md
+README.md
 RECHECK_AUDIT_20260906.md
 REBIRTH_IPHONE_HANDOFF_2026-09-05.md
 Reverse Ubers iPhone Handoff .md
@@ -167,7 +175,7 @@ tests/test_windows_launcher.py
 windows_process.py
 ```
 
-未コミットのローカル実行物は、無視対象の `test_reports/`、`__pycache__/`、新規 `.venv-kids-test/`。モデルファイルは存在とサイズまで読み取り、変更していない。requirementsや既存映像環境のパッケージ更新、本番データ/TOE変更は行っていない。
+無視対象のローカル実行物は `test_reports/`、`__pycache__/`、新規 `.venv-kids-test/`。別タスクの動的HTML、`status_dashboard/`、`TD_BUSINESS_RESEARCH_20260906.md` は今回の変更一覧・コミットに含めない。モデルファイルは存在とサイズまで読み取り、変更していない。requirementsや既存映像環境のパッケージ更新、本番データ/TOE変更は行っていない。
 
 ## 操作UIの追加チェックポイント
 
@@ -188,3 +196,9 @@ UI追加は `45c1d29` へ通常push済み。その後 `shared_camera.py` のDSHO
 初回回帰のWindows Jobの単発WinError 5は再現せず、未解決の権限保留とはしていない。試験後に別作業のTouchDesignerが起動したため、追加の物理カメラ再取得は競合しない時点へ保留した。詳細・試験ID・限界は [C922_EXPOSURE_DRIFT_20260906.md](C922_EXPOSURE_DRIFT_20260906.md)。
 
 この追加だけを戻す場合はManagerを終了して当該候補コミットをrevertし、UI段階の `45c1d29` と比較する。共有履歴を消すreset/force pushは行わない。
+
+## P1完了監査の追加チェックポイント
+
+`c9cc221`を読み直し、規約と仕様の独立レビューを行った。一覧省略で起動対象が増える問題、カメラの初期設定と解放が同時に失敗すると所有を失う問題を新規試験で再現し、上記2コミットで修正した。独立した再確認でも両方の所見を解消し、全94件が通過した。残る命名上の軽微な指摘は機能障害ではなく、最小変更方針で見送った。
+
+既存映像Pythonで実際の `Start Kids Test.cmd --check` を実行し、`test_reports/kids_preflight_20260906_101821.json` に不足依存なしを記録。物理カメラ・ウィンドウを開く試験ではない。今回の追加2件を戻す比較基点は `c9cc221`、必要時は `d94ba5d` → `40db032` の順でrevertする。根拠、合格範囲、残る確認は [P1完了監査](P1_CANDIDATE_COMPLETION_AUDIT_20260906.md)にまとめた。

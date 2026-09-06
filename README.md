@@ -1,5 +1,15 @@
 # Harukaze 2026 Scene Controller
 
+## Rebirth 2026 の本番候補を確認する
+
+現在の候補ブランチは `codex/rebirth2026-production-candidate`。最初の実機確認には [KIDS_TEST_START.md](KIDS_TEST_START.md) の手順で既存の映像用Pythonを指定し、`Start Kids Test.cmd --check` の後に `Start Kids Test.cmd` を使う。対象は `finger_colorfull_dots_acer.py` の1シーン。main/stableへの昇格や、子供・Xiaomi・長時間試験の合格は行っていない。
+
+Mac向けの露出・ズームUIと保存手順は [OPERATOR_PANEL.md](OPERATOR_PANEL.md)、変更・検証・保留・ロールバックは [候補レポート](PRODUCTION_CANDIDATE_REPORT_20260906.md)、30分と切替反復は [ENDURANCE_TEST_PLAN.md](ENDURANCE_TEST_PLAN.md) を参照する。依存パッケージの更新や別アプリのカメラ使用と重なる起動を避け、現在の実行環境を選んで確認する。
+
+## 春風時点の記録
+
+以下は旧Streamlit方式の説明を残したもの。現在の候補は明示したシーンリストと起動ハンドシェイクを使うため、下記の自動スキャン・JSON監視・即時killの説明は現行Managerの動作を表していない。Rebirthの実機試験では上記の入口と手順を使う。
+
 このディレクトリ(`test`)には、展示・体験用の様々なインタラクティブアート（Pygfx, OpenCV等）のシーン用Pythonスクリプトが含まれています。
 また、これらのシーンをブラウザからリモートコントロールするためのStreamlitアプリケーション(`app.py`)が用意されています（Streamlitがカメラ入力非対応のため、未使用です。今後、VPSかローカルサーバーを導入することを視野に入れて残してあります）。
 

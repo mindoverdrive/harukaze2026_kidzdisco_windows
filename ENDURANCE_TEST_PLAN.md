@@ -29,7 +29,7 @@
 通常configで試す場合の例（表示位置と候補リストを実機確認してから）:
 
 ```powershell
-python manager.py --config config.json --report-dir test_reports\chosen_scenes_run01 --switch-interval-seconds 60 --switch-count 20
+& $env:KIDZDISCO_PYTHON manager.py --config config.json --report-dir test_reports\chosen_scenes_run01 --switch-interval-seconds 60 --switch-count 20
 ```
 
 既存のmetadata.jsonがあるreport-dirは再利用を拒否する。試験ごとに新しい名前を付ける。子供の操作中は意図しない自動切替を避け、まず単一シーンで試す。
@@ -54,7 +54,7 @@ GPUメモリ、温度、物理パネルの表示FPS、入力から反応まで�
 - 初回起動後の30分を完走し、予期しない終了・再起動・切替が0回。
 - 起動後のManager PID、稼働シーンのJob内実Python PID、共有メモリ名が同じ。
 - 意図的な切断を含まない試験で、2秒を越えるフレーム更新停止がない。
-- 処理/描画API呼出しの10秒平均が30FPS以上であり、目視でも操作位置と反応を追える。目標60FPSとは別。
+- 処理/描画API呼出しの10秒平均と、実カメラの到着FPSを別々に記録し、目視で操作位置と反応を追えるか確認する。旧案の30FPS下限は、現在の暗い部屋で原因調査を続ける条件にはしない。ユーザーの最新方針に従い、露出等を現場でMacから調整し、照明・残像・反応を含めて人間が判定する。会場でのFPS合格値は未確定として残す。
 - Private Bytesの5〜10分中央値と25〜30分中央値を比較し、増加が10%または50MiBの大きい方を越えたら原因調査。閾値内でも一方向に増え続ける場合は保留。
 - ハンドル、GDI/USER数、GPUメモリに継続増加がない。終了後に対象PID/画面が消え、再起動でC922を取れる。
 

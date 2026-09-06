@@ -2,7 +2,7 @@
 
 Acerで動くManagerにブラウザから設定を送り、実際の映像とカメラの読戻し値を確認してからJSONへ保存する。物理C922n USBカメラを所有するのはManagerだけで、MacBookやブラウザはカメラを直接開かない。このUIへ映像・顔・手のデータは送信しない。
 
-**Acer内のブラウザから、実C922nへの露出・ズーム適用、読戻し、元の値への復元、プレビューJSON保存、シーン切替、Manager終了を確認した。MacBookからのPAN通信は未確認。** 結果と実機合格の範囲は [CAMERA_RUNTIME_CHECK_20260906.md](CAMERA_RUNTIME_CHECK_20260906.md) に記録した。
+**Acer内のブラウザから、実C922nへの露出・ズーム適用、読戻し、元の値への復元、プレビューJSON保存、シーン切替、Manager終了を確認した。MacBookとの接続方式は未選択で、実通信は未確認。** 結果と実機合格の範囲は [CAMERA_RUNTIME_CHECK_20260906.md](CAMERA_RUNTIME_CHECK_20260906.md) に記録した。
 
 露出は会場の照明に合わせて調整する。ユーザーの最新方針では、暗い部屋でのFPSの追加追究よりMacからの調整を優先する。FPSだけで値を決めず、実映像の明るさ・残像・操作の分かりやすさを見てから保存する。
 
@@ -25,18 +25,18 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 
 先に、別のTouchDesigner/BridgeやPythonがC922nを使用していないことを確認する。使用中ならその作業を保存し、通常終了してカメラを解放してからManagerを起動する。別作業のプロセスを一括強制終了しない。
 
-1. AcerとMacBookのPAN接続を確立する。今回の確認時点ではPANのIPv4がなく、MacBookからの通信は未確認。
-2. Acerの `Get-NetIPAddress -AddressFamily IPv4` で、接続に使うPANアダプターのIPv4を確認する。VPN・Wi-Fi・MacBook側のアドレスを代用しない。
+1. Acerホットスポット、Bluetooth PAN、同じWi-Fiのどれで接続するかを選び、AcerとMacBookをつなぐ。方式はまだ未選択で、MacBookからの実通信も未確認。
+2. Acerの `Get-NetIPAddress -AddressFamily IPv4` で、選んだ接続に対応するアダプターのIPv4を確認する。ホットスポットならAcerの共有側、Bluetooth PANならPAN、同じWi-FiならそのWi-Fi接続のAcer側アドレスを使う。VPNやMacBook側のアドレスを代用しない。
 3. 起動中のManagerを通常終了し、同じPowerShellで次のように起動する。
 
 ```powershell
-$acerPanAddress = Read-Host '確認したAcer側のPAN IPv4'
-& '.\Start Kids Test.cmd' --operator-host $acerPanAddress
+$acerLinkAddress = Read-Host '選んだ接続のAcer側IPv4'
+& '.\Start Kids Test.cmd' --operator-host $acerLinkAddress
 ```
 
 4. 新しい起動ログの操作URLをMacBookのブラウザへ渡して開く。Acerの画面を見ながら調整する。
 
-`--operator-host` にはAcerに割り当てられた明示的なプライベートIPv4を指定する。`0.0.0.0` は受け付けない。ポートを変える場合は `--operator-port 8767` のように指定する。ランチャーはファイアウォールを変更しない。接続できなければAcer内での到達、PANのアドレス、MacBookからの到達、Windowsの受信規則を順に確認し、必要な変更を特定する。
+`--operator-host` にはAcerに割り当てられた明示的なプライベートIPv4を指定する。`0.0.0.0` は受け付けない。ポートを変える場合は `--operator-port 8767` のように指定する。ランチャーはファイアウォールを変更しない。接続できなければAcer内で同じ操作URLへの到達、選んだ接続のアドレス、MacBookからの到達、Windowsの受信規則を順に確認し、必要な変更を特定する。
 
 ## 適用してから保存する
 
