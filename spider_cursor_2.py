@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 pass
 # =============================================================================
 import atexit
+import time
 from contextlib import ExitStack
 import cv2
 import pygame
@@ -451,6 +452,7 @@ def main():
     max_bugs = 5
 
     running = True
+    camera_failure_since = None
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -461,13 +463,26 @@ def main():
                     notify_exit_request("escape_key")
                     running = False
 
+        if not running:
+            break
+
         if len(bugs) < max_bugs and random.random() < 0.01:
             bugs.append(Bug(width, height))
 
         ret, frame = cap.read()
         if not ret:
-            notify_exit_request("camera_read_failed")
-            break
+            now = time.monotonic()
+            if camera_failure_since is None:
+                camera_failure_since = now
+                print("[SpiderCamera] read unavailable; retrying for up to 1 second", flush=True)
+            if now - camera_failure_since >= 1.0:
+                notify_exit_request("camera_read_failed_timeout")
+                break
+            clock.tick(60)
+            continue
+        if camera_failure_since is not None:
+            print("[SpiderCamera] read recovered", flush=True)
+            camera_failure_since = None
 
         frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, width, height)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
