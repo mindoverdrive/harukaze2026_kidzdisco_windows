@@ -40,7 +40,14 @@ forces[:, 2] = 0.0
 
 ## 実機確認と保留
 
-次は修正版のParticle StormをAcer/C922n/Xiaomiで起動し、起動・フレーム進行・例外を確認する。現時点で修正後の見た目は人間未確認。
+修正コミット `6477ccb` を候補ブランチへpushしてから、Acer/C922n/Xiaomiで起動済み。修正後の見た目は人間未確認。
+
+- run：`test_reports/particle_storm_mvp_20260907_072306_138819`。trial：`test_reports/kids_trial_20260907_072307_553372400`。
+- 07:23開始、外側PID17104/Manager25176/wrapper14268/Storm12432。`FIRST_FRAME` 4.078秒。上限15分で07:38頃自動終了予定。USB抜差しや自動切替は混ぜない。
+- カメラ起動診断1280×720/MJPG/30.00fps。従来の比較条件、露出-4/zoom176を一時適用し実値一致。JSON保存なし。
+- 26.125秒のsampleで同じStorm、promotion1、read failure/reopen0、camera frame382、age約0.015秒。直近描画10秒区間27.96fps、読んだログに描画/検出例外なし。これは短い起動確認であり長時間合格ではない。
+- 07:23:39 Win32実測でXiaomiのclient領域1920×1080と一致、下端3点はStorm自身、サンプル位置にタスクバー露出なし。実画面の見た目・奥行きを自動判定した結果ではない。
+- Acer側の新しい操作パネルを右側に開いた。終了は同パネルの終了操作を使い、古いタブで操作しない。
 
 - 人間の確認は1まとまり：映像内の中央で拳（赤カーソル・吸引）を約3分保ち、最後に少し左右へゆっくり動かして開掌に戻す。見る場所は指の周囲と手前/奥の粒子。引き寄せ後も厚みがあり、従来のXY追従・反発が使えればOK。薄い板へ潰れる、左右追従が崩れる、開掌の反発が効かない場合はNG。
 - 既存の成人基本操作・30分試験の合格は過去バージョンの結果として保持。今回変更後の30分/12時間試験に代用しない。
@@ -50,6 +57,6 @@ forces[:, 2] = 0.0
 
 ## 保存と戻し方
 
-- 保存先は候補ブランチ `codex/rebirth2026-production-candidate`。main/stableと安全基準点 `705b081` を維持。
+- 修正と自動試験は `6477ccb` として候補ブランチ `codex/rebirth2026-production-candidate` へpush済み。main/stableと安全基準点 `705b081` を維持。
 - 直前の戻し先は `8518965`。この修正を戻す場合は修正コミットを通常のrevertで打ち消し、起動中のStormを通常終了して再起動する。強制reset/pushは使わない。
 - 通常の起動経路：描画用Pythonで `scripts/start_kids_test.py --audience --scene particle-storm --duration-minutes 15`。JSON保存値は変更していない。
