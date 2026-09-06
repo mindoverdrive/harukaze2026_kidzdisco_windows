@@ -1,5 +1,12 @@
 # Stormのタスクバー露出：再現と最小修正
 
+## 05:47：修正版を実シーンで再測定、人間の再確認待ち
+
+- 修正コミット `096bace` を候補へpush後、既存Manager内でStorm→Spheres→Stormを担当エージェントがAPIから一回ずつ実行。2方向の目視をユーザーが合格したとは数えない。
+- 現StormはPID10920/wrapper27308、FIRST_FRAME05:46:28（4.250秒）、Manager6788/SHM維持、switch_count3/promotion_count4、camera failure/reopen0、露出-4/zoom176。旧Storm15576/wrapper23816、中継Spheres26492/wrapper22660の稼働なしを確認。
+- 05:46:48の同じ実測probeでclient/outer=(1920,0)〜(3840,1080)、下端3点ともStormのGLFW窓がヒットしexit0。SecondaryTrayはStormより後ろ、topmost=false。Stormもtopmost=falseで、最前面固定やOS設定変更はしていない。実測時のStormはforeground=trueなので、次はAcer側クリック後の人間の見え方を確認する。
+- 根拠 `test_reports/audience_cover_20260907_054648.json`、`window_observation_20260907_054648.json`。同trialの05:49:49頃の上限は維持。実画面下端と中央反応の再確認まではHuman Check Required。
+
 2026-09-07。修正前の基準点は候補ブランチ `2039b23`、長期安全基準は `705b081`。main/stableを変更しない。
 
 ## 実際の不合格

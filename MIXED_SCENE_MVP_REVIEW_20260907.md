@@ -1,5 +1,13 @@
 # 異種シーン切替と観客表示のMVP確認
 
+## 05:47現在：タスクバーNGの修正後、Stormの再確認待ち
+
+最初のSpheres→Storm切替後、ユーザーはタスクバー残留を報告。表示合格にはしない。GLFW配置順が最後の枠除去でclientをずらすことを非表示の実ウィンドウでも再現し、`096bace` で順序だけ修正、回帰と実シーン再測定を実施した。詳細は `TASKBAR_MVP_FIX_20260907.md`。
+
+同じManager内でエージェントがStorm→Spheres→Stormを実行し、新Storm10920/wrapper27308、FIRST_FRAME05:46:28、switch3/promotion4。Manager6788/SHM/露出-4/zoom176を維持、camera failure/reopen0。旧/中継シーンのPID稼働なし。05:46:48の新Storm領域はXiaomi全面と一致し、下端3点はタスクバーでなくStorm。これは人間の目視合格の代わりではない。
+
+次はAcer側CodexをクリックしてからStorm中央に開掌を映し、タスクバーが出ず中央で反発が続くか一まとまりだけ確認して待つ。現trialは05:49:49頃の上限で終了する。追加方針として全シーンの機能切替の光/色通知とビジュアルガイドをMVP後の重要要件へ記録した（`POST_MVP_INTERACTION_GUIDANCE.md`）。
+
 ## 05:20現在：起動完了、最初の手動切替結果待ち
 
 - Spheres先行試験は05:19:07 duration_reached/exit0/1800.625秒/1promotion。途中再起動なし、対象4 PID稼働なし・SHM不在を確認。終了時例外はSPHERES_MVP_REVIEWに別記して保留。

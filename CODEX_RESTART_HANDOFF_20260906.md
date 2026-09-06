@@ -1,6 +1,8 @@
 # Codex再起動用引継ぎ — Rebirth 2026 Acer本線
 
-更新時刻: 2026-09-07 05:20 Spheres単一30分完走・最初の異種切替結果待ち
+更新時刻: 2026-09-07 05:47 タスクバー最小修正済み・Storm再確認待ち
+
+05:47最優先：ユーザーは最初の異種切替後「タスクバーが残る」と回答。GLFWの位置/サイズ指定後の枠除去で領域がずれることを実測し、配置順だけ `096bace` で修正・push。新Storm10920/wrapper27308（FIRST_FRAME05:46:28、4.250秒）を同じManager6788/SHMで表示中。trial混在051941はswitch3/promotion4、旧Storm/中継Spheres稼働なし、camera failure/reopen0、露出-4/zoom176。新Stormは実測でXiaomi全面一致・下端3点がStorm。次はAcer側Codexをクリック後、中央の開掌反発とタスクバー非露出を人間へ一まとまりで依頼して結果を待つ。まだ目視合格にしない。05:49:49頃自動終了予定なので続行時は現ログを確認。修正/回帰/一度のHTTP試験10053と再実行成功はTASKBAR_MVP_FIX_20260907.md。ユーザー追加要望「全シーンの機能切替を光/色で分かりやすく、各機能のビジュアルガイドはMVP後重要」はPOST_MVP_INTERACTION_GUIDANCE.mdに保存。MVP検証を止めず、今はガイド実装をしない。以下は履歴。
 
 05:20最優先：Spheres単一30分は05:19:07 duration_reached/exit0/1800.625秒/1promotion、途中再起動なし。対象4 PID稼働なし・SHM不在。終了時KeyboardInterrupt/通知ConnectionAbortedErrorは保留。次の2種類手動切替用trialを起動済み：`test_reports/mixed_visual_20260907_051941_163497/trial`、Manager6788/Spheres27560/wrapper27320/外側10936、SHM `harukaze_cam_6788_e199384fb591`。FIRST_FRAME1.859秒、露出-4/zoom176読戻しOK。05:49:49頃の30分上限、自動切替なし。新しい操作ページをCodex右側で開いた。現在はSpheres表示中で、ユーザーに「次のシーンへ」一回→XiaomiのStorm中央で開掌反発・古い窓/タスクバー残留なしだけを提示し、結果を待つ。こちらからNextは未送信。旧単一シーン用URLを使わせない。再開時は `test_reports/inspect_mixed_visual_20260907.py` で現状を読む。Storm左右帯方針・タスクバーMVP must・2人/子供/USB/12時間は保留。以下は履歴。
 
