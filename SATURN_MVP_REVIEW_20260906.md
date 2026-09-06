@@ -9,7 +9,20 @@
 - 実preflight: `kids_preflight_20260906_230738.json`、failuresなし。GLFW、モデル資産、DISPLAY1/5を確認。
 - `pylinalg`の既存回転・逆回転APIはCPUで実行できた。
 
-## 目視確認の順序
+## 初回起動の観測（23:09）
+
+- 起動入口のcommit `3106a7c`をpush後に起動した。
+- trial: `test_reports/kids_trial_20260906_230857_470252900`
+- 開始前のPythonプロセス0、旧Particle Storm共有メモリ残留なし。
+- FIRST_FRAME受信: scene launch control開始から3.468秒。
+- Manager PID 2596、scene PID 2152、wrapper PID 13320、外側launcher PID 23136。
+- C922n診断: 1280×720・30fps・MJPG、実測30.01fps。
+- 露出-4・zoom 176をAPIで一時適用し読戻し一致。JSON保存なし。
+- 26.015秒時点: read failure 0、reopen 0、last_error null、最大frame gap 0.062秒。
+- 最新SceneMetrics: processed_render_fps 30.0。初回の読取り範囲で描画・検出エラーログなし。
+- 30分で自動終了する指定。現時点では運転中であり、30分試験・終了残留・全目視項目は未合格。
+
+## 人間による目視確認（未実施）
 
 1. 生映像の上に球と輪が表示される。手首まで映し、人差し指を球の中央でゆっくり動かすと金色カーソルが指先に重なり、近くの球の粒子が追従する。
 2. 親指と人差し指のpinchで球の粒子を引き、離すと形が戻る。カーソル色は手の役割色なのでpinch時も金色。

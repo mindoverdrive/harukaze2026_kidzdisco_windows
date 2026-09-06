@@ -82,6 +82,8 @@
 
 ## Particle Storm完了時点の最新状態
 
+**23:09追記：Saturn実機確認を開始。** `3106a7c`で単独起動入口をpush済み、両Pythonで219件成功。trial `kids_trial_20260906_230857_470252900`、scene PID 2152、Manager PID 2596。30分自動終了指定で運転中。露出-4／zoom 176を一時適用、保存なし。FIRST_FRAME受信、初回camera failure/reopen 0。人間の中央追従・粒子表示は回答待ちであり合格扱いしない。再開前にプロセスと最新ログを確認し二重起動を避ける。詳細は [Saturn実機確認](SATURN_MVP_REVIEW_20260906.md)。
+
 - commit `c258d6c`で背景planeの深度書込みを止め、中央の生映像が粒子を隠す問題を修正してpush済み。
 - 成人が中央の粒子表示、開掌による反発、拳による吸引をOKと確認した。
 - trial `test_reports/kids_trial_20260906_222052_316031000`は`trial_elapsed_s=1809.953`、exit 0。camera read failure 0、reopen 0、最終errorなし、終了後PID・共有メモリ残留なし。
