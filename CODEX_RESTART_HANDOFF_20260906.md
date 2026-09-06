@@ -1,12 +1,12 @@
 # Codex再起動用引継ぎ — Rebirth 2026 Acer本線
 
-更新時刻: 2026-09-06 20:33 JST前後
+更新時刻: 2026-09-06 Grid実機試験終了後
 
 ## 安全基準とGit
 
 - 作業ブランチ: `codex/rebirth2026-production-candidate`
 - 長期の安全基準点: `705b081`
-- この引継ぎ作成前のリモート先端: `0bdfe9b`
+- grid入口のpush済みcommit: `9bfd1c4`。再開時はリモート先端を読み直す。
 - main/stableへの統合、force push、本番昇格は行わない。
 - 再開時は最初に `git status --short --branch` と `git log -3 --oneline --decorate` を読み、推測で状態を補わない。
 - 無関係な未追跡物 `20260906-current-status.html`、`TD_BUSINESS_RESEARCH_20260906.md`、`status_dashboard/` は変更・stageしない。
@@ -17,18 +17,22 @@
 - C922n USB cameraをManagerが所有し、sceneは共有メモリ経由で読む。
 - DISPLAY1は操作管理用。XiaomiはHDMI拡張画面DISPLAY5で、観客映像をfullscreen表示する。
 - Mac、Bluetooth PAN、Macとのネットワーク接続は本番構成から外し、追加調査しない。
-- 部屋の照明を点灯した条件。C922nの実値は露出-4、zoom 176。露出-4は実行中だけの適用でJSONへ保存していない。
+- 部屋の照明を点灯した条件。OS再起動後のC922n実値は露出-5、zoom 100。Dots比較試験では露出-4、zoom 176を実行中だけ一時適用し、JSONへ保存していない。
 
-## 現在稼働中の試験
+## 完了済みのDots試験
 
+- OS再起動後、再起動前のPython PIDが0であることを確認して新規起動した。
 - scene: `finger_colorfull_dots_acer.py` → `finger_colorfull_dots_2.py`
-- trial: `test_reports/kids_trial_20260906_202405_903917000`
-- 起動時のC922n診断: 1280×720、30fps、MJPG、実測29.98fps。
-- 記録時の所有PID: Manager 32700、scene 30648、scene launcher 4376。再開時は必ず実在とcreation timeを確認し、PIDだけで同一プロセスと断定しない。
-- 20:32:43時点でelapsed 517.656秒、camera frame 8526、read failure 0、reopen 0、last errorなし、最大frame gap約0.079秒。
-- scene metricsは観測範囲で概ね24.8〜33.1fps。
-- Codexアプリ再起動でこの外部プロセスが残る可能性がある。再開時に勝手に二重起動せず、既存Manager・scene・共有メモリ・Xiaomi表示を先に確認する。
-- operator URLの認証tokenは資料へ書かない。必要なら現行Managerの起動ログからローカルで取得し、出力やチャットへ露出させない。
+- trial: `test_reports/kids_trial_20260906_204802_629994100`
+- 起動時のC922n診断: 1280×720、30fps、MJPG、実測30.01fps。
+- OS再起動でカメラ実値は露出-5／zoom 100へ戻った。比較用にAPIで露出-4／zoom 176を一時適用し、JSONには保存していない。
+- `duration_reached`、exit 0、`trial_elapsed=1800.672s`で30分試験を完走。camera read failure 0、reopen 0、last errorなし、最大frame gap 0.079秒。
+- 179件のSceneMetricsはfps最小23.36、中央値27.46、最大35.2。
+- 暖機後のscene working setはfirst 228,442,112、last 241,893,376、min 225,132,544、max 241,893,376 bytes。handlesはfirst 660、last 655、min 653、max 660。
+- Manager working setはfirst 164,925,440、last 159,178,752、min 158,830,592、max 164,925,440 bytes。handlesはfirst 895、last 887、min 886、max 895。
+- 終了後は対象PID、対象窓、共有メモリの残留なし。
+- scene終了時にMediaPipe `wait_until_idle` の`KeyboardInterrupt`、runner側に`ERROR notification failed: ConnectionAbortedError`が記録された。運転中のカメラ失敗ではなく終了コードと資源解放は正常だが、完全無エラーとは記録しない。
+- operator URLの認証tokenは資料へ書かない。
 
 ## 人間が確認済みの範囲
 
@@ -37,19 +41,31 @@
 1. 中央で白い円が指先に追従し、近傍のdotsが波打つ。
 2. 左上、右上、左下、右下で大きな座標ずれや左右反転がない。
 3. 手を画面外へ出すと白い円が消え、自律波が続き、手を戻すと白い円が再出現する。
+4. 両手を同時に映すと、左右の人差し指それぞれに白い円が出て、両方の近傍で波が起きる。
 
-これは成人一人による短時間の基本確認である。子供、二人同時、暗所、30分、USB抜き差し、scene切替後の残留、12時間、本番採用は未確認。
+これは成人一人による基本確認である。子供、二人同時、暗所、USB抜き差し、gridへの切替後の残留、12時間、本番採用は未確認。
 
-## 再開直後の順序
+## 完了済みのGrid試験
+
+- commit `9bfd1c4`で`--scene grid`入口をリモートへpush済み。実機preflightも成功した。
+- trial: `test_reports/kids_trial_20260906_212343_63088200`
+- C922n診断: 1280×720、30fps、MJPG、実測29.97fps。
+- 露出-4／zoom 176を一時適用し、JSONには保存していない。
+- ユーザーが、中央の座標一致と網を引く操作、pinch時の赤markerと線の切断、退出時のmarker消失と約8秒以内の修復、両手で別々に網を引く操作をすべて`ok`と確認した。
+- `operator_quit`、exit 0、`trial_elapsed=1772.672s`（約29分32.672秒）。30分に届いていないため30分完走とはしない。
+- camera read failure 0、reopen 0、last errorなし、最大frame gap 0.094秒。終了後は対象PID、対象窓、共有メモリの残留なし。
+- 終了ログに`cv2.flip`中の`KeyboardInterrupt`と`Runner ERROR notification failed: ConnectionAbortedError`があり、完全無エラーとは記録しない。
+- 子供、2人同時、暗所、正味30分、長時間、本番採用は未確認。
+
+## 次の作業: particle_storm
 
 1. Gitのbranch・HEAD・working treeを確認する。
-2. PID 32700/30648/4376、trialの`runtime.jsonl`末尾、Xiaomi表示を確認し、Dotsが継続中か判定する。
-3. 継続中なら二重起動せず、次のHuman Checkを一つだけ依頼する: 両手を同時に映し、左右の人差し指それぞれに白い円が出て両方の近傍で波が起きるか。
-4. Dotsを合計30分まで継続し、終了時のcamera failure/reopen、fps、working set、handle、終了理由、所有PIDと共有メモリの残留を記録する。30分に達する前にプロセスが消えていた場合は、その事実と最終ログを残し、30分合格にしない。
-5. Dotsを終了・切替するときはDISPLAY1のManager操作を使う。scene内Esc/qだけでManagerを残す操作は避ける。
-6. 次候補は `finger_grid_interaction_acer.py`。ただし現行 `scripts/start_kids_test.py --scene` はdots/spheresのみで、wrapper直起動ではDISPLAY5と共有カメラ条件を保証できない。既存Manager経路の一時的な1scene専用設定を作る最小変更を先に設計・検証する。本番playlist採用は確定しない。
+2. particle_stormを既存のManager、shared camera、DISPLAY5の経路で安全に起動できる入口があるか確認し、必要なら入口を整備して自動試験とpreflightを通す。
+3. 起動前に対象PID、カメラ所有、共有メモリを確認して二重起動を避ける。
+4. 実カメラとXiaomi実表示で、座標・操作・退出復帰を一項目ずつ確認する。
+5. 終了後に対象PID、窓、共有メモリの残留を確認する。本番playlist採用は実機確認と別に判断する。
 
-## 次候補gridの静的確認
+## Gridの補足
 
 - `finger_grid_interaction_2.py` はPygame/OpenCV/MediaPipeの同期推論で最大5手。WGPUと外部assetは使わない。
 - 共通helperでmirrorとlayoutを背景・指先へ共通適用し、生映像は減光しない。
@@ -67,9 +83,9 @@
 ## 関連資料
 
 - `DOTS_MVP_REVIEW_20260906.md`
+- `GRID_MVP_REVIEW_20260906.md`
 - `SPHERES_MVP_REVIEW_20260906.md`
 - `SPHERES_RETRIAL_86590ee_20260906.md`
 - `PRODUCTION_CANDIDATE_PROGRESS.md`
 - `KIDS_TEST_START.md`
 - `ENDURANCE_TEST_PLAN.md`
-

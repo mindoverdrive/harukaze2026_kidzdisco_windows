@@ -1,6 +1,12 @@
 # Rebirth 2026 本番候補の作業記録
 
-**最新判定：Finger Colorful Dotsも、照明ありで成人の基本操作3項目を合格した。** Acer Windows 11＋C922n＋Xiaomi DISPLAY5で中央追従と近傍波、四隅の座標一致、退出時の白円消失・自律波継続と再入場時の白円復帰を人間がすべてOKと確認した。C922起動診断は1280×720・30fps・MJPG、実測29.98fps。一時適用した露出-4／zoom 176で、JSON保存はしていない。確認時の取得失敗・再接続は0、last_errorはnull、max_frame_gapは約0.079秒、scene metricsは概ね24.8～33.1fpsだった。30分、子供、2人同時、暗所、長時間、切替後残留は未確認。本番・安定版の合格とはせず、詳細を [Dots MVP確認](DOTS_MVP_REVIEW_20260906.md) に記録する。
+**最新判定：Finger Grid Interactionは、成人の基本操作と両手同時操作を実機で合格した。** commit `9bfd1c4`で`--scene grid`入口をpush済み。実機preflight成功後、trial `test_reports/kids_trial_20260906_212343_63088200`をAcer＋C922n＋Xiaomi DISPLAY5で実施した。C922nは1280×720・30fps・MJPG、実測29.97fps。露出-4／zoom 176を一時適用し、JSONには保存していない。中央の座標一致と網を引く操作、pinch時の赤markerと線の切断、退出時のmarker消失と約8秒以内の修復、両手で別々に網を引く操作をユーザーがすべてOKと確認した。
+
+Gridは`operator_quit`、exit 0、`trial_elapsed=1772.672s`（約29分32.672秒）で終了したため、30分完走とはしない。camera read failure 0、reopen 0、`last_error=null`、最大frame gap 0.094秒。終了後は対象PID・窓・共有メモリの残留なし。ただし終了ログに`cv2.flip`中の`KeyboardInterrupt`と`Runner ERROR notification failed: ConnectionAbortedError`があり、完全無エラーとは記録しない。子供、2人同時、暗所、正味30分、長時間、本番採用は未確認。詳細は [Grid MVP確認](GRID_MVP_REVIEW_20260906.md)。次はparticle_stormの安全な起動入口と実機確認である。
+
+**直前のDots判定：Finger Colorful Dotsは、OS再起動後の新規試験で成人の基本操作、両手同時、単一シーン30分を合格した。** trialは`test_reports/kids_trial_20260906_204802_629994100`。再起動前のPython PIDが0であることを確認し、C922nを1280×720・30fps・MJPGで起動、実測30.01fps。再起動で実値が露出-5／zoom 100へ戻ったため、比較用に露出-4／zoom 176をAPIで一時適用し、JSONには保存していない。中央追従と近傍波、四隅の座標一致、退出・再入場に加え、左右の人差し指それぞれの白円と両方の波をユーザーがOKと確認した。
+
+30分試験は`duration_reached`、exit 0、`trial_elapsed=1800.672s`。カメラは取得失敗0、再接続0、`last_error=null`、最大frame gap 0.079秒。179件のSceneMetricsは23.36～35.2fps、中央値27.46fpsだった。暖機後のworking setはscene 225,132,544～241,893,376 bytes、Manager 158,830,592～164,925,440 bytes、handleはscene 653～660、Manager 886～895。終了後は対象PID・窓・共有メモリの残留なし。ただしscene終了時にMediaPipe `wait_until_idle` の`KeyboardInterrupt`、runner側に`ERROR notification failed: ConnectionAbortedError`が記録されたため完全無エラーとはしない。子供、2人同時、暗所、USB抜き差し、12時間、本番採用は未確認。詳細は [Dots MVP確認](DOTS_MVP_REVIEW_20260906.md)。次はgridの実機確認である。別作業で起動入口と専用profileを追加済みで、両Pythonの全206テストと実preflightが成功し、profileの1scene・shared camera・DISPLAY5を確認した。実カメラ・実表示・切替後残留はまだ試験していない。
 
 **直前のSpheres確認：明るい条件で大人の基本操作を通過した。** 暗い中央テストは「反応なし」「白い円も出なかった」と不合格。照明だけを明るくした後、白い円の復帰、中央の指先追従と近傍粒子反応、四隅の位置一致、退出時の円消失と再入場時の復帰を、ユーザーが順に「ok」と確認した。暗所・子供・複数人・本番採用の合格には広げない。SpheresからDotsへ進めたことと、切替後の残留確認が完了したことは別である。
 
@@ -58,7 +64,7 @@
 
 **08時台更新:** PB-01はユーザー許可による1実行ファイルのallowlist追加で解消。既存Pythonでpreflight成功、C922n実取得・30秒起動・3回切替は正常終了。回帰66件。約16fpsの未解決点とMacBook向けパラメーターUIの追加要望は [実機確認記録](CAMERA_RUNTIME_CHECK_20260906.md) を参照。下記の権限不足は解消前の履歴。
 
-## 最新の優先順位
+## 当時の優先順位（履歴）
 
 接続診断を先に実施するユーザー指示により、下記コード側の独立作業は途中の証拠を保全して一時停止。PAN成立が確認できるまでSSH/耐久の成功は記録しない。
 
