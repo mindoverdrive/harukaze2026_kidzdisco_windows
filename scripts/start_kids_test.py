@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TRIAL_SCENES = {
     "grid": "finger_grid_interaction_acer.py",
     "particle-storm": "particle_storm_acer.py",
+    "saturn": "saturn_particles_acer.py",
 }
+GPU_TRIAL_SCENES = ("particle-storm", "saturn")
 PARTICLE_STORM_APIS = {
     "mediapipe": ("Image", "ImageFormat.SRGB"),
     "wgpu": ("gpu.request_adapter_sync",),
@@ -35,7 +37,7 @@ def check_runtime(scene=None):
     dependencies = [("numpy", "numpy"), ("cv2", "opencv-contrib-python"),
                     ("pygame", "pygame"), ("mediapipe", "mediapipe"),
                     ("screeninfo", "screeninfo"), ("pygrabber.dshow_graph", "pygrabber")]
-    if scene == "particle-storm":
+    if scene in GPU_TRIAL_SCENES:
         dependencies.extend((
             ("wgpu", "wgpu"), ("pygfx", "pygfx"), ("rendercanvas.auto", "rendercanvas"),
             ("glfw", "glfw"), ("pylinalg", "pylinalg"),
@@ -50,7 +52,7 @@ def check_runtime(scene=None):
                 loaded_modules[name]["sdl_version"] = list(module.get_sdl_version())
             if name == "mediapipe" and not hasattr(getattr(module, "solutions", None), "hands"):
                 raise RuntimeError("this scene requires mediapipe.solutions.hands")
-            if scene == "particle-storm":
+            if scene in GPU_TRIAL_SCENES:
                 for api in PARTICLE_STORM_APIS.get(name, ()):
                     value = module
                     for attribute in api.split("."):
@@ -71,7 +73,7 @@ def check_runtime(scene=None):
     report = {"python": sys.executable, "python_version": sys.version.split()[0],
               "versions": versions, "loaded_modules": loaded_modules, "failures": failures,
               "physical_camera_tested": False, "visual_tested": False}
-    if scene == "particle-storm":
+    if scene in GPU_TRIAL_SCENES:
         # Match the scene's model lookup and minimum-size check without creating a detector.
         candidates = [ROOT / "models/hand_landmarker.task", ROOT / "test/models/hand_landmarker.task"]
         model = candidates[0]
@@ -93,7 +95,7 @@ def main():
     parser.add_argument("--check", action="store_true", help="Check imports only; do not open camera/windows")
     parser.add_argument("--audience", action="store_true", help="Use Acer local control and the configured Xiaomi extended display")
     parser.add_argument("--scene", choices=("dots", "spheres", *TRIAL_SCENES), default="dots",
-                        help="Scene candidate; spheres, grid and particle-storm require --audience")
+                        help="Scene candidate; every scene except dots requires --audience")
     parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
     parser.add_argument("--switch-every", type=float, help="Trial switch interval in seconds")
     parser.add_argument("--switch-count", type=int, help="Number of successful trial switches")
@@ -138,7 +140,7 @@ def main():
             displays = resolve_audience_displays(audience_config)
         except Exception as exc:
             display_failures.append(f"audience display: {type(exc).__name__}: {exc}")
-    if args.scene == "particle-storm":
+    if args.scene in GPU_TRIAL_SCENES:
         # The scene's existing fullscreen helper positions GLFW windows.
         os.environ["RENDERCANVAS_BACKEND"] = "glfw"
         report = check_runtime(args.scene)

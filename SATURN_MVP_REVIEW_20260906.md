@@ -1,0 +1,20 @@
+# Saturn実機確認
+
+## 起動準備
+
+`scripts/start_kids_test.py --audience --scene saturn` を追加。既存の単独試験profile生成とGPU依存検査を使用し、ManagerがC922nを所有、Xiaomi DISPLAY5へ出力する。scene実体の `saturn_particles_2.py` は変更していない。
+
+- 通常Python: 全219件成功（12.089秒）
+- 映像Python: 全219件成功（11.921秒）
+- 実preflight: `kids_preflight_20260906_230738.json`、failuresなし。GLFW、モデル資産、DISPLAY1/5を確認。
+- `pylinalg`の既存回転・逆回転APIはCPUで実行できた。
+
+## 目視確認の順序
+
+1. 生映像の上に球と輪が表示される。手首まで映し、人差し指を球の中央でゆっくり動かすと金色カーソルが指先に重なり、近くの球の粒子が追従する。
+2. 親指と人差し指のpinchで球の粒子を引き、離すと形が戻る。カーソル色は手の役割色なのでpinch時も金色。
+3. 2本目の手には水色カーソルが付き、輪へ作用する。検出順の交代による役割変更も観察する。
+4. 四隅の位置一致と、退出・再入場の挙動を確認する。
+5. 30分試験とManager切替反復、終了後の残留を確認する。
+
+背景の単一3D scene構造と640×480入力は既存のまま。粒子遮蔽、縦横比、操作感はHuman Check Required。Particle Stormの目視結果を流用しない。
