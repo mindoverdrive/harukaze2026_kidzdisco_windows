@@ -1,3 +1,7 @@
+## 最新：USB原因照合と取得API比較の準備（2026-09-07）
+
+製品変更なし。最有力原因はOpenCV readがretrieve失敗を非空バッファにより成功扱いする経路。実relayの疑似入力で黒成功配信/reopen0を再現し、関連52テスト成功。詳細USB_RECOVERY_CAUSE_ANALYSIS_20260907.md。062005試験は予定終了/SHM不在。現在は診断専用run usb_stream_isolation_20260907_064632 / 実PID21832 / 外側23340でXiaomiに生映像だけ表示。露出-4/zoom176。正常時readとgrab/retrieveの比較成功済み。USB5秒抜差し後の「戻した」を待つ。次のagentはrun内command.txtへprobeを送り、同一不良ストリームの両APIの戻り値を比較し、その後必要な場合のみreopenを一度送る。8分上限約06:54:32、未回答で結果を作らない。子供・実2人は別々に参加者待ち保留。
+
 ## 2026-09-07 06:34：USB復帰NGを再確認
 
 ユーザーが正常映像・指反応から設定を変えず5秒間USBを抜いて同じポートへ戻し、再び映像が戻らないと報告。対象062005 trial。06:33:46時点でManager5068/scene14704継続、promotion1/switch0、read failures2/reopen0、最大gap1.032秒。描画54.42fpsに対しcamera update0.999fps、hands0。続く4秒の共有メモリ数値観測でframe_id11806〜11809の全画素0を確認。数値はtest_reports/usb_second_failure_numeric_20260907.json、人物画像保存なし。DirectShow列挙にはC922が存在。前回と同じ黒い成功フレーム・再取得未実行の状態を2回目も確認した。デバイス内部の原因は未特定。追加の抜差しは依頼しない。今回は観測と記録のみで再起動・設定変更・製品修正なし。試験の元の15分上限は06:35:13頃で、予定終了は復帰成功ではない。USB自動復帰未合格を維持し、次は正常な暗所を誤判定しない復帰条件の検討が必要。子供と2人同時はそれぞれ参加者待ちのHuman Check Requiredを維持。
