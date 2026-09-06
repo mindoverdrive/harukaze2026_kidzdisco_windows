@@ -454,7 +454,11 @@ class SharedCameraRelay:
             raise
 
     def _create_capture(self):
-        cap = _open_with_backends(
+        if self.stop_event.is_set():
+            return None
+        # Retain ownership before first-read validation: start/reopen cleanup
+        # must still be able to release a handle when a native operation fails.
+        self.cap = _open_with_backends(
             camera_index=self.camera_index,
             width=self.width,
             height=self.height,
@@ -466,9 +470,52 @@ class SharedCameraRelay:
             exposure=self.exposure,
             zoom=self.zoom,
         )
-        if cap is not None:
-            self.controls.observe(cap)
-        return cap
+        if self.cap is not None:
+            if self.stop_event.is_set():
+                raise RuntimeError("Camera stopped while opening capture")
+            if self.cap.isOpened():
+                self._confirm_first_frame_controls()
+                if self.stop_event.is_set():
+                    raise RuntimeError("Camera stopped while confirming capture controls")
+                self.controls.observe(self.cap)
+        return self.cap
+
+    def _confirm_first_frame_controls(self):
+        requested = [(name, prop, value) for name, prop, value in (
+            ("exposure", cv2.CAP_PROP_EXPOSURE, self.exposure),
+            ("zoom", cv2.CAP_PROP_ZOOM, self.zoom),
+        ) if value is not None]
+        if not requested or self.cap.get(cv2.CAP_PROP_BACKEND) != cv2.CAP_DSHOW:
+            return
+        corrected = set()
+        # C922/DSHOW was observed to reset controls after the first read.
+        # Correct only that first drift; a second drift fails this open attempt.
+        for phase in ("first", "confirmation"):
+            if self.stop_event.is_set():
+                raise RuntimeError("Camera stopped during first-frame control confirmation")
+            ret, frame = self.cap.read()
+            if self.stop_event.is_set():
+                raise RuntimeError("Camera stopped during first-frame control confirmation")
+            if not ret or frame is None:
+                raise RuntimeError(f"Camera {phase} frame unavailable during control confirmation")
+            for name, prop, expected in requested:
+                if self.stop_event.is_set():
+                    raise RuntimeError("Camera stopped during first-frame control confirmation")
+                actual = float(self.cap.get(prop))
+                if math.isfinite(actual) and abs(actual - expected) <= 0.5:
+                    if phase == "confirmation" and name in corrected:
+                        print(f"[shared_camera] Stream control corrected name={name} "
+                              f"requested={expected} actual={actual}")
+                    continue
+                if phase == "confirmation":
+                    raise RuntimeError(f"Camera {name} did not hold after first frame: "
+                                       f"requested={expected} actual={actual}")
+                print(f"[shared_camera] Stream control drift name={name} requested={expected} actual={actual}")
+                if self.stop_event.is_set():
+                    raise RuntimeError("Camera stopped before first-frame control correction")
+                if not self.cap.set(prop, expected):
+                    raise RuntimeError(f"Camera {name} first-frame correction rejected: requested={expected}")
+                corrected.add(name)
 
     def _reopen_capture(self):
         if not self._release_capture() or self.stop_event.is_set():

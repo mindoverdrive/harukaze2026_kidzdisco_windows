@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -21,7 +22,9 @@ class CameraProfileTests(unittest.TestCase):
         relay.fourcc, relay.backend_preference = "MJPG", "dshow"
         relay.fallback_to_default, relay.strict_backend, relay.exposure = False, True, -5
         relay.zoom, relay.controls = None, mock.Mock()
+        relay.stop_event = threading.Event()
         with mock.patch.object(shared_camera, "_open_with_backends") as open_capture:
+            open_capture.return_value.get.return_value = -1
             relay._create_capture()
             self.assertEqual(open_capture.call_args.kwargs["exposure"], -5)
 

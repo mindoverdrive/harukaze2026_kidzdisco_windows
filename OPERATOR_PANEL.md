@@ -4,6 +4,8 @@ Acerで動くManagerにブラウザから設定を送り、実際の映像とカ
 
 **Acer内のブラウザから、実C922nへの露出・ズーム適用、読戻し、元の値への復元、プレビューJSON保存、シーン切替、Manager終了を確認した。MacBookからのPAN通信は未確認。** 結果と実機合格の範囲は [CAMERA_RUNTIME_CHECK_20260906.md](CAMERA_RUNTIME_CHECK_20260906.md) に記録した。
 
+露出は会場の照明に合わせて調整する。ユーザーの最新方針では、暗い部屋でのFPSの追加追究よりMacからの調整を優先する。FPSだけで値を決めず、実映像の明るさ・残像・操作の分かりやすさを見てから保存する。
+
 ## Acer内で開く
 
 既存の映像用Pythonを同じPowerShellで指定し、リポジトリから起動する。環境選択の詳細は [KIDS_TEST_START.md](KIDS_TEST_START.md) を参照。
@@ -20,6 +22,8 @@ $env:KIDZDISCO_PYTHON = 'C:\Users\go\.gemini\antigravity\scratch\harukaze2026_ki
 操作URLのトークンはManagerの起動ごとに変わる。ブラウザが同じトークンをBearer認証に使うため、古いURLでは操作できない。トークン付きURLをリポジトリや共有の記録へ保存しない。
 
 ## MacBookから開く
+
+先に、別のTouchDesigner/BridgeやPythonがC922nを使用していないことを確認する。使用中ならその作業を保存し、通常終了してカメラを解放してからManagerを起動する。別作業のプロセスを一括強制終了しない。
 
 1. AcerとMacBookのPAN接続を確立する。今回の確認時点ではPANのIPv4がなく、MacBookからの通信は未確認。
 2. Acerの `Get-NetIPAddress -AddressFamily IPv4` で、接続に使うPANアダプターのIPv4を確認する。VPN・Wi-Fi・MacBook側のアドレスを代用しない。
