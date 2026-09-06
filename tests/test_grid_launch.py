@@ -19,7 +19,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 class GridLaunchTests(unittest.TestCase):
     """Exercise CLI selection and the configuration received by Manager."""
 
-    def run_launcher(self, arguments, *, base_overrides=None, audience_present=True, prior_profile=None):
+    def run_launcher(self, arguments, *, base_overrides=None, audience_present=True, prior_profile=None,
+                     extra_modules=None, missing_modules=(), model_bytes=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "configs").mkdir()
@@ -37,6 +38,9 @@ class GridLaunchTests(unittest.TestCase):
                 (root / "test_reports").mkdir()
                 (root / "test_reports/kids_grid_profile_previous.json").write_text(
                     json.dumps(prior_profile), encoding="utf-8")
+            if model_bytes is not None:
+                (root / "models").mkdir()
+                (root / "models/hand_landmarker.task").write_bytes(model_bytes)
 
             capture = mock.Mock(side_effect=AssertionError("camera must remain unopened"))
             window = mock.Mock(side_effect=AssertionError("window must remain unopened"))
@@ -48,6 +52,7 @@ class GridLaunchTests(unittest.TestCase):
             modules["pygame"].display = SimpleNamespace(set_mode=window)
             modules["pygame"].get_sdl_version = lambda: (2, 32, 10)
             modules["mediapipe"].solutions = SimpleNamespace(hands=object())
+            modules.update(extra_modules or {})
             monitors = [
                 SimpleNamespace(name=r"\\.\DISPLAY1", x=0, y=0, width=1920, height=1080, is_primary=True),
                 SimpleNamespace(name=r"\\.\DISPLAY5", x=1920, y=0, width=1920, height=1080, is_primary=False),
@@ -59,6 +64,11 @@ class GridLaunchTests(unittest.TestCase):
             observed = {}
             stdout, stderr = io.StringIO(), io.StringIO()
 
+            def import_module(name):
+                if name in missing_modules:
+                    raise ModuleNotFoundError(f"injected missing {name}")
+                return modules[name]
+
             def manager_entry(path, *, run_name):
                 argv = list(sys.argv)
                 config_path = Path(argv[argv.index("--config") + 1])
@@ -66,6 +76,7 @@ class GridLaunchTests(unittest.TestCase):
                     entrypoint=Path(path).name, run_name=run_name, argv=argv,
                     config=json.loads(config_path.read_text(encoding="utf-8")),
                     is_trial_profile=config_path.is_relative_to(root / "test_reports"),
+                    rendercanvas_backend=os.environ.get("RENDERCANVAS_BACKEND"),
                 )
 
             original_directory = Path.cwd()
@@ -79,7 +90,7 @@ class GridLaunchTests(unittest.TestCase):
                     mock.patch.object(ctypes, "WinDLL", return_value=user32, create=True),
                     mock.patch("importlib.metadata.version", return_value="fixture"),
                     mock.patch("runpy.run_path", side_effect=manager_entry),
-                    mock.patch("importlib.import_module", side_effect=lambda name: modules[name]) as imports,
+                    mock.patch("importlib.import_module", side_effect=import_module) as imports,
                     contextlib.redirect_stdout(stdout),
                     contextlib.redirect_stderr(stderr),
                 ):
@@ -107,6 +118,7 @@ class GridLaunchTests(unittest.TestCase):
             window.assert_not_called()
             return dict(exit_code=exit_code, observed=observed, report=report,
                         profiles=profiles, import_count=imports.call_count,
+                        imported_modules=[call.args[0] for call in imports.call_args_list],
                         stdout=stdout.getvalue(), stderr=stderr.getvalue())
 
     @unittest.skipUnless(os.name == "nt", "Acer audience display validation requires Windows")
