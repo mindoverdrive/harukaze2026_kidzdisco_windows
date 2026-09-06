@@ -255,6 +255,10 @@ class ParticleStormApp:
                     strength = (REPULSION_STRENGTH / (dist + 50.0)) * abs(h_gest)
                     forces -= dir_vec * strength[:, np.newaxis]
 
+        # Hands steer only XY. Keep the 3D falloff above so XY strength and
+        # proximity alpha are unchanged; depth retains its own noise/momentum.
+        forces[:, 2] = 0.0
+
         # Apply Force
         self.velocities += (forces + noise) * dt
         
