@@ -111,8 +111,10 @@ class ParticleStormApp:
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError("The shared camera could not be attached")
         
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Use the audience aspect for both detection and the displayed frame.
+        self.camera_input_size = (640, max(1, round(640 * WINDOW_HEIGHT / max(1, WINDOW_WIDTH))))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_input_size[0])
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_input_size[1])
 
         # 4. Background camera feed and overlay cursors
         self.bg_scene = gfx.Scene()
@@ -129,7 +131,7 @@ class ParticleStormApp:
         self.overlay_scene = gfx.Scene()
         self.overlay_camera = gfx.OrthographicCamera(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.overlay_camera.local.z = 100
-        self.camera_layout = display_utils.get_uniform_layout(640, 480, WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.camera_layout = display_utils.get_uniform_layout(*self.camera_input_size, WINDOW_WIDTH, WINDOW_HEIGHT)
 
         # 5. Particle System Initialization
         self.init_particles()
@@ -171,7 +173,7 @@ class ParticleStormApp:
         
         # Material
         self.material = gfx.PointsMaterial(
-            size=15, # Larger for glow
+            size=7.5, # Half the previous diameter; keep the existing glow.
             size_space="world",
             color_mode="vertex",
             map=self.particle_tex,
