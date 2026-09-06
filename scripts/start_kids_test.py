@@ -15,6 +15,7 @@ TRIAL_SCENES = {
     "grid": "finger_grid_interaction_acer.py",
     "particle-storm": "particle_storm_acer.py",
     "saturn": "saturn_particles_acer.py",
+    "spider": "spider_cursor_acer.py",
 }
 GPU_TRIAL_SCENES = ("particle-storm", "saturn")
 PARTICLE_STORM_APIS = {
