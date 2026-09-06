@@ -2,7 +2,9 @@
 
 追加記憶（2026-09-07）：ユーザーがParticle Stormの時間経過で画面内の粒子が疎らになる点を指摘。画面外へ出た辺りの粒子を中心から再発生させる案を、後の演出調整用としてPOST_MVP_INTERACTION_GUIDANCE.mdへ保存。現在は実装せず、タスクバー修正後の目視確認を優先する。この追加要望はタスクバー再確認への合格回答ではない。
 
-更新時刻: 2026-09-07 05:47 タスクバー最小修正済み・Storm再確認待ち
+更新時刻: 2026-09-07 05:52 Storm修正後目視OK・逆方向切替確認待ち
+
+05:52最優先：ユーザーがStorm修正後「タスクバーが出ず、粒子が手から押し広げられる」と明示確認。先行混在trial051941は05:49:50 duration_reached/exit0/switch3/promotion4で終了し、稼働PID/SHM残留なし。次の逆方向確認用trialは `test_reports/mixed_visual_20260907_055116_887043/trial`。Manager25012/外側17516、表示Storm実PID27308/wrapper3636、SHM `harukaze_cam_25012_3b24e0835c6e`。エージェントが最初のSpheres→StormをAPIで一度切替済み（switch1/promotion2）。人間には右側の新操作パネルでNext一回→Spheresの白い円/指の反応・旧Storm/タスクバー残留なしの一まとまりだけ提示して待つ。06:21:25頃に上限終了。旧PID27308は旧wrapper、新27308は新StormへのPID再利用。露出-4/zoom176、camera failure/reopen0。Storm左右帯、他GLFWの表示、20回反復/USB/子供等は保留。以下は履歴。
 
 05:47最優先：ユーザーは最初の異種切替後「タスクバーが残る」と回答。GLFWの位置/サイズ指定後の枠除去で領域がずれることを実測し、配置順だけ `096bace` で修正・push。新Storm10920/wrapper27308（FIRST_FRAME05:46:28、4.250秒）を同じManager6788/SHMで表示中。trial混在051941はswitch3/promotion4、旧Storm/中継Spheres稼働なし、camera failure/reopen0、露出-4/zoom176。新Stormは実測でXiaomi全面一致・下端3点がStorm。次はAcer側Codexをクリック後、中央の開掌反発とタスクバー非露出を人間へ一まとまりで依頼して結果を待つ。まだ目視合格にしない。05:49:49頃自動終了予定なので続行時は現ログを確認。修正/回帰/一度のHTTP試験10053と再実行成功はTASKBAR_MVP_FIX_20260907.md。ユーザー追加要望「全シーンの機能切替を光/色で分かりやすく、各機能のビジュアルガイドはMVP後重要」はPOST_MVP_INTERACTION_GUIDANCE.mdに保存。MVP検証を止めず、今はガイド実装をしない。以下は履歴。
 

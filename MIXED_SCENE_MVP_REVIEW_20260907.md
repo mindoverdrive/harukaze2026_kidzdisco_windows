@@ -1,5 +1,11 @@
 # 異種シーン切替と観客表示のMVP確認
 
+## 05:52現在：修正版Stormを人間が確認、逆方向だけ結果待ち
+
+- ユーザーが「タスクバーが出ず、粒子が手から押し広げられる」と明示回答。Stormの修正後の操作側フォーカスと中央反応を確認済み。旧trialは05:49:50に予定終了、対象PID稼働なし/SHM不在を確認した。
+- 次は未確認のStorm→Spheresの目視。別trial `test_reports/mixed_visual_20260907_055116_887043/trial` を同じ2種類設定で起動し、エージェントがSpheres→Stormを一度だけAPI切替して準備。Manager25012/外側17516、Storm実PID27308/wrapper3636、SHM `harukaze_cam_25012_3b24e0835c6e`、switch1/promotion2、露出-4/zoom176、camera failure/reopen0。旧trialのwrapper27308と新Storm実PID27308はPID再利用で別プロセス。
+- 05:52:06に新Stormもclient全面一致・下端3点がStorm。新しい操作パネルをCodex右側に開いた。06:21:25頃に上限終了。人間にはNext一回でSpheresへ戻り、旧Storm/タスクバーが残らず白い円と近傍粒子が指に反応するかだけを提示して待つ。まだ逆方向の目視を合格にしない。
+
 ## 05:47現在：タスクバーNGの修正後、Stormの再確認待ち
 
 最初のSpheres→Storm切替後、ユーザーはタスクバー残留を報告。表示合格にはしない。GLFW配置順が最後の枠除去でclientをずらすことを非表示の実ウィンドウでも再現し、`096bace` で順序だけ修正、回帰と実シーン再測定を実施した。詳細は `TASKBAR_MVP_FIX_20260907.md`。
