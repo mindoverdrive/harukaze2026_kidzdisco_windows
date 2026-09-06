@@ -1,5 +1,9 @@
 # Rebirth 2026 本番候補の作業記録
 
+**最新判定：Particle Stormは、背景深度修正後に成人の基本操作と30分単一シーン試験を通過したMVP候補である。** 中央の生映像が粒子を隠す問題を背景materialの`depth_write=False`で最小修正し、commit `c258d6c`をpush済み。人間が中央で生映像と粒子の重なり、開掌による反発、拳による赤カーソルと吸引をOKと確認した。`trial_elapsed_s=1809.953`、exit 0、camera read failure 0、reopen 0、`last_error=null`、最大frame gap 0.109秒、終了後の対象PID・共有メモリ残留なし。終了時の`KeyboardInterrupt`と`ConnectionAbortedError`は残るため完全無エラーとは記録しない。
+
+コード横断監査では、Managerの物理カメラ一元所有、共有メモリ接続、左右反転、アスペクト比維持、背景と同じ座標投影が既に共通化されていることを確認した。残る重複は検出条件・gesture・2D/3D投影・合成方法・カメラ欠損時挙動の差が大きい。MVP前に新しい共通moduleを実装すると合格済みシーンを含む再試験範囲が増えるため、追加共通化は行わず個別検証を続ける。詳細は [Particle Storm MVP確認と共通経路監査](PARTICLE_STORM_MVP_REVIEW_20260906.md)。
+
 **最新判定：Finger Grid Interactionは、成人の基本操作と両手同時操作を実機で合格した。** commit `9bfd1c4`で`--scene grid`入口をpush済み。実機preflight成功後、trial `test_reports/kids_trial_20260906_212343_63088200`をAcer＋C922n＋Xiaomi DISPLAY5で実施した。C922nは1280×720・30fps・MJPG、実測29.97fps。露出-4／zoom 176を一時適用し、JSONには保存していない。中央の座標一致と網を引く操作、pinch時の赤markerと線の切断、退出時のmarker消失と約8秒以内の修復、両手で別々に網を引く操作をユーザーがすべてOKと確認した。
 
 Gridは`operator_quit`、exit 0、`trial_elapsed=1772.672s`（約29分32.672秒）で終了したため、30分完走とはしない。camera read failure 0、reopen 0、`last_error=null`、最大frame gap 0.094秒。終了後は対象PID・窓・共有メモリの残留なし。ただし終了ログに`cv2.flip`中の`KeyboardInterrupt`と`Runner ERROR notification failed: ConnectionAbortedError`があり、完全無エラーとは記録しない。子供、2人同時、暗所、正味30分、長時間、本番採用は未確認。詳細は [Grid MVP確認](GRID_MVP_REVIEW_20260906.md)。次はparticle_stormの安全な起動入口と実機確認である。

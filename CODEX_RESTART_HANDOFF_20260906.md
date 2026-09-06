@@ -80,8 +80,18 @@
 - 約3時間20分の表示後、Managerのoperator quitはexit 0。所有PIDと共有メモリ残留なし。ただしscene outputに`KeyboardInterrupt`とrunner ERROR通知の`ConnectionAbortedError`があり、完全な無エラーとは記録しない。
 - 過去にscene側の9終了後すぐ再出現し、3回目で消えた申告がある。今回のManager終了では再現しなかったため未解決の要確認事項として維持する。
 
+## Particle Storm完了時点の最新状態
+
+- commit `c258d6c`で背景planeの深度書込みを止め、中央の生映像が粒子を隠す問題を修正してpush済み。
+- 成人が中央の粒子表示、開掌による反発、拳による吸引をOKと確認した。
+- trial `test_reports/kids_trial_20260906_222052_316031000`は`trial_elapsed_s=1809.953`、exit 0。camera read failure 0、reopen 0、最終errorなし、終了後PID・共有メモリ残留なし。
+- 終了時のrendercanvas `KeyboardInterrupt`とrunner通知`ConnectionAbortedError`が残るため、完全無エラーとは扱わない。
+- 共通経路監査の結論は、追加共通化をMVP前に行わないこと。物理カメラ所有、共有接続、mirror、letterbox、背景と同じ座標投影は既に共通化済み。検出・gesture・合成・欠損時挙動は個別差が大きい。
+- 次はSaturnを個別preflightと実機確認へ進める。Particle Stormの`depth_write=False`は横展開しない。子供、両手または2人、暗所、12時間はHuman Check Required。
+
 ## 関連資料
 
+- `PARTICLE_STORM_MVP_REVIEW_20260906.md`
 - `DOTS_MVP_REVIEW_20260906.md`
 - `GRID_MVP_REVIEW_20260906.md`
 - `SPHERES_MVP_REVIEW_20260906.md`
