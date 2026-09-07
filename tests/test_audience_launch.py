@@ -19,7 +19,7 @@ class AudienceLaunchTests(unittest.TestCase):
             order = []
             observed = {}
 
-            def import_check():
+            def import_check(scene=None):
                 order.append("imports")
                 self.assertEqual(os.environ["SDL_WINDOWS_DPI_SCALING"], "0")
                 return {"failures": [], "physical_camera_tested": False, "visual_tested": False}

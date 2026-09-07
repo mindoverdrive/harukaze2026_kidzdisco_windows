@@ -12,6 +12,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 TRIAL_SCENES = {
+    "jacket": "sci_fi_jacket_acer.py",
+    "skeleton": "skeleton_glitch_acer.py",
     "tree": "colorfull_tree_acer.py",
     "wave-dots": "colorfull_wave_dots_acer.py",
     "fractal": "fractal_moving_acer.py",
@@ -57,6 +59,11 @@ def check_runtime(scene=None):
                 loaded_modules[name]["sdl_version"] = list(module.get_sdl_version())
             if name == "mediapipe" and not hasattr(getattr(module, "solutions", None), "hands"):
                 raise RuntimeError("this scene requires mediapipe.solutions.hands")
+            if name == "mediapipe" and scene in ("jacket", "skeleton"):
+                required = ("selfie_segmentation",) if scene == "jacket" else ("pose", "face_detection")
+                for solution in required:
+                    if not hasattr(getattr(module, "solutions", None), solution):
+                        raise RuntimeError(f"this scene requires mediapipe.solutions.{solution}")
             if scene in GPU_TRIAL_SCENES:
                 for api in PARTICLE_STORM_APIS.get(name, ()):
                     value = module
@@ -155,7 +162,7 @@ def main():
         os.environ["RENDERCANVAS_BACKEND"] = "glfw"
         report = check_runtime(args.scene)
     else:
-        report = check_runtime()
+        report = check_runtime(args.scene)
     if args.audience:
         report["displays"] = displays
         report["config"] = config_path.name

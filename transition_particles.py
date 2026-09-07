@@ -1,4 +1,4 @@
-"""A cached field of abstract chips that breaks apart and falls on reveal."""
+"""Cached colored chips and deterministic per-transition release variations."""
 
 from dataclasses import dataclass
 import math
@@ -33,6 +33,19 @@ class ParticleCurtain:
     TRANSPARENT_COLOR = (255, 0, 128)
     PALETTE = ((31, 55, 77), (37, 66, 83), (43, 76, 91),
                (55, 66, 93), (68, 84, 108), (93, 119, 135))
+    PALETTES = (
+        ("prism", ((30, 113, 134), (125, 42, 117), (165, 93, 43),
+                   (53, 138, 106), (91, 64, 156), (157, 58, 85))),
+        ("aurora", ((26, 88, 112), (39, 130, 122), (70, 68, 145),
+                    (109, 53, 137), (43, 111, 159), (87, 155, 140))),
+        ("ember", ((111, 39, 81), (162, 62, 73), (173, 109, 46),
+                   (116, 60, 126), (73, 51, 111), (187, 132, 77))),
+        ("acid", ((103, 137, 36), (36, 112, 113), (130, 66, 153),
+                  (157, 128, 42), (42, 141, 92), (63, 73, 141))),
+        ("lagoon", ((26, 76, 116), (35, 116, 146), (58, 149, 143),
+                    (53, 83, 146), (94, 67, 140), (99, 159, 170))),
+    )
+    MOTIONS = ("fall", "rise", "split", "scatter")
 
     def __init__(self, size):
         self.available = False
@@ -52,6 +65,13 @@ class ParticleCurtain:
                            max(2, math.ceil(self._cell[1] * 1.50)))
             self._sprites = tuple(self._make_sprite(sprite_size, color, shape)
                                   for color in self.PALETTE for shape in range(3))
+            self._sprite_banks = tuple(
+                tuple(self._make_sprite(sprite_size, color, shape)
+                      for color in palette for shape in range(3))
+                for _, palette in self.PALETTES)
+            self._cycle = None
+            self.motion = "fall"
+            self._sprite_indices = None
             rng = random.Random(self.SEED)
             column_delays = [rng.uniform(0.0, 0.13) for _ in range(columns + 2)]
             chips = []
@@ -85,10 +105,41 @@ class ParticleCurtain:
                                                fragment_rng.uniform(1.9, 2.3),
                                                fragment_rng.uniform(-1.5, 1.5)))
             self._fragments = tuple(fragments)
+            self._fragment_layouts = tuple(self._make_block_layout(index)
+                                           for index in range(4))
             self._snapshot = pygame.Surface(self.size, depth=32)
             self.available = True
         except Exception as exc:
             self._disable(exc)
+
+    def _make_block_layout(self, variant):
+        """Unequal rectangles tile the whole composition, with no initial holes."""
+        width, height = self.size
+        rng = random.Random(self.SEED ^ (0xB10C + variant))
+        rows = min(height, max(2, round(math.sqrt(420 * height / width))))
+        weights = [rng.uniform(0.55, 1.65) for _ in range(rows)]
+        total = sum(weights)
+        top = 0
+        accumulated = 0.0
+        fragments = []
+        for row, weight in enumerate(weights):
+            accumulated += weight
+            bottom = height if row == rows - 1 else round(height * accumulated / total)
+            columns = min(width, max(2, round(420 / rows * rng.uniform(0.65, 1.35))))
+            spans = [rng.uniform(0.45, 1.8) for _ in range(columns)]
+            span_total = sum(spans)
+            left = 0
+            x_accumulated = 0.0
+            for column, span in enumerate(spans):
+                x_accumulated += span
+                right = width if column == columns - 1 else round(width * x_accumulated / span_total)
+                if right > left and bottom > top:
+                    fragments.append(_Fragment(
+                        (left, top, right - left, bottom - top), rng.uniform(0.025, 0.23),
+                        rng.uniform(1.9, 2.3), rng.uniform(-1.5, 1.5)))
+                left = right
+            top = bottom
+        return tuple(fragments)
 
     def _make_sprite(self, size, color, shape):
         pygame = self._pygame
@@ -119,6 +170,34 @@ class ParticleCurtain:
             except Exception:
                 pass
 
+    @classmethod
+    def pattern_for_cycle(cls, cycle):
+        index = max(0, int(cycle) - 1)
+        return (index % len(cls.PALETTES),
+                cls.MOTIONS[index % len(cls.MOTIONS)],
+                (index // (len(cls.PALETTES) * len(cls.MOTIONS))) % 4 != 3)
+
+    def _select_pattern(self, curtain):
+        cycle = getattr(curtain, "cycle", 0)
+        if cycle <= 0 or cycle == self._cycle:
+            return
+        # Freeze colors and motion through covered/reveal, including retries.
+        if self._cycle is not None and curtain.state != "covering":
+            return
+        palette, self.motion, randomized = self.pattern_for_cycle(cycle)
+        self._cycle = cycle
+        self._sprites = self._sprite_banks[palette]
+        self._fragments = self._fragment_layouts[((cycle - 1) // len(self.MOTIONS))
+                                                % len(self._fragment_layouts)]
+        rng = random.Random(self.SEED ^ (cycle * 0x9E3779B1))
+        self._sprite_indices = tuple(
+            (rng.randrange(6) if randomized else
+             min(5, max(0, int(chip.y / self.size[1] * 6)))) * 3 + chip.sprite % 3
+            for chip in self._chips)
+        print(f"[ParticleCurtain] cycle={cycle} palette={self.PALETTES[palette][0]} "
+              f"motion={self.motion} colors={'random-blocks' if randomized else 'bands'}",
+              flush=True)
+
     @staticmethod
     def _reveal_progress(curtain, now):
         if curtain.state != "revealing":
@@ -139,8 +218,26 @@ class ParticleCurtain:
         return x, y
 
     def _fragment_position(self, fragment, progress):
-        left, top, width, _ = fragment.area
+        left, top, width, height = fragment.area
         falling = max(0.0, (progress - fragment.delay) / (1.0 - fragment.delay))
+        motion = getattr(self, "motion", "fall")
+        if motion == "rise":
+            return (round(left + fragment.drift * width * falling * falling),
+                    round(top - self.size[1] * fragment.fall * falling * falling))
+        if motion == "split":
+            direction = -1 if left + width / 2 < self.size[0] / 2 else 1
+            return (round(left + direction * self.size[0] * fragment.fall * falling * falling), top)
+        if motion == "scatter":
+            dx = (left + width / 2) / self.size[0] - .5
+            dy = (top + height / 2) / self.size[1] - .5
+            # Keep central and midline tiles diagonal without dividing by zero.
+            dx = math.copysign(max(abs(dx), .075), dx)
+            dy = math.copysign(max(abs(dy), .075), dy)
+            # The dominant axis travels a full screen multiple, so even central
+            # tiles have entirely left the viewport before the reveal completes.
+            distance = fragment.fall * falling * falling / max(abs(dx), abs(dy))
+            return (round(left + self.size[0] * dx * distance),
+                    round(top + self.size[1] * dy * distance))
         return (round(left + fragment.drift * width * falling * falling),
                 round(top + self.size[1] * fragment.fall * falling * falling))
 
@@ -154,14 +251,16 @@ class ParticleCurtain:
                     or not math.isfinite(now) or not math.isfinite(level) or level <= 0):
                 return False
             level = min(1.0, level)
+            self._select_pattern(curtain)
             previous_clip = screen.get_clip()
             clip = previous_clip.clip(self._pygame.Rect(rect)).clip(screen.get_rect())
             if clip.width <= 0 or clip.height <= 0:
                 return False
             screen.set_clip(clip)
             try:
-                for chip in self._chips:
-                    sprite = self._sprites[chip.sprite]
+                for index, chip in enumerate(self._chips):
+                    sprite = self._sprites[chip.sprite if self._sprite_indices is None
+                                           else self._sprite_indices[index]]
                     x, y = self._position(chip, now, state, level)
                     left = round(x - sprite.get_width() / 2)
                     top = round(y - sprite.get_height() / 2)

@@ -12,6 +12,8 @@ import mediapipe as mp
 import pygame
 
 import display_utils
+from mandala_colors import ArtworkHueCycle
+from mandala_motion import ArtworkOutwardDrift
 from scene_control import notify_exit_request, notify_first_frame
 
 
@@ -246,6 +248,8 @@ def main():
         canvas = pygame.Surface((w, h), pygame.SRCALPHA)
         canvas.fill((0, 0, 0, 0))
         cursor_layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        artwork_colors = ArtworkHueCycle((w, h))
+        artwork_drift = ArtworkOutwardDrift((w, h))
         hue = 0
         tracker = ParticipantTracker(max_people=3)
         camera_failure_since = None
@@ -297,6 +301,9 @@ def main():
                                    "label": labels[index] if index < len(labels) else None})
             tracked_hands = tracker.update(detections, w)
             axis_angle = pygame.time.get_ticks() / 1000.0 * 0.035
+            artwork_now = pygame.time.get_ticks() / 1000.0
+            artwork_drift.advance(canvas, artwork_colors.surface, artwork_now)
+            colored_canvas = artwork_colors.refresh(canvas, artwork_now)
             for tracked in tracked_hands:
                 participant = tracked["participant"]
                 color = pygame.Color(0)
@@ -308,14 +315,18 @@ def main():
                     previous[0] - w // 2, previous[1] - h // 2)
                 draw_mandala(canvas, previous_pos, current_pos, (w // 2, h // 2), color, axis_angle)
 
+                # New strokes appear immediately; recoloring older ink is cached.
+                shown_color = artwork_colors.display_color(color)
+                draw_mandala(colored_canvas, previous_pos, current_pos, (w // 2, h // 2), shown_color, axis_angle)
+
                 cursor_pos = (round(current[0]), round(current[1]))
-                cursor_color = (color.r, color.g, color.b)
+                cursor_color = (shown_color.r, shown_color.g, shown_color.b)
                 pygame.draw.circle(cursor_layer, (*cursor_color, 65), cursor_pos, 15)
                 pygame.draw.circle(cursor_layer, (*cursor_color, 210), cursor_pos, 11, 2)
                 pygame.draw.circle(cursor_layer, (255, 255, 255, 255), cursor_pos, 4)
 
             screen.blit(camera_surface, (0, 0))
-            screen.blit(canvas, (0, 0))
+            screen.blit(colored_canvas, (0, 0))
             screen.blit(cursor_layer, (0, 0))
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=True)

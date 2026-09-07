@@ -54,6 +54,8 @@ class ParticleCurtainTests(unittest.TestCase):
     def test_particle_and_cache_counts_are_bounded_and_never_rebuilt(self):
         chips = self.particles._chips
         sprites = self.particles._sprites
+        banks = self.particles._sprite_banks
+        layouts = self.particles._fragment_layouts
         snapshot = self.particles._snapshot
         self.assertTrue(500 <= len(chips) <= 1000)
         self.assertEqual(len(sprites), 18)
@@ -63,13 +65,58 @@ class ParticleCurtainTests(unittest.TestCase):
               mock.patch.object(pygame.transform, "smoothscale", side_effect=AssertionError("frame scaling"))):
             for cycle in range(1, 101):
                 self.assertTrue(self.particles.draw(screen, screen.get_rect(), 7 + cycle * 0.1,
-                                                    self.curtain(cycle=cycle)))
+                                                    self.curtain("covering", cycle=cycle)))
                 self.assertTrue(self.particles.breakup(screen, 7.7,
                                                       self.curtain("revealing", 0.5, _started=7,
                                                                    reveal_duration=1.6)))
         self.assertIs(self.particles._chips, chips)
-        self.assertIs(self.particles._sprites, sprites)
+        self.assertIs(self.particles._sprite_banks, banks)
+        self.assertIs(self.particles._fragment_layouts, layouts)
+        self.assertTrue(any(self.particles._sprites is bank for bank in banks))
         self.assertIs(self.particles._snapshot, snapshot)
+
+    def test_random_block_layouts_cover_once_and_have_varied_shapes(self):
+        for layout in self.particles._fragment_layouts:
+            coverage = np.zeros(self.SIZE, dtype=np.uint8)
+            dimensions = set()
+            for fragment in layout:
+                x, y, w, h = fragment.area
+                coverage[x:x + w, y:y + h] += 1
+                dimensions.add((w, h))
+            self.assertTrue(np.all(coverage == 1))
+            self.assertGreater(len(dimensions), 30)
+            self.assertLess(len(layout), 650)
+
+    def test_cycle_variety_is_stable_until_next_cover_and_reproducible(self):
+        other = ParticleCurtain(self.SIZE)
+        for cycle in range(1, 21):
+            curtain = self.curtain("covering", cycle=cycle)
+            first = self.render(curtain, particles=self.particles)
+            np.testing.assert_array_equal(first, self.render(curtain, particles=other))
+            sprites = self.particles._sprite_indices
+            fragments = self.particles._fragments
+            self.render(self.curtain("covered", cycle=cycle + 1))
+            self.assertIs(self.particles._sprite_indices, sprites)
+            self.assertIs(self.particles._fragments, fragments)
+            self.assertFalse(np.any(np.all(first == self.particles.TRANSPARENT_COLOR, axis=2)))
+        patterns = [ParticleCurtain.pattern_for_cycle(cycle) for cycle in range(1, 81)]
+        self.assertEqual(sum(randomized for _, _, randomized in patterns), 60)
+        self.assertEqual(len(set(patterns)), 40)
+
+    def test_varied_layout_release_starts_identically_and_ends_empty(self):
+        for cycle in range(1, 21):
+            self.render(self.curtain("covering", cycle=cycle))
+            for progress in (0, 0.99, 1):
+                screen = self.screen()
+                before = pygame.surfarray.array3d(screen)
+                self.particles.breakup(screen, 7 + progress * 1.6,
+                    self.curtain("revealing", 1 - progress, cycle=cycle,
+                                 _started=7, reveal_duration=1.6))
+                pixels = pygame.surfarray.array3d(screen)
+                if progress == 0:
+                    np.testing.assert_array_equal(pixels, before)
+                else:
+                    self.assertTrue(np.all(pixels == self.particles.TRANSPARENT_COLOR), cycle)
 
     def test_seed_reproduces_layout_and_release_delays(self):
         other = ParticleCurtain(self.SIZE)

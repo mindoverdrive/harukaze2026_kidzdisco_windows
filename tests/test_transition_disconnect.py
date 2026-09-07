@@ -98,7 +98,7 @@ class OverlayHarness:
             mock.patch.object(overlay, "configure_overlay_window"),
             mock.patch.object(overlay, "DetectionWorker", return_value=self.worker),
             mock.patch.object(overlay, "NavigationStyle"),
-            mock.patch("transition_logo.CurtainLogo"),
+            mock.patch("transition_branding.AlternatingCurtainLogo"),
             mock.patch("transition_particles.ParticleCurtain"),
             mock.patch.object(overlay, "OverlayOpacity"),
             mock.patch.object(overlay.socket, "create_connection"),

@@ -75,7 +75,12 @@ class SceneHarness:
         self.pygame.time.get_ticks.return_value = 0
         self.first.side_effect = lambda *_args, **_kwargs: self.trace.append("first")
         self.atexit = mock.Mock()
+        self.artwork_colors = mock.Mock()
+        self.artwork_colors.refresh.return_value = mock.Mock()
+        self.artwork_colors.display_color.side_effect = lambda color: color
         self.env = dict(
+            ArtworkHueCycle=mock.Mock(return_value=self.artwork_colors),
+            ArtworkOutwardDrift=mock.Mock(),
             ExitStack=ExitStack, atexit=self.atexit, math=math, sys=sys, pygame=self.pygame,
             display_utils=self.display, cv2=mock.MagicMock(),
             time=SimpleNamespace(monotonic=mock.Mock(side_effect=times if times is not None else [0])),

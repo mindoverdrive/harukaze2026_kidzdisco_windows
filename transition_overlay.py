@@ -528,7 +528,7 @@ def draw_navigation(screen, pygame, style, hold, now=None):
 
 def run_overlay(port, token, geometry):
     from stage_display import configure_audience_dpi
-    from transition_logo import CurtainLogo
+    from transition_branding import AlternatingCurtainLogo
     from transition_particles import ParticleCurtain
 
     configure_audience_dpi()
@@ -554,7 +554,7 @@ def run_overlay(port, token, geometry):
         hold = NavigationHold(navigation_regions(*geometry[2:]), max_jump=max(30, geometry[2] * 0.06))
         style = NavigationStyle(pygame, hold.regions)
         camera_layer = CurtainCamera()
-        logo = CurtainLogo(geometry[2:])
+        logo = AlternatingCurtainLogo(geometry[2:])
         particles = ParticleCurtain(geometry[2:])
         worker = DetectionWorker(*geometry[2:])
         resources.callback(worker.close)
