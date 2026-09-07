@@ -28,6 +28,7 @@ ENV_FPS = "HARUKAZE_CAMERA_FPS"
 ENV_FOURCC = "HARUKAZE_CAMERA_FOURCC"
 SESSION_INFO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".shared_camera_session.json")
 DEFAULT_READ_FAILURE_REOPEN_THRESHOLD = 30
+READ_FAILURE_REOPEN_SECONDS = 5.0
 FRAME_MAX_AGE_SECONDS = 2.0
 RECONNECT_INITIAL_DELAY = 0.25
 RECONNECT_MAX_DELAY = 5.0
@@ -160,6 +161,19 @@ def _normalize_fourcc(value):
     return text[:4]
 
 
+def _read_physical_frame(cap):
+    # DShow can leave a nonempty buffer after retrieve() fails. read() then
+    # reports success from buffer size alone. Preserve both native statuses.
+    if cap.get(cv2.CAP_PROP_BACKEND) == cv2.CAP_DSHOW:
+        if not cap.grab():
+            return False, None
+        ok, frame = cap.retrieve()
+        if not ok or frame is None:
+            return False, None
+        return True, frame
+    return cap.read()
+
+
 def _measure_capture_fps(cap, sample_seconds=2.0):
     sample_seconds = max(float(sample_seconds), 0.25)
     frames = 0
@@ -168,7 +182,7 @@ def _measure_capture_fps(cap, sample_seconds=2.0):
     deadline = time.perf_counter() + sample_seconds
 
     while time.perf_counter() < deadline:
-        ret, _frame = cap.read()
+        ret, _frame = _read_physical_frame(cap)
         if not ret:
             continue
         now = time.perf_counter()
@@ -533,7 +547,7 @@ class SharedCameraRelay:
         for phase in ("first", "confirmation"):
             if self.stop_event.is_set():
                 raise RuntimeError("Camera stopped during first-frame control confirmation")
-            ret, frame = self.cap.read()
+            ret, frame = _read_physical_frame(self.cap)
             if self.stop_event.is_set():
                 raise RuntimeError("Camera stopped during first-frame control confirmation")
             if not ret or frame is None:
@@ -596,15 +610,21 @@ class SharedCameraRelay:
 
     def _capture_loop(self):
         reconnect_delay = RECONNECT_INITIAL_DELAY
+        failure_since = None
         try:
             while self.running and not self.stop_event.is_set():
-                if self.cap is None or self.read_failures >= DEFAULT_READ_FAILURE_REOPEN_THRESHOLD:
+                if (self.cap is None
+                        or self.read_failures >= DEFAULT_READ_FAILURE_REOPEN_THRESHOLD
+                        or (failure_since is not None
+                            and time.monotonic() - failure_since >= READ_FAILURE_REOPEN_SECONDS)):
                     if self.stop_event.wait(reconnect_delay):
                         break
                     reconnect_delay = min(reconnect_delay * 2, RECONNECT_MAX_DELAY)
                     if not self._reopen_capture():
                         continue
+                    failure_since = None
                 try:
+                    attempt_started = time.monotonic()
                     changed = self.controls.apply_pending(self.cap)
                     if changed:
                         if "exposure" in changed:
@@ -613,7 +633,7 @@ class SharedCameraRelay:
                             self.zoom = changed["zoom"]
                     if self.stop_event.is_set():
                         break
-                    ret, frame = self.cap.read()
+                    ret, frame = _read_physical_frame(self.cap)
                     if self.stop_event.is_set():
                         break
                     if not ret or frame is None:
@@ -640,9 +660,12 @@ class SharedCameraRelay:
                         self.latest_frame = frame.copy()
                         self.latest_timestamp = now
                     self.read_failures = 0
+                    failure_since = None
                     self.last_error = None
                     reconnect_delay = RECONNECT_INITIAL_DELAY
                 except Exception as exc:
+                    if failure_since is None:
+                        failure_since = attempt_started
                     self.read_failures += 1
                     self.read_failures_total += 1
                     self.last_error = f"read/publish: {exc}"

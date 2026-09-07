@@ -58,6 +58,7 @@ CAMERA_FOV = 70.0
 NUM_PARTICLES = 40000
 WORLD_SCALE = 1000
 ATTRACTION_STRENGTH = 450000.0 # Force towards/away from hand
+ATTRACTION_CORE_RADIUS = 180.0 # Stop pulling inside this XY radius.
 DAMPING = 0.95                 # Velocity damping
 NOISE_STRENGTH = 10.0          # Random movement
 REPULSION_STRENGTH = 300000.0  # Force for explosion
@@ -250,6 +251,11 @@ class ParticleStormApp:
                 if h_gest > 0:
                     # Attraction
                     strength = ATTRACTION_STRENGTH / (dist + 200.0) 
+                    xy_dist = np.sqrt(np.sum(delta[:, :2] ** 2, axis=1))
+                    core_blend = np.clip((xy_dist - ATTRACTION_CORE_RADIUS) / ATTRACTION_CORE_RADIUS, 0.0, 1.0)
+                    # Smoothly release the pull near the hand instead of
+                    # collapsing the whole depth column onto one XY point.
+                    strength *= core_blend * core_blend * (3.0 - 2.0 * core_blend)
                     forces += dir_vec * strength[:, np.newaxis]
                 else:
                     # Explosion (Repulsion)
@@ -257,8 +263,8 @@ class ParticleStormApp:
                     strength = (REPULSION_STRENGTH / (dist + 50.0)) * abs(h_gest)
                     forces -= dir_vec * strength[:, np.newaxis]
 
-        # Hands steer only XY. Keep the 3D falloff above so XY strength and
-        # proximity alpha are unchanged; depth retains its own noise/momentum.
+        # Hands steer only XY. Outside the pull's core transition, the old
+        # falloff is unchanged; depth retains its own noise/momentum.
         forces[:, 2] = 0.0
 
         # Apply Force

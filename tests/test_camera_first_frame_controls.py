@@ -35,6 +35,12 @@ class FirstReadCapture:
         self.values[prop] = value
         return True
 
+    def grab(self):
+        return True
+
+    def retrieve(self):
+        return self.read()
+
     def read(self):
         self.read_count += 1
         self.values.update(self.drifts.get(self.read_count, {}))

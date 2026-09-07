@@ -34,7 +34,7 @@ def xy_case():
     import numpy as np
 
     # Preserve the old force's XY and 3D falloff, including hand-proximity alpha.
-    p = np.array([[200, -300, -700], [-400, 100, 900], [0, 0, 0]], dtype=np.float32)
+    p = np.array([[200, -500, -700], [-400, 100, 900], [600, 0, 0]], dtype=np.float32)
     v = np.array([[10, 20, 30], [-20, 50, -30], [0, 0, 0]], dtype=np.float32)
     for gesture in (1.0, -2.0):
         h = np.array([90, 40, 250], dtype=np.float32)
@@ -88,6 +88,19 @@ def long_case():
     assert np.isfinite(app.positions).all() and np.isfinite(app.velocities).all()
     assert final > initial * 0.9, "Sustained XY attraction collapsed the depth distribution"
     assert final < initial * 1.1, "Depth spread grew unexpectedly"
+    projected = app.positions[:, :2] / (1200.0 - app.positions[:, 2:3])
+    assert min(projected.std(axis=0)) > 0.05, "Depth survived but projected particles collapsed onto one point"
+
+
+def core_case():
+    import numpy as np
+
+    p = np.array([[0, 0, 0], [100, 0, 200], [180, 0, -200]], dtype=np.float32)
+    control, control_step = physics(p, np.zeros_like(p), [])
+    app, step = physics(p, np.zeros_like(p), [{"pos": np.zeros(3, dtype=np.float32), "gest": 1.0}])
+    control_step(1 / 25)
+    step(1 / 25)
+    np.testing.assert_array_equal(app.velocities, control.velocities)
 
 
 @unittest.skipUnless(PathFinder.find_spec("numpy") is not None, "Requires the graphics runtime's real NumPy")
@@ -106,9 +119,12 @@ class ParticleStormDepthTests(unittest.TestCase):
     def test_sustained_attraction_retains_depth_spread(self):
         self.run_case("long")
 
+    def test_central_pull_releases_particles_without_changing_noise(self):
+        self.run_case("core")
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--case":
-        {"xy": xy_case, "z": z_case, "long": long_case}[sys.argv[2]]()
+        {"xy": xy_case, "z": z_case, "long": long_case, "core": core_case}[sys.argv[2]]()
     else:
         unittest.main()
