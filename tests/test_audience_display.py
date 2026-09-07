@@ -117,6 +117,7 @@ class AudienceDisplayTests(unittest.TestCase):
         relay = mock.Mock(thread=None)
         relay.export_env.return_value = {}
         panel = mock.Mock()
+        panel.presentation.export_env.return_value = {}
         panel.consume_action.return_value = "quit"
         with (
             mock.patch.object(sys, "argv", ["manager.py", "--config", str(root / "configs/rebirth_acer_xiaomi.json"), "--operator-port", "8766"]),

@@ -362,6 +362,7 @@ class SceneManager:
         self.requested_scene_index = None
         self.last_switch_error = None
         self.fatal_error = None
+        self.safe_requested = False
         self.uncontained_process = None
         self.diagnostics = diagnostics
         self.completed_promotions = 0
@@ -614,9 +615,12 @@ class SceneManager:
 
     def request_scene(self, action="next", scene_path=None):
         """One bounded path for hold controls, keyboard and operator UI requests."""
+        if action == "restart":
+            action, scene_path = "select", self.running_scene_path
         if action not in {"next", "back", "select"}:
             raise ConfigurationError(f"Unknown scene action: {action}")
-        if not self.all_scenes or self.switch_pending or self.transition_busy or self.fatal_error:
+        held = self.safe_requested and self.transition is not None and self.transition.holding_cover is True
+        if not self.all_scenes or self.switch_pending or (self.transition_busy and not held) or self.fatal_error:
             return False
         if action == "select":
             if scene_path not in self.all_scenes:
@@ -639,7 +643,9 @@ class SceneManager:
         self.switch_pending = True
         self.switch_had_live_scene = self.is_scene_running()
         try:
-            self._start_transition_overlay()
+            if not held:
+                self._start_transition_overlay()
+            self.safe_requested = False
             if not self._ensure_preloaded_scene():
                 return False
             if self.diagnostics:
@@ -652,6 +658,33 @@ class SceneManager:
     def switch_scene(self):
         return self.request_scene("next")
 
+    def request_safe(self):
+        if not CONFIG.get("TRANSITION_ENABLED", True) or self.fatal_error:
+            return False
+        self.safe_requested = True
+        if not self.transition_busy:
+            self._start_transition_overlay()
+        return True
+
+    def resume_safe(self):
+        if (not self.safe_requested or self.switch_pending or not self.is_scene_running()
+                or self.transition is None or self.transition.holding_cover is not True):
+            return False
+        if not self.transition.reveal():
+            return False
+        self.safe_requested = False
+        return True
+
+    def operator_snapshot(self):
+        return {"scenes": [os.path.basename(p) for p in self.all_scenes],
+                "current": self.current_scene_name if self.is_scene_running() else None,
+                "next": os.path.basename(self.all_scenes[self.scene_index % len(self.all_scenes)]) if self.all_scenes else None,
+                "busy": self.switch_pending or self.transition_busy,
+                "safe": self.safe_requested,
+                "covered": self.safe_requested and self.transition is not None and self.transition.holding_cover is True,
+                "error": self.fatal_error or self.last_switch_error,
+                "feedback": getattr(self, "operator_feedback", "")}
+
     def _fail_switch(self, reason):
         self.last_switch_error = reason
         print(f"[Manager] Candidate failed: {self.preloaded_scene_name}: {reason}")
@@ -662,7 +695,7 @@ class SceneManager:
             self.fatal_error = "failed candidate could not be stopped: " + reason
         elif not self.is_scene_running():
             self.fatal_error = "no running scene after candidate failure: " + reason
-        elif self.transition is not None and self.transition.covered and not self.transition.error:
+        elif self.transition is not None and self.transition.covered and not self.transition.error and not self.safe_requested:
             # Only uncover the predecessor once the failed candidate has stopped.
             self.transition.reveal()
 
@@ -678,10 +711,12 @@ class SceneManager:
                 return
             if not self.switch_pending and transition.covered and transition.busy:
                 # Failed READY before cover completed: reveal only the retained scene.
-                if self.last_switch_error and self.is_scene_running():
+                if self.last_switch_error and self.is_scene_running() and not self.safe_requested:
                     transition.reveal()
             action = transition.consume_action()
-            if action is not None and not self.switch_pending and not transition.busy:
+            if self.safe_requested and not transition.busy:
+                self._start_transition_overlay()
+            if action is not None and not self.safe_requested and not self.switch_pending and not transition.busy:
                 self.request_scene(action)
                 return
 
@@ -726,7 +761,7 @@ class SceneManager:
             self._clear_preloaded()
             self.switch_pending = False
             self.switch_had_live_scene = False
-            if transition is not None and not transition.reveal():
+            if transition is not None and not self.safe_requested and not transition.reveal():
                 self.fatal_error = "transition did not accept reveal after promotion"
             if self.preload_enabled:
                 self._ensure_preloaded_scene()
@@ -957,6 +992,8 @@ def main():
             operator.start()
 
         camera_env = camera_relay.export_env()
+        if operator is not None:
+            camera_env.update(operator.presentation.export_env())
         print(
             f"[Manager] Camera index={CONFIG['CAMERA_INDEX']} "
             f"opencv_index={CONFIG.get('CAMERA_OPENCV_INDEX')} "
@@ -1029,14 +1066,15 @@ def main():
                     and not manager.transition_busy and not manager.switch_pending):
                 stop_reason = "switch_count_reached"
                 break
-            if next_switch_at is not None and now >= next_switch_at and manager is not None:
+            if (next_switch_at is not None and now >= next_switch_at and manager is not None
+                    and manager.safe_requested is not True):
                 if manager.switch_scene():
                     next_switch_at = None
-            if monitor and monitor.consume_clap() and manager is not None:
+            if monitor and monitor.consume_clap() and manager is not None and manager.safe_requested is not True:
                 print("[Manager] Head clap detected. Switching scene.")
                 manager.switch_scene()
 
-            if manager is not None and not manager.is_scene_running() and not manager.switch_pending:
+            if manager is not None and manager.safe_requested is not True and not manager.is_scene_running() and not manager.switch_pending:
                 exited_launcher = manager.running_process
                 if exited_launcher is not None:
                     # The Windows venv launcher may be a redirector; this is its
@@ -1059,15 +1097,23 @@ def main():
             if action == "quit":
                 stop_reason = "operator_quit"
                 break
-            if action == "next" and manager is not None:
-                manager.request_scene("next")
-            if action == "back" and manager is not None:
-                manager.request_scene("back")
+            if manager is not None and action in ("next", "back", "restart", "safe", "resume"):
+                try:
+                    accepted = (manager.request_safe() if action == "safe" else manager.resume_safe()
+                                if action == "resume" else manager.request_scene(action))
+                    manager.operator_feedback = action + (" · 受付済み" if accepted else " · 実行不可（状態を確認してください）")
+                except (ConfigurationError, SceneControlError) as exc:
+                    manager.operator_feedback = str(exc)
             if isinstance(action, dict) and action.get("action") == "select" and manager is not None:
                 try:
-                    manager.request_scene("select", action.get("scene"))
+                    accepted = manager.request_scene("select", action.get("scene"))
+                    manager.operator_feedback = "select · " + ("受付済み" if accepted else "切替中のため未実行")
                 except ConfigurationError as exc:
+                    manager.operator_feedback = str(exc)
                     print(f"[Manager] Rejected scene request: {exc}")
+
+            if operator is not None and manager is not None:
+                operator.publish(manager.operator_snapshot())
 
             key = -1
             if manager_window_available:

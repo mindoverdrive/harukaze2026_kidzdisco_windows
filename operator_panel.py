@@ -9,6 +9,7 @@ import threading
 from urllib.parse import urlsplit
 
 from camera_controls import CONTROL_SPECS, save_controls
+from camera_presentation import CameraPresentationControl
 
 
 class OperatorPanel:
@@ -20,9 +21,13 @@ class OperatorPanel:
         self.config_path = Path(config_path)
         self.token = secrets.token_urlsafe(24)
         self.actions = queue.Queue(maxsize=1)
+        self.safe_event = threading.Event()
+        self.state_lock = threading.Lock()
+        self.scene_state = {"scenes": [], "current": None, "next": None, "busy": True}
         self.html = Path(__file__).with_suffix(".html").read_bytes()
         self.server = self.thread = None
         self.host, self.port = host, port
+        self.presentation = CameraPresentationControl()
 
     def start(self):
         panel = self
@@ -58,7 +63,8 @@ class OperatorPanel:
                 elif path == "/api/status" and self.authorized():
                     self.reply(200, {"camera": panel.relay.controls.snapshot(), "specs": CONTROL_SPECS,
                                      "config": panel.config_path.name, "camera_frame_id": panel.relay.frame_id,
-                                     "camera_error": panel.relay.last_error})
+                                     "camera_error": panel.relay.last_error, "scene": panel.snapshot(),
+                                     "opacity": panel.presentation.opacity})
                 else:
                     self.reply(401 if path.startswith("/api/") else 404, {"error": "起動時の操作URLで開いてください"})
 
@@ -84,7 +90,9 @@ class OperatorPanel:
                     data = json.loads(self.rfile.read(length))
                     if not isinstance(data, dict):
                         raise ValueError("JSONオブジェクトを指定してください")
-                    if self.path == "/api/camera":
+                    if self.path == "/api/presentation" and set(data) == {"opacity"}:
+                        self.reply(200, {"opacity": panel.presentation.set_opacity(data["opacity"])})
+                    elif self.path == "/api/camera":
                         sequence = panel.relay.controls.submit(data)
                         self.reply(202, {"sequence": sequence})
                     elif self.path == "/api/save" and set(data) == {"sequence"}:
@@ -92,8 +100,11 @@ class OperatorPanel:
                             raise ValueError("適用済みの設定番号を指定してください")
                         saved = save_controls(panel.config_path, panel.relay.controls, data["sequence"])
                         self.reply(200, {"saved": saved})
-                    elif self.path == "/api/action" and data in ({"action": "next"}, {"action": "back"}, {"action": "quit"}):
-                        panel.actions.put_nowait(data["action"])
+                    elif self.path == "/api/action" and data in tuple({"action": name} for name in ("next", "back", "restart", "safe", "resume", "quit")):
+                        if data["action"] == "safe":
+                            panel.safe_event.set()
+                        else:
+                            panel.actions.put_nowait(data["action"])
                         self.reply(202, {"action": data["action"]})
                     elif (self.path == "/api/action" and set(data) == {"action", "scene"}
                           and data["action"] == "select" and isinstance(data["scene"], str)
@@ -142,10 +153,25 @@ class OperatorPanel:
         return self
 
     def consume_action(self):
+        if self.safe_event.is_set():
+            self.safe_event.clear()
+            try:
+                self.actions.get_nowait()
+            except queue.Empty:
+                pass
+            return "safe"
         try:
             return self.actions.get_nowait()
         except queue.Empty:
             return None
+
+    def publish(self, state):
+        with self.state_lock:
+            self.scene_state = dict(state)
+
+    def snapshot(self):
+        with self.state_lock:
+            return dict(self.scene_state)
 
     def close(self):
         if self.server is not None:
@@ -153,4 +179,7 @@ class OperatorPanel:
                 self.server.shutdown()
                 self.thread.join(timeout=2)
             self.server.server_close()
-        return self.thread is None or not self.thread.is_alive()
+        closed = self.thread is None or not self.thread.is_alive()
+        if closed:
+            self.presentation.close()
+        return closed

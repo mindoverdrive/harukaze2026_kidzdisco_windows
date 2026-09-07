@@ -106,6 +106,10 @@ class TransitionManager:
         self._phase = "covering"
         self._deadline = time.monotonic() + self.COMMAND_TIMEOUT
 
+    @property
+    def holding_cover(self):
+        return self._phase == "covered" and self.covered and self.error is None
+
     def reveal(self):
         if self.error is not None or self._phase != "covered" or not self.covered:
             return False

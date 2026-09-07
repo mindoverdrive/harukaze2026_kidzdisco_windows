@@ -7,6 +7,9 @@ import os
 
 import cv2
 import numpy as np
+from camera_presentation import CameraPresentationReader, apply_camera_opacity
+
+_camera_presentation = CameraPresentationReader.from_env()
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -257,6 +260,7 @@ def prepare_camera_frame(frame, stage_width, stage_height, mirror=True, pad_colo
     layout = get_uniform_layout(frame_w, frame_h, stage_width, stage_height)
     # The image placement and landmark projection must consume this same layout.
     stage_frame = fit_frame_to_size(camera_frame, stage_width, stage_height, pad_color=pad_color, layout=layout)
+    stage_frame = apply_camera_opacity(stage_frame, _camera_presentation.opacity())
     return camera_frame, stage_frame, layout
 
 

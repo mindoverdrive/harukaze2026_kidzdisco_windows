@@ -237,6 +237,27 @@ class OperatorPanelTests(unittest.TestCase):
             with self.subTest(address=address), self.assertRaises(ValueError):
                 OperatorPanel(None, self.config_path, host=address)
 
+    def test_scene_snapshot_restart_and_safe_priority(self):
+        panel = self.panel()
+        state = {"scenes": ["a_acer.py"], "current": "a_acer.py", "next": "a_acer.py", "busy": False}
+        panel.publish(state)
+        self.assertEqual(self.request(panel, "/api/status")[1]["scene"], state)
+        self.assertEqual(self.request(panel, "/api/action", {"action": "restart"})[0], 202)
+        self.assertEqual(self.request(panel, "/api/action", {"action": "safe"})[0], 202)
+        self.assertEqual(panel.consume_action(), "safe")
+        self.assertIsNone(panel.consume_action())
+        self.assertEqual(self.request(panel, "/api/action", {"action": "resume"})[0], 202)
+        self.assertEqual(panel.consume_action(), "resume")
+
+    def test_presentation_opacity_keeps_camera_controls_unchanged(self):
+        panel = self.panel()
+        before = self.mailbox.snapshot()
+        self.assertEqual(self.request(panel, "/api/presentation", {"opacity": .4})[0], 200)
+        self.assertEqual(self.request(panel, "/api/status")[1]["opacity"], .4)
+        self.assertEqual(self.mailbox.snapshot(), before)
+        self.assertEqual(self.request(panel, "/api/presentation", {"opacity": -1})[0], 400)
+        self.assertEqual(self.request(panel, "/api/presentation", {"opacity": True})[0], 400)
+
     def test_back_and_select_are_bounded_operator_requests(self):
         panel = self.panel()
         self.assertEqual(self.request(panel, "/api/action", {"action": "back"})[0], 202)
