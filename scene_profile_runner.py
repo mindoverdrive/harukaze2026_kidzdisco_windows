@@ -78,7 +78,9 @@ def run_scene(script_name, profile="stage"):
         runpy.run_path(str(script_path), run_name="__main__")
     except BaseException as exc:
         failure = exc
-        if control is not None:
+        # Manager closes the startup channel after FIRST_FRAME promotion.
+        # Runtime failures remain visible through lifecycle output and re-raise.
+        if control is not None and not control.first_frame_sent:
             try:
                 control.send("ERROR", reason=f"{type(exc).__name__}: {exc}"[:1500])
             except BaseException as notification_failure:

@@ -1,5 +1,7 @@
 # Acer 1台で操作し、Xiaomiへ最初の1シーンを出す
 
+> 2026-09-07更新：これは初期の単一シーン入口の説明。現在の確認結果・制限・優先順位は `MVP_CORE_PROGRESS_20260907.md` を参照する。既定の入口は引き続きDots単体であり、Spheres/Stormの試験リストを本番既定へ変更したわけではない。
+
 対象は `finger_colorfull_dots_acer.py` → `finger_colorfull_dots_2.py`。候補ブランチは `codex/rebirth2026-production-candidate`。**現行方針はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1を操作管理、Xiaomiの観客用拡張ディスプレイ2（OS内部名DISPLAY5）を観客映像専用にする。Macは本番対象外。Bluetooth PANとMac–Acer間のネットワーク検証は中止し、追加調査・設定変更を行わない。**
 
 Xiaomi向け専用入口は新しい候補で、実機合格・安定版ではない。従来のprimary画面での試験結果と、これから行う2画面・DPI・Xiaomi上の目視確認を区別する。

@@ -100,6 +100,7 @@ class SceneExitObservationTests(unittest.TestCase):
             with self.subTest(outcome=outcome, failure=str(failure)):
                 output = io.StringIO()
                 control = mock.Mock()
+                control.first_frame_sent = True
                 control.send.side_effect = BrokenPipeError("startup control already closed")
                 with (
                     mock.patch.object(sys, "argv", ["fixture_acer.py", "--control-port", "1", "--launch-id", "after-promotion"]),
@@ -122,6 +123,7 @@ class SceneExitObservationTests(unittest.TestCase):
                 if isinstance(failure, SystemExit):
                     self.assertEqual(ends[0]["system_exit_code"], failure.code)
                 control.close.assert_called_once()
+                control.send.assert_not_called()
 
     def test_lifecycle_output_failure_does_not_prevent_scene_return_or_cleanup(self):
         self.assertEqual(self.run_scene_body("finger_colorfull_dots_2.py", "QUIT", broken_output=True), [])
@@ -129,6 +131,7 @@ class SceneExitObservationTests(unittest.TestCase):
     def test_lifecycle_output_failure_does_not_mask_the_original_exception(self):
         failure = RuntimeError("original scene failure")
         control = mock.Mock()
+        control.first_frame_sent = True
         control.send.side_effect = BrokenPipeError("startup connection closed")
         with (
             mock.patch.object(sys, "argv", ["fixture_acer.py", "--control-port", "1", "--launch-id", "failed-scene"]),

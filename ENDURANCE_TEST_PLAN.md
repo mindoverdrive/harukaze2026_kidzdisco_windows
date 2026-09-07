@@ -1,5 +1,7 @@
 # Acer / C922n / Xiaomiの基礎試験と長時間試験
 
+> 2026-09-07更新：以下の初期計画にある「USB復帰未実施」などは履歴。最新の実機結果は `MVP_CORE_PROGRESS_20260907.md` を優先する。USB単回自動復帰・終了後解放は確認済み。Storm中心修正は人間の目視OKとユーザー判断の受入合格（実測14分54秒、30分完走ではない）。本番リスト、子供、実2人、12時間は別に残る。
+
 現行方針はAcer Windows 11の1台で実行・制御・出力し、DISPLAY1に操作管理、Xiaomiの観客用拡張ディスプレイ2（OS内部名DISPLAY5）に観客映像だけを全面表示する。入口は `Start Rebirth Acer.cmd`。Macは本番対象外で、Bluetooth PANおよびMac–Acer間のネットワーク検証は中止し、追加調査・設定変更を行わない。
 
 この文書は試験手順で、新しいXiaomi向け入口の実機合格記録ではない。従来のprimary構成の実30分は正常終了したが、操作による切替・退出を含むため単一シーン無中断は未合格。同一dots20回切替の結果も [継続検証記録](WINDOWS_VENV_RUNTIME_CHECK_20260906.md) の試験IDと照合し、今回の2画面構成の合格へ移し替えない。実USB復帰と12時間耐久は未実施。実地入口は [KIDS_TEST_START.md](KIDS_TEST_START.md)。最初の候補は `finger_colorfull_dots_acer.py` のみ。

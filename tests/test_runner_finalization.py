@@ -13,7 +13,8 @@ import scene_profile_runner
 class RunnerFinalizationTests(unittest.TestCase):
     def run_case(self, *, scene_failure=None, close_failure=None, finish_failure=None,
                  signal_failure=None, constructor_failure=None, send_failure=None,
-                 environment_type=dict, managed=True):
+                 environment_type=dict, managed=True, first_frame_sent=False,
+                 wait_failure=None):
         prior_control = mock.Mock(name="enclosing_control")
         prior_lifecycle = object()
         prior_handler = object()
@@ -23,6 +24,8 @@ class RunnerFinalizationTests(unittest.TestCase):
         prior_environment = {"KIDZDISCO_CAMERA_INDEX": "7", "RUNNER_TEST_KEEP": "inherited"}
         environment = environment_type(prior_environment)
         control = mock.Mock(name="owned_control")
+        control.first_frame_sent = first_frame_sent
+        control.wait_for_start.side_effect = wait_failure
         control.close.side_effect = close_failure
         control.send.side_effect = send_failure
         lifecycle = scene_control.SceneLifecycle("finger_colorfull_dots_2.py")
@@ -120,6 +123,49 @@ class RunnerFinalizationTests(unittest.TestCase):
                 self.assert_restored(result)
                 self.assertEqual(failure.__notes__,
                                  [f"Runner ERROR notification failed: {type(notification_failure).__name__}"])
+
+    def test_after_first_frame_does_not_notify_closed_startup_channel(self):
+        for failure in (RuntimeError("runtime failure"), KeyboardInterrupt(), SystemExit(7)):
+            with self.subTest(failure=type(failure).__name__):
+                result = self.run_case(scene_failure=failure, first_frame_sent=True,
+                                       send_failure=ConnectionAbortedError("closed startup channel"))
+                self.assertIs(result.caught, failure)
+                result.control.send.assert_not_called()
+                result.lifecycle.finish.assert_called_once_with(failure)
+                result.control.close.assert_called_once_with()
+                self.assertFalse(getattr(failure, "__notes__", []))
+                self.assert_restored(result)
+
+    def test_after_first_frame_still_reports_cleanup_failure(self):
+        failure = KeyboardInterrupt()
+        result = self.run_case(scene_failure=failure, first_frame_sent=True,
+                               close_failure=OSError("close failed"))
+        self.assertIs(result.caught, failure)
+        result.control.send.assert_not_called()
+        self.assertEqual(failure.__notes__, ["Runner control.close failed: OSError"])
+        self.assert_restored(result)
+
+    def test_errors_before_first_frame_and_while_waiting_still_notify(self):
+        for waiting in (False, True):
+            with self.subTest(waiting=waiting):
+                failure = RuntimeError("startup failure")
+                result = self.run_case(wait_failure=failure if waiting else None,
+                                       scene_failure=None if waiting else failure)
+                self.assertIs(result.caught, failure)
+                result.control.send.assert_called_once_with("ERROR", reason="RuntimeError: startup failure")
+                if waiting:
+                    result.run_path.assert_not_called()
+                self.assert_restored(result)
+
+    def test_failed_first_frame_send_does_not_mark_startup_complete(self):
+        control = scene_control.SceneChildControl.__new__(scene_control.SceneChildControl)
+        control.first_frame_sent = False
+        control.launch_id = "failed-first-frame"
+        control.channel = mock.Mock()
+        control.channel.send.side_effect = BrokenPipeError("failed FIRST_FRAME")
+        with self.assertRaises(BrokenPipeError):
+            control.first_frame(SimpleNamespace(last_read_frame_id=1, shm_name="mock-camera"))
+        self.assertFalse(control.first_frame_sent)
 
     def test_error_notification_formatting_cannot_replace_the_original_exception(self):
         class UnprintableSceneError(RuntimeError):
