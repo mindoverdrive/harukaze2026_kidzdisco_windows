@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>万華鏡の時間変化 | 操作モック</title>
+<style>
+  :root { font-family: "Ubuntu Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif; color: #171717; background: #faf9f6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  main { max-width: 1240px; margin: auto; padding: 32px 24px 22px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: clamp(23px, 3vw, 34px); font-weight: 650; letter-spacing: .03em; }
+  .badge { font-size: 13px; border: 1px solid #222; border-radius: 5px; padding: 6px 10px; background: white; white-space: nowrap; }
+  .lead { color: #565656; line-height: 1.8; margin: 14px 0 20px; }
+  .controls { display: flex; gap: 12px 22px; align-items: center; flex-wrap: wrap; margin-bottom: 22px; }
+  button { font: inherit; font-size: 14px; cursor: pointer; border: 1px solid #222; border-radius: 6px; padding: 10px 16px; background: white; min-height: 42px; }
+  button:hover { background: #f0efec; }
+  button[aria-pressed="true"] { background: #202124; color: white; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #2990da; outline-offset: 3px; }
+  label { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  input[type="range"] { width: 130px; accent-color: #222; }
+  output { min-width: 3em; font-variant-numeric: tabular-nums; }
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  figure { margin: 0; overflow: hidden; border: 1px solid #222; border-radius: 9px; background: #fff; }
+  .panel-head { display: flex; align-items: baseline; gap: 12px; justify-content: space-between; padding: 15px 17px; }
+  h2 { margin: 0; font-size: 17px; font-weight: 650; }
+  .panel-head span { font-size: 12px; color: #666; }
+  canvas { display: block; width: 100%; aspect-ratio: 1; background: #090d19; touch-action: none; cursor: crosshair; }
+  figcaption { padding: 12px 17px; color: #555; font-size: 13px; line-height: 1.7; }
+  .note { color: #666; font-size: 12px; margin: 17px 0 0; line-height: 1.8; }
+  .instruction { font-size: 14px; margin: 0 0 14px; color: #333; }
+  @media(max-width: 700px) { main { padding: 22px 15px; } .comparison { grid-template-columns: 1fr; gap: 18px; } .panel-head { padding: 12px 14px; } .controls { gap: 12px 16px; } }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>描いた模様が、ゆっくり育つ。</h1><span class="badge">モック・カメラ未接続</span></header>
+  <p class="lead">描き終えた線にも、小さな回転と呼吸を。作品を残したまま、時間が流れる感触を比較します。</p>
+  <div class="controls" aria-label="時間変化の設定">
+    <button id="motion" type="button" aria-pressed="true">時間変化 ON</button>
+    <label for="strength">動きの強さ <input id="strength" type="range" min="0" max="100" value="30"><output id="strength-value" for="strength">30%</output></label>
+    <button id="sample" type="button">模様を少し足す</button>
+  </div>
+  <p class="instruction">どちらの画面にも、押したまま描けます。タッチなら指でなぞってください。同じ線が両方に加わります。</p>
+  <div class="comparison">
+    <figure>
+      <div class="panel-head"><h2>描いた線を固定</h2><span>比較の基準</span></div>
+      <canvas id="reference" aria-label="時間変化なしの万華鏡。マウスまたはタッチで描けます。">Canvas に対応したブラウザで開いてください。</canvas>
+      <figcaption>描き足した模様は、その位置に残ります。</figcaption>
+    </figure>
+    <figure>
+      <div class="panel-head"><h2 id="evolution-title">残った線も動く</h2><span id="motion-state" aria-live="polite">ゆっくり回転・小さな呼吸</span></div>
+      <canvas id="evolving" aria-label="時間変化する万華鏡。マウスまたはタッチで描けます。">Canvas に対応したブラウザで開いてください。</canvas>
+      <figcaption>OFF で今の形のまま穏やかに止まり、ON でそこから再開します。</figcaption>
+    </figure>
+  </div>
+  <p class="note">12 方向と鏡像で描く操作モックです。線の自動消去・描き直し・カメラ接続は行いません。手の認識や本番の描画性能を再現するものではありません。</p>
+</main>
+<script>
+"use strict";
+(() => {
+  const TAU = Math.PI * 2;
+  const SIZE = 1024;
+  const HALF = SIZE / 2;
+  const LIMIT = 0.86;
+  const artwork = document.createElement("canvas");
+  artwork.width = artwork.height = SIZE;
+  const ink = artwork.getContext("2d");
+  const reference = document.getElementById("reference");
+  const evolving = document.getElementById("evolving");
+  const views = [reference, evolving].map(canvas => ({canvas, ctx: canvas.getContext("2d"), pointer: null}));
+  const motionButton = document.getElementById("motion");
+  const strengthInput = document.getElementById("strength");
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let enabled = !reducedMotion;
+  let strength = 0.30;
+  let smoothStrength = strength;
+  let velocity = enabled ? 1 : 0;
+  let evolutionTime = 0;
+  let axisTime = 0;
+  let sampleNumber = 0;
+  let strokeCount = 0;
+  let referenceDirty = true;
+  let evolvingDirty = true;
+  let lastFrame = null;
+  let renderTotal = 0;
+  let renderCount = 0;
+  const pointers = new Map();
+  const palette = ["#8ef0dc", "#c5a0f3", "#f2c892"];
+
+  // Same 12 rotations and x-mirrored coordinates as draw_mandala in Python.
+  function symmetricPoints(x, y, axis = 0) {
+    const result = [];
+    for (let index = 0; index < 12; index++) {
+      const angle = axis + TAU * index / 12;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      for (const mirror of [1, -1]) {
+        result.push([x * mirror * cos - y * sin, x * mirror * sin + y * cos]);
+      }
+    }
+    return result;
+  }
+
+  function evolutionPose() {
+    const gain = smoothStrength;
+    const breath = Math.sin(evolutionTime * 0.46) * 0.010 * gain;
+    const stretch = Math.sin(evolutionTime * 0.29) * 0.007 * gain;
+    return {angle: evolutionTime * 0.016, sx: 1 + breath + stretch, sy: 1 + breath - stretch};
+  }
+
+  function transformedPoint(x, y, pose) {
+    const c = Math.cos(pose.angle), s = Math.sin(pose.angle);
+    return [x * pose.sx * c - y * pose.sy * s, x * pose.sx * s + y * pose.sy * c];
+  }
+
+  function inversePoint(x, y, pose) {
+    const c = Math.cos(pose.angle), s = Math.sin(pose.angle);
+    return [(x * c + y * s) / pose.sx, (-x * s + y * c) / pose.sy];
+  }
+
+  function stroke(previous, current, axis, color) {
+    const ends = symmetricPoints(current[0], current[1], axis);
+    const starts = previous ? symmetricPoints(previous[0], previous[1], axis) : null;
+    ink.strokeStyle = color;
+    ink.fillStyle = color;
+    ink.lineWidth = 1.7;
+    ink.lineCap = "round";
+    ink.lineJoin = "round";
+    ink.beginPath();
+    ends.forEach((end, index) => {
+      const x = HALF + end[0] * HALF, y = HALF + end[1] * HALF;
+      if (starts) {
+        ink.moveTo(HALF + starts[index][0] * HALF, HALF + starts[index][1] * HALF);
+        ink.lineTo(x, y);
+      } else {
+        ink.moveTo(x + 1.7, y);
+        ink.arc(x, y, 1.7, 0, TAU);
+      }
+    });
+    if (starts) ink.stroke(); else ink.fill();
+    strokeCount++;
+    referenceDirty = evolvingDirty = true;
+  }
+
+  function addSample() {
+    const variant = sampleNumber++;
+    const color = palette[variant % palette.length];
+    const axis = variant * 0.043;
+    let previous = null;
+    for (let index = 0; index <= 110; index++) {
+      const u = index / 110;
+      const angle = -0.18 + u * 0.46;
+      const radius = 0.22 + (variant % 3) * 0.12 + Math.sin(u * Math.PI) * 0.27;
+      const point = [Math.cos(angle) * radius, Math.sin(angle) * radius];
+      stroke(previous, point, axis, color);
+      previous = point;
+    }
+  }
+
+  function pointFromEvent(event, view) {
+    const rect = view.canvas.getBoundingClientRect();
+    const raw = [(event.clientX - rect.left) / rect.width * 2 - 1,
+                 (event.clientY - rect.top) / rect.height * 2 - 1];
+    view.pointer = raw;
+    const point = view.canvas === evolving ? inversePoint(raw[0], raw[1], evolutionPose()) : raw;
+    return Math.hypot(...point) <= LIMIT ? point : null;
+  }
+
+  function appendPointer(event, view, fresh = false) {
+    const entry = pointers.get(event.pointerId);
+    if (!entry || entry.view !== view) return;
+    const point = pointFromEvent(event, view);
+    if (!point) { entry.previous = null; return; }
+    if (!fresh && entry.previous && Math.hypot(point[0] - entry.previous[0], point[1] - entry.previous[1]) < 0.002) return;
+    stroke(entry.previous, point, axisTime * 0.035, entry.color);
+    entry.previous = point;
+  }
+
+  function finishPointer(event, view) {
+    pointers.delete(event.pointerId);
+    view.pointer = null;
+    referenceDirty = evolvingDirty = true;
+  }
+
+  for (const view of views) {
+    view.canvas.addEventListener("pointerdown", event => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      view.canvas.setPointerCapture(event.pointerId);
+      pointers.set(event.pointerId, {view, previous: null, color: palette[strokeCount % palette.length]});
+      appendPointer(event, view, true);
+      event.preventDefault();
+    });
+    view.canvas.addEventListener("pointermove", event => {
+      if (!pointers.has(event.pointerId)) return;
+      const samples = event.getCoalescedEvents ? event.getCoalescedEvents() : [];
+      for (const sample of (samples.length ? samples.slice(-32) : [event])) appendPointer(sample, view);
+      referenceDirty = evolvingDirty = true;
+    });
+    for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      view.canvas.addEventListener(name, event => finishPointer(event, view));
+    }
+  }
+
+  function dropPointers() {
+    pointers.clear();
+    views.forEach(view => { view.pointer = null; });
+    referenceDirty = evolvingDirty = true;
+  }
+  window.addEventListener("blur", dropPointers);
+  document.addEventListener("visibilitychange", () => { dropPointers(); lastFrame = null; });
+
+  function updateLabels() {
+    motionButton.setAttribute("aria-pressed", String(enabled));
+    motionButton.textContent = enabled ? "時間変化 ON" : "時間変化 OFF";
+    document.getElementById("evolution-title").textContent = enabled ? "残った線も動く" : "今の形で停止";
+    document.getElementById("motion-state").textContent = enabled ? "ゆっくり回転・小さな呼吸" : "形を戻さず、穏やかに停止";
+  }
+  motionButton.addEventListener("click", () => { enabled = !enabled; updateLabels(); });
+  strengthInput.addEventListener("input", () => {
+    strength = Number(strengthInput.value) / 100;
+    document.getElementById("strength-value").value = `${Math.round(strength * 100)}%`;
+  });
+  document.getElementById("sample").addEventListener("click", addSample);
+
+  function resize() {
+    const ratio = Math.min(1.5, window.devicePixelRatio || 1);
+    views.forEach(view => {
+      const width = Math.round(view.canvas.getBoundingClientRect().width * ratio);
+      if (view.canvas.width !== width || view.canvas.height !== width) view.canvas.width = view.canvas.height = width;
+    });
+    referenceDirty = evolvingDirty = true;
+  }
+  new ResizeObserver(resize).observe(document.querySelector(".comparison"));
+
+  function paint(view, pose = {angle: 0, sx: 1, sy: 1}) {
+    const ctx = view.ctx, width = view.canvas.width;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#090d19";
+    ctx.fillRect(0, 0, width, width);
+    ctx.save();
+    ctx.translate(width / 2, width / 2);
+    ctx.strokeStyle = "#202838";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, 0, width * LIMIT / 2, 0, TAU); ctx.stroke();
+    ctx.rotate(pose.angle);
+    ctx.scale(pose.sx, pose.sy);
+    ctx.drawImage(artwork, -width / 2, -width / 2, width, width);
+    ctx.restore();
+    if (view.pointer) {
+      const x = (view.pointer[0] + 1) * width / 2, y = (view.pointer[1] + 1) * width / 2;
+      ctx.strokeStyle = "#ffffff66";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 10, 0, TAU); ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, TAU); ctx.fill();
+    }
+  }
+
+  function frame(now) {
+    const dt = lastFrame === null ? 0 : Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
+    const previousVelocity = velocity;
+    const previousStrength = smoothStrength;
+    const easing = 1 - Math.exp(-dt / 0.28);
+    velocity += ((enabled ? 1 : 0) - velocity) * easing;
+    if (Math.abs(velocity - (enabled ? 1 : 0)) < 0.0001) velocity = enabled ? 1 : 0;
+    smoothStrength += (strength - smoothStrength) * easing;
+    if (Math.abs(smoothStrength - strength) < 0.0001) smoothStrength = strength;
+    evolutionTime += dt * velocity * smoothStrength;
+    axisTime += dt;
+    const start = performance.now();
+    if (referenceDirty) { paint(views[0]); referenceDirty = false; }
+    if (evolvingDirty || velocity > 0 || previousVelocity !== velocity || previousStrength !== smoothStrength) {
+      paint(views[1], evolutionPose());
+      evolvingDirty = false;
+      renderTotal += performance.now() - start;
+      renderCount++;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  updateLabels();
+  addSample();
+  addSample();
+  resize();
+  requestAnimationFrame(frame);
+  // Read-only diagnostics for mock review; no camera, network or production API.
+  window.mandalaMock = Object.freeze({
+    symmetricPoints, transformedPoint, inversePoint,
+    diagnostics: () => ({strokeCount, evolutionTime, enabled, velocity, pose: evolutionPose(),
+      activePointers: pointers.size, sourceSize: [artwork.width, artwork.height],
+      averageRenderMs: renderCount ? renderTotal / renderCount : 0})
+  });
+})();
+</script>
+</body>
+</html>

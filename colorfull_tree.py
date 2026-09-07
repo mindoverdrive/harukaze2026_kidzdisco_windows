@@ -169,7 +169,6 @@ def main():
         pygame.init()
         screen, _stage_size = display_utils.setup_pygame_fullscreen()
         width, height = screen.get_size()
-        font = pygame.font.SysFont(None, 48)
 
         hands = mp.solutions.hands.Hands(
             model_complexity=1,
@@ -192,7 +191,6 @@ def main():
         smooth_targets = {}
         multi_hand_centers = {}
         multi_hand_specs = []
-        status_text = "FINGERS = <2>"
         single_hand_base_path = None
         camera_surface = None
         camera_failure_since = None
@@ -266,12 +264,10 @@ def main():
                             "spread": (math.pi / 2) * spread_multiplier,
                             "hue_offset": hand_index * 120,
                         })
-                    status_text = "FINGERS = <" + " | ".join(map(str, finger_counts)) + ">"
                 elif hands_list:
                     first_hand = hands_list[0]
                     detected_fingers = count_raised_fingers(first_hand)
                     target_spread, target_ratio, target_depth = FINGER_PARAMS[detected_fingers]
-                    status_text = f"FINGERS = <{detected_fingers}>"
                     control_hand = first_hand
                     wrist = control_hand.landmark[0]
                     single_hand_base_path = choose_single_hand_base_path(
@@ -356,8 +352,6 @@ def main():
                         smooth_targets,
                         base_path,
                     )
-            text_surface = font.render(status_text, True, (255, 255, 255))
-            screen.blit(text_surface, (30, 30))
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=frame_processed)
             clock.tick(60)

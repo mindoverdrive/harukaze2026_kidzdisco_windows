@@ -221,7 +221,7 @@ class TreeSceneTests(unittest.TestCase):
         self.assertNotEqual(first_up.args[1:3], second_up.args[1:3])
         self.assertEqual(first_up.args[6], 0)
         self.assertEqual(second_up.args[6], 120)
-        harness.font.render.assert_called_with("FINGERS = <5 | 5>", True, (255, 255, 255))
+        harness.font.render.assert_not_called()
 
     def test_short_camera_gap_keeps_drawing_but_does_not_claim_a_first_frame(self):
         harness = SceneHarness(
