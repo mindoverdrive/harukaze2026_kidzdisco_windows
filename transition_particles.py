@@ -211,8 +211,12 @@ class ParticleCurtain:
 
     def _position(self, chip, now, state, level):
         cell_width, cell_height = self._cell
-        x = chip.x + math.sin(now * 0.52 + chip.phase) * cell_width * 0.045
-        y = chip.y + math.sin(now * 0.63 + chip.phase * 1.3) * cell_height * 0.065
+        # Independent phases and incommensurate rates keep the held cover alive.
+        # The opaque base remains intact beneath these decorative chips.
+        x = chip.x + (math.sin(now * 0.52 + chip.phase) * .11
+                      + math.sin(now * .83 + chip.phase * 2.1) * .045) * cell_width
+        y = chip.y + (math.sin(now * 0.63 + chip.phase * 1.3) * .13
+                      + math.sin(now * .37 + chip.phase * .7) * .045) * cell_height
         if state == "covering":
             y -= (1.0 - level) * cell_height * (0.6 + chip.delay * 2)
         return x, y
@@ -280,7 +284,7 @@ class ParticleCurtain:
 
         Call after the whole frame has been composed, with the next scene ready
         underneath and window alpha held at 255. One reusable memory copy keeps
-        camera and logo live inside the fragments; nothing is saved to disk.
+        logo and blocks live inside the opaque fragments; nothing is saved to disk.
         """
         if not self.available or curtain.state != "revealing":
             return False

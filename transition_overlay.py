@@ -15,6 +15,7 @@ import threading
 import time
 
 from scene_control import JsonChannel, SceneControlError
+from navigation_charge import draw_charge
 
 
 TRANSPARENT_COLOR = (255, 0, 128)
@@ -383,7 +384,7 @@ def configure_overlay_window(pygame, geometry):
 
 
 class NavigationStyle:
-    """Cache open glass edges, their rear plane and the foreground typography."""
+    """Cache a single flat glass surface and its foreground typography."""
 
     COLORS = {"back": (224, 159, 255), "next": (105, 243, 217)}
 
@@ -397,7 +398,6 @@ class NavigationStyle:
         height = next(iter(regions.values()))[3]
         self.scale = height / 162
         self.shadow_margin = max(3, round(7 * self.scale))
-        depth_x, depth_y = max(3, round(8 * self.scale)), max(4, round(8 * self.scale))
         title_size = max(20, round(54 * self.scale))
         detail_size = max(12, round(21 * self.scale))
         title = pygame.font.Font(str(font_dir / "bahnschrift.ttf"), title_size)
@@ -427,25 +427,9 @@ class NavigationStyle:
                 max(1, width - 2 * pad), max(2, round(3 * self.scale)),
             )
             margin = self.shadow_margin
-            depth = pygame.Surface((width + depth_x + margin * 2, height + depth_y + margin * 2), pygame.SRCALPHA)
+            depth = pygame.Surface((width + margin * 2, height + margin * 2), pygame.SRCALPHA)
             depth.fill((0, 0, 0, 0))
-            rear = pill.move(margin + depth_x, margin + depth_y)
-            # Only outlines receive pixels. The scene remains visible through both
-            # planes; cached contour bands soften the shadow without a filled card.
-            for spread in range(margin, 0, -1):
-                shade = (13 + spread * 2, 17 + spread * 2, 27 + spread * 3)
-                pygame.draw.rect(depth, shade, rear.inflate(spread * 2, spread * 2),
-                                 width=1, border_radius=radius + spread)
-            pygame.draw.rect(depth, tuple(round(c * .30) for c in accent), rear,
-                             width=1, border_radius=radius)
-            pygame.draw.line(depth, tuple(round(c * .24) for c in accent),
-                             (rear.left + radius, rear.bottom - 3),
-                             (rear.right - radius, rear.bottom - 3), 1)
-            for front in ((margin + radius, margin + pill.bottom - 1),
-                          (margin + width - 1, margin + pill.centery),
-                          (margin + width - radius, margin + pill.bottom - 1)):
-                pygame.draw.line(depth, tuple(round(c * .44) for c in accent), front,
-                                 (front[0] + depth_x, front[1] + depth_y), 1)
+            # No offset rear contour, connecting edges or extrusion shadow.
             self.depth_layers[action] = depth
             card = pygame.Surface((width, height), pygame.SRCALPHA)
             card.fill((0, 0, 0, 0))
@@ -456,14 +440,15 @@ class NavigationStyle:
             icon_inset = max(20, round(48 * self.scale))
             icon_x = icon_inset if action == "back" else width - icon_inset
             icon_y = pill.centery
-            icon_radius = max(12, round(25 * self.scale))
-            pygame.draw.circle(card, tuple(int(c * .48) for c in accent), (icon_x, icon_y), icon_radius, 1)
             direction = -1 if action == "back" else 1
-            arm = max(5, round(10 * self.scale))
+            arm = max(9, round(19 * self.scale))
+            stroke = max(3, round(5 * self.scale))
+            pygame.draw.line(card, accent, (icon_x - direction * arm, icon_y),
+                             (icon_x + direction * arm, icon_y), stroke)
             pygame.draw.lines(card, accent, False,
-                              [(icon_x - direction * arm // 2, icon_y - arm),
-                               (icon_x + direction * arm // 2, icon_y),
-                               (icon_x - direction * arm // 2, icon_y + arm)], max(2, round(3 * self.scale)))
+                              [(icon_x, icon_y - arm),
+                               (icon_x + direction * arm, icon_y),
+                               (icon_x, icon_y + arm)], stroke)
             label = label_surface(title, action.upper(), (243, 245, 255))
             hint = "1秒キープで " + ("もどる" if action == "back" else "つぎへ")
             subtitle = label_surface(detail, hint, (213, 221, 242))
@@ -485,10 +470,6 @@ class NavigationStyle:
                 tint = tuple(round(c * gain) for c in accent)
                 glint = tuple(round(c * .45 + 255 * (.30 + step * .025)) for c in accent)
                 shift = round(step * self.scale)
-                pygame.draw.line(light, tint, (pad + shift, pill.top + 5),
-                                 (min(width - pad, pad + round(width * .22) + shift), pill.top + 5), 1)
-                pygame.draw.line(light, glint, (width - pad - shift, pill.bottom - 5),
-                                 (width - pad - round(width * .20) - shift, pill.bottom - 5), 1)
                 cap = pygame.Rect(width - pill.height + 4, pill.top + 4, pill.height - 8, pill.height - 8)
                 pygame.draw.arc(light, tint, cap, -.28 + step * .01, .28 + step * .01, 1)
                 lights.append(light)
@@ -505,25 +486,13 @@ def draw_navigation(screen, pygame, style, hold, now=None):
         lights = style.edge_lights[action]
         screen.blit(lights[round(breath * (len(lights) - 1))], (x, y))
         if hold.active == action:
-            color = style.COLORS[action]
             pill = style.visual_rects[action].move(x, y)
-            pygame.draw.rect(screen, color, pill, width=2, border_radius=pill.height // 2)
-            track = style.progress_tracks[action].move(x, y)
-            bar_width = round(track.width * hold.progress)
-            if bar_width > 0:
-                pygame.draw.rect(screen, color, (track.x, track.y, bar_width, track.height),
-                                 border_radius=track.height // 2)
+            pygame.draw.rect(screen, style.COLORS[action], pill, width=2,
+                             border_radius=pill.height // 2)
+            draw_charge(screen, pygame, pill, hold.progress, now, index * .31)
     if hold.point is not None:
         x, y = map(int, hold.point)
-        radius = max(20, min(46, screen.get_height() // 24))
-        accent = style.COLORS.get(hold.active, (105, 243, 217))
         pygame.draw.circle(screen, (245, 250, 255), (x, y), 5)
-        pygame.draw.circle(screen, (90, 105, 130), (x, y), radius, 3)
-        if hold.progress >= 1:
-            pygame.draw.circle(screen, accent, (x, y), radius, 5)
-        elif hold.progress > 0:
-            pygame.draw.arc(screen, accent, (x - radius, y - radius, radius * 2, radius * 2),
-                            -math.pi / 2, -math.pi / 2 + math.tau * hold.progress, 5)
 
 
 def run_overlay(port, token, geometry):
@@ -553,7 +522,6 @@ def run_overlay(port, token, geometry):
         clock = pygame.time.Clock()
         hold = NavigationHold(navigation_regions(*geometry[2:]), max_jump=max(30, geometry[2] * 0.06))
         style = NavigationStyle(pygame, hold.regions)
-        camera_layer = CurtainCamera()
         logo = AlternatingCurtainLogo(geometry[2:])
         particles = ParticleCurtain(geometry[2:])
         worker = DetectionWorker(*geometry[2:])
@@ -621,13 +589,12 @@ def run_overlay(port, token, geometry):
             enabled = revealed_once and curtain.state == "idle" and failure is None
             action = hold.update(points, observed_at, now, enabled=enabled)
             try:
-                camera_layer.update(pygame, worker.camera_snapshot(), curtain.state, now)
                 if action is not None:
                     send({"event": "ACTION", "token": token, "cycle": curtain.cycle, "action": action})
                 acknowledgement = present_frame(
                     screen, pygame, curtain, now,
                     (lambda: draw_navigation(screen, pygame, style, hold, now)) if enabled else None,
-                    lambda rect: camera_layer.draw(screen, rect),
+                    None,  # Camera appears only as part of the next scene through opened gaps.
                     lambda rect: logo.draw(screen, rect, now, curtain),
                     opacity,
                     lambda rect: particles.draw(screen, rect, now, curtain),

@@ -50,16 +50,18 @@ class NavigationStyleTests(unittest.TestCase):
             self.assertEqual(self.screen.get_at((x + width // 2, y + height - 24))[:3],
                              overlay.TRANSPARENT_COLOR)
 
-    def test_rear_edge_is_offset_while_navigation_regions_stay_fixed(self):
+    def test_no_rear_edge_while_navigation_regions_stay_fixed(self):
         original = dict(self.hold.regions)
         self.screen.fill(overlay.TRANSPARENT_COLOR)
         overlay.draw_navigation(self.screen, self.pygame, self.style, self.hold, now=1)
         for x, y, width, height in self.regions.values():
-            self.assertTrue(any(
+            self.assertFalse(any(
                 self.screen.get_at((x + width + offset, y + height // 2))[:3] != overlay.TRANSPARENT_COLOR
                 for offset in range(1, 18)
             ))
         self.assertEqual(self.hold.regions, original)
+        for layer in self.style.depth_layers.values():
+            self.assertEqual(self.pygame.mask.from_surface(layer, 0).count(), 0)
 
     def test_foreground_fits_a_centered_capsule_at_both_output_sizes(self):
         for output_size in ((1280, 720), (1920, 1080)):
@@ -90,15 +92,15 @@ class NavigationStyleTests(unittest.TestCase):
         x, y, width, _ = self.regions["next"]
         bounds = self.style.cards["next"].get_bounding_rect()
         self.assertEqual(self.screen.get_at((x + width // 2, y))[:3], overlay.TRANSPARENT_COLOR)
-        self.assertEqual(self.screen.get_at((x + width // 2, y + bounds.top))[:3],
-                         self.style.COLORS["next"])
+        self.assertNotEqual(self.screen.get_at((x + width // 2, y + bounds.top))[:3],
+                            overlay.TRANSPARENT_COLOR)
         track = self.style.progress_tracks["next"]
         self.assertGreaterEqual(track.left, bounds.height // 2)
         self.assertLessEqual(track.right, width - bounds.height // 2)
         self.assertTrue(bounds.contains(track))
         fill = round(track.width * self.hold.progress)
         self.assertEqual(self.screen.get_at((x + track.left + fill - 2, y + track.centery))[:3],
-                         self.style.COLORS["next"])
+                         overlay.TRANSPARENT_COLOR)
         self.assertEqual(self.screen.get_at((x + track.right - 2, y + track.centery))[:3],
                          overlay.TRANSPARENT_COLOR)
 
