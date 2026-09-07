@@ -45,6 +45,18 @@ HDMI接続後の実読ではXiaomiの内部名がDISPLAY5、EDID名が `Mi TV(XM
 
 従来の `Start Kids Test.cmd` と `configs/kids_test_acer.json` は、primary画面での机上確認用として保持する。Xiaomi向け検証に失敗したときの自動代替にはしない。既存primary試験の結果と新しいXiaomi構成の試験IDを分ける。
 
+## GPUメモリの補助観測（2026-09-07追加）
+
+シーンの描画処理へ組み込まず、別プロセスからWindows性能カウンターを読む。試験開始後、runtime.jsonlがあるフォルダーを指定する。
+
+```powershell
+rtk proxy python scripts/observe_trial_gpu.py --trial test_reports/対象の試験フォルダー --interval 60 --samples 720
+```
+
+同じフォルダーにgpu_observation_日時.jsonlを新規保存する。各PIDはruntimeのcreation_ticksと照合し、観測の前後で同じプロセスである場合だけ専用/共有GPUメモリを関連付ける。複数GPUのインスタンスを合算。インスタンス不在や取得不能はnull/unavailableとして残し、0使用と解釈しない。問い合わせは最大15秒でタイムアウトし、シーンへ停止・再起動・カメラ操作を送らない。run_endを読み取ると終了する。本番観測には60秒間隔を使い、短い間隔は診断用に限定する。
+
+実機Stormで2回の取得と試験終了の検出を確認した。観測器の動作確認であり、GPUリークなし・12時間合格の証拠ではない。従来runtime.jsonlのgpu_bytes=nullは変更していない。
+
 ## 記録されるデータ
 
 共通ランチャーは試験ごとに `test_reports/kids_trial_<日時>_<ID>/` を作る。使用した入口とconfigを記録し、従来のprimary試験とXiaomi向け試験を区別する。
