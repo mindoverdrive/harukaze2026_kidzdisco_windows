@@ -36,7 +36,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
-from scene_control import notify_first_frame
+from scene_control import notify_first_frame, notify_exit_request
 import math
 import colorsys
 import sys
@@ -181,6 +181,7 @@ class Pointer:
         self.move_angle = 0.0
         self.twist_factor = 0.0
         self.is_new = True
+        self.feedback_age = 0.45
         
         # 弾ける動き（衝突時）の速度ベクトルを管理
         self.vx = 0.0
@@ -188,6 +189,23 @@ class Pointer:
         
         # 固有のフラクタルタイプ(0~3)を割り当て
         self.fractal_type = f_type
+
+
+def draw_pointer_feedback(surface, pointer, dt):
+    """Mark the actual fingertip; the artwork keeps its original eased motion."""
+    if not pointer.has_target:
+        return
+    palette = ((100, 230, 255), (255, 150, 230), (255, 215, 100), (140, 255, 175))
+    color = palette[pointer.fractal_type]
+    center = (round(pointer.target_x), round(pointer.target_y))
+    pygame.draw.circle(surface, color, center, 8, 1)
+    pygame.draw.circle(surface, (255, 255, 255), center, 3)
+    phase = min(1.0, pointer.feedback_age / 0.45)
+    if phase < 1.0:
+        glow = tuple(round(channel * (1.0 - phase)) for channel in color)
+        pygame.draw.circle(surface, glow, center, 10 + round(18 * phase), 1)
+    pointer.feedback_age = min(0.45, pointer.feedback_age + max(0.0, dt))
+
 
 def main():
     resources = ExitStack()
@@ -236,13 +254,19 @@ def main():
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                notify_exit_request("pygame_quit")
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
+                    notify_exit_request("escape_key" if event.key == pygame.K_ESCAPE else "q_key")
                     running = False
             elif event.type == pygame.VIDEORESIZE:
                 WIDTH, HEIGHT = event.w, event.h
                 trail_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+
+        if not running:
+            break
+        frame_dt = min(clock.get_time() / 1000.0, 0.1)
                 
         # カメラ映像の取得と処理
         ret, frame = cap.read()
@@ -259,6 +283,8 @@ def main():
                     index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
                     tx, ty = display_utils.normalized_to_stage(index_tip.x, index_tip.y, camera_layout)
                     target_points.append((tx, ty))
+        else:
+            camera_surface = None
         
         if camera_surface is not None:
             screen.blit(camera_surface, (0, 0))
@@ -291,6 +317,7 @@ def main():
                     best_p.vx = 0.0
                     best_p.vy = 0.0
                     best_p.is_new = False
+                    best_p.feedback_age = 0.0
                 best_p.target_x = tx
                 best_p.target_y = ty
 
@@ -389,8 +416,7 @@ def main():
         
         screen.blit(trail_surface, (0, 0))
         for p in pointers:
-            if p.has_target:
-                pygame.draw.circle(screen, (255, 255, 255), (int(p.current_x), int(p.current_y)), 8, 1)
+            draw_pointer_feedback(screen, p, frame_dt)
             
         pygame.display.flip()
         notify_first_frame(cap, frame_processed=bool(ret))

@@ -12,6 +12,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 TRIAL_SCENES = {
+    "fractal": "fractal_moving_acer.py",
+    "mandala3": "finger_mandala_acer.py",
     "grid": "finger_grid_interaction_acer.py",
     "particle-storm": "particle_storm_acer.py",
     "saturn": "saturn_particles_acer.py",
