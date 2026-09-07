@@ -19,6 +19,7 @@ import numpy as np
 
 from shared_camera import SharedCameraRelay
 from scene_control import SceneLaunchControl, SceneControlError
+from transition_manager import TransitionManager
 from scene_profile_runner import resolve_scene_path
 from windows_process import WindowsSceneJob, get_scene_job
 from runtime_diagnostics import RuntimeDiagnostics
@@ -355,10 +356,10 @@ class SceneManager:
         self.preloaded_scene_name = None
         self.preloaded_control = None
         self.transition_process = None
-        self.transition_started_at = None
+        self.transition = None
         self.switch_pending = False
-        self.switch_cover_until = None
         self.switch_had_live_scene = False
+        self.requested_scene_index = None
         self.last_switch_error = None
         self.fatal_error = None
         self.uncontained_process = None
@@ -431,7 +432,8 @@ class SceneManager:
         print(f"\n[Manager] >>> {label}: {scene_name} <<<\n")
 
     def _next_scene_path(self):
-        return self.all_scenes[self.scene_index % len(self.all_scenes)]
+        index = self.requested_scene_index if self.requested_scene_index is not None else self.scene_index
+        return self.all_scenes[index % len(self.all_scenes)]
 
     def _launch_scene_process(self, scene_path, control):
         argv = [sys.executable, scene_path]
@@ -568,26 +570,16 @@ class SceneManager:
     def _start_transition_overlay(self):
         if not CONFIG.get("TRANSITION_ENABLED", True):
             return None
-        transition_name = CONFIG.get("TRANSITION_SCRIPT", "sakura_transition.py")
-        transition_path = os.path.join(CONFIG["SCENE_DIR"], transition_name)
-        if not os.path.exists(transition_path):
-            print(f"[Manager] Warning: transition script not found: {transition_path}")
-            return None
-
-        x, y, w, h = self._stage_geometry()
-        argv = [
-            sys.executable,
-            transition_path,
-            "--x", str(x),
-            "--y", str(y),
-            "--width", str(w),
-            "--height", str(h),
-            "--total-duration", str(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0)),
-            "--phase1-end", str(CONFIG.get("TRANSITION_PHASE1_END", 1.5)),
-            "--phase2-end", str(CONFIG.get("TRANSITION_PHASE2_END", 2.5)),
-        ]
-        self.transition_process = self._spawn_process(argv, cwd=os.path.dirname(transition_path))
-        self.transition_started_at = time.monotonic()
+        if self.transition is None:
+            self.transition = TransitionManager(
+                spawn=self._spawn_process, stop=self._kill_process,
+                geometry=self._stage_geometry(), camera_env=self.camera_env,
+                on_event=(lambda event: self.diagnostics.record("transition_control", detail=event))
+                if self.diagnostics else None,
+            )
+        if not self.transition.begin():
+            raise SceneControlError("transition did not accept the cover request")
+        self.transition_process = self.transition.process
         return self.transition_process
 
     def _ensure_preloaded_scene(self):
@@ -614,50 +606,84 @@ class SceneManager:
             return False
 
     def launch_scene(self, scene_path):
-        if scene_path not in self.all_scenes:
-            raise ConfigurationError(f"Scene is outside PRODUCTION_SCENES: {scene_path}")
-        if self.switch_pending or self.transition_process is not None:
-            return False
-        if not self._discard_preloaded():
-            return False
-        self.scene_index = self.all_scenes.index(scene_path)
-        return self.switch_scene()
+        return self.request_scene("select", scene_path)
 
-    def switch_scene(self):
-        if not self.all_scenes or self.switch_pending or self.transition_process is not None:
+    @property
+    def transition_busy(self):
+        return self.transition is not None and self.transition.busy
+
+    def request_scene(self, action="next", scene_path=None):
+        """One bounded path for hold controls, keyboard and operator UI requests."""
+        if action not in {"next", "back", "select"}:
+            raise ConfigurationError(f"Unknown scene action: {action}")
+        if not self.all_scenes or self.switch_pending or self.transition_busy or self.fatal_error:
             return False
+        if action == "select":
+            if scene_path not in self.all_scenes:
+                # UI may submit only a configured basename; arbitrary paths never launch.
+                matches = [path for path in self.all_scenes if os.path.basename(path) == scene_path]
+                if len(matches) != 1:
+                    raise ConfigurationError(f"Scene is outside PRODUCTION_SCENES: {scene_path}")
+                scene_path = matches[0]
+            target = self.all_scenes.index(scene_path)
+        elif action == "back" and self.running_scene_path in self.all_scenes:
+            target = (self.all_scenes.index(self.running_scene_path) - 1) % len(self.all_scenes)
+        else:
+            target = self.scene_index % len(self.all_scenes)
+        if self.preloaded_process is not None and self.preloaded_scene_path != self.all_scenes[target]:
+            if not self._discard_preloaded():
+                self.fatal_error = "previous candidate could not be stopped"
+                return False
+        self.requested_scene_index = target
         self.last_switch_error = None
         self.switch_pending = True
-        self.switch_cover_until = None
-        self.switch_had_live_scene = False
-        if not self._ensure_preloaded_scene():
-            self.switch_pending = False
-            return False
-        self.tick()
+        self.switch_had_live_scene = self.is_scene_running()
+        try:
+            self._start_transition_overlay()
+            if not self._ensure_preloaded_scene():
+                return False
+            if self.diagnostics:
+                self.diagnostics.record("scene_request", action=action, target=self.all_scenes[target])
+            self.tick()
+        except (OSError, SceneControlError) as exc:
+            self._fail_switch(str(exc))
         return self.last_switch_error is None
+
+    def switch_scene(self):
+        return self.request_scene("next")
 
     def _fail_switch(self, reason):
         self.last_switch_error = reason
         print(f"[Manager] Candidate failed: {self.preloaded_scene_name}: {reason}")
         self.switch_pending = False
-        self.switch_cover_until = None
+        self.requested_scene_index = None
         self.switch_had_live_scene = False
         if not self._discard_preloaded():
             self.fatal_error = "failed candidate could not be stopped: " + reason
         elif not self.is_scene_running():
             self.fatal_error = "no running scene after candidate failure: " + reason
+        elif self.transition is not None and self.transition.covered and not self.transition.error:
+            # Only uncover the predecessor once the failed candidate has stopped.
+            self.transition.reveal()
 
     def tick(self):
-        now = time.monotonic()
-        transition = self.transition_process
+        transition = self.transition
         if transition is not None:
-            if transition.poll() is not None:
-                self.transition_process = None
-            elif now - self.transition_started_at > float(CONFIG.get("TRANSITION_TOTAL_DURATION", 5.0)) + 1.0:
-                if self._kill_process(transition, "sakura_transition", reason="transition_timeout"):
-                    self.transition_process = None
-                else:
-                    self.fatal_error = "transition overlay could not be stopped"
+            transition.poll()
+            self.transition_process = transition.process
+            if transition.error:
+                if self.switch_pending:
+                    self._fail_switch(transition.error)
+                self.fatal_error = "transition failed: " + transition.error
+                return
+            if not self.switch_pending and transition.covered and transition.busy:
+                # Failed READY before cover completed: reveal only the retained scene.
+                if self.last_switch_error and self.is_scene_running():
+                    transition.reveal()
+            action = transition.consume_action()
+            if action is not None and not self.switch_pending and not transition.busy:
+                self.request_scene(action)
+                return
 
         if self.preloaded_process is None or self.fatal_error:
             return
@@ -667,6 +693,8 @@ class SceneManager:
             if type(control.child_pid) is int and control.child_pid > 0:
                 self.preloaded_process._scene_pid = control.child_pid
             if not self.switch_pending:
+                return
+            if transition is not None and not transition.covered:
                 return
             if state == "READY":
                 control.start()
@@ -678,16 +706,9 @@ class SceneManager:
             if expected_shm and control.first_frame.get("shm_name") != expected_shm:
                 raise SceneControlError("FIRST_FRAME came from a different shared camera")
 
-            if self.switch_cover_until is None:
-                self.switch_had_live_scene = self.is_scene_running()
-                overlay = self._start_transition_overlay() if self.switch_had_live_scene else None
-                delay = float(CONFIG.get("TRANSITION_COVER_DELAY", 1.5)) if overlay else 0.0
-                self.switch_cover_until = now + max(0.0, delay)
-            if now < self.switch_cover_until:
-                return
             # Initial starts and recovery promotions are observable, but only a
             # still-live predecessor stopped after FIRST_FRAME completes a switch.
-            completes_switch = self.switch_had_live_scene and self.is_scene_running()
+            completes_switch = self.is_scene_running()
             if not self.kill_current():
                 raise SceneControlError("current scene could not be stopped; keeping its handle")
 
@@ -695,14 +716,18 @@ class SceneManager:
             self.running_scene_path = self.preloaded_scene_path
             self.current_scene_name = self.preloaded_scene_name
             print(f"[Manager] Promoted {self.current_scene_name} pid={self.running_process.pid} after FIRST_FRAME")
-            self.scene_index += 1
+            promoted_index = (self.requested_scene_index if self.requested_scene_index is not None
+                              else self.scene_index)
+            self.scene_index = promoted_index + 1
+            self.requested_scene_index = None
             self.completed_promotions += 1
             if completes_switch:
                 self.completed_switches += 1
             self._clear_preloaded()
             self.switch_pending = False
-            self.switch_cover_until = None
             self.switch_had_live_scene = False
+            if transition is not None and not transition.reveal():
+                self.fatal_error = "transition did not accept reveal after promotion"
             if self.preload_enabled:
                 self._ensure_preloaded_scene()
         except (OSError, SceneControlError) as exc:
@@ -730,21 +755,30 @@ class SceneManager:
                 print(f"[Manager] Cleanup error ({label}): {exc}")
                 return False
 
-        run_step("preloaded scene", self._discard_preloaded)
-        run_step("current scene", self.kill_current)
+        candidate_stopped = run_step("preloaded scene", self._discard_preloaded)
+        current_stopped = run_step("current scene", self.kill_current)
+        uncontained = getattr(self, "uncontained_process", None)
+        uncontained_stopped = True
+        if uncontained is not None:
+            uncontained_stopped = run_step("uncontained scene", lambda: self._kill_process(
+                uncontained, "failed launch", reason="launch_setup_failed"))
+            if uncontained_stopped:
+                self.uncontained_process = None
+        scenes_stopped = candidate_stopped and current_stopped and uncontained_stopped
+        transition = getattr(self, "transition", None)
         transition_process = self.transition_process
-        if transition_process is not None:
+        if transition is not None and not scenes_stopped:
+            run_step("retain emergency cover", lambda: transition.fail_closed("Scene cleanup incomplete"))
+        elif transition is not None:
+            if run_step("transition overlay", transition.close):
+                self.transition_process = None
+        elif transition_process is not None:
             transition_stopped = run_step(
                 "transition overlay",
                 lambda: self._kill_process(transition_process, "sakura_transition", reason=self.shutdown_reason),
             )
             if transition_stopped:
                 self.transition_process = None
-
-        uncontained = getattr(self, "uncontained_process", None)
-        if uncontained is not None and run_step("uncontained scene", lambda: self._kill_process(
-                uncontained, "failed launch", reason="launch_setup_failed")):
-            self.uncontained_process = None
 
         if errors:
             print("[Manager] Cleanup completed with errors: " + "; ".join(errors))
@@ -944,7 +978,8 @@ def main():
         if not args.camera_only:
             manager = SceneManager(camera_env=camera_env, scenes=production_scenes, diagnostics=diagnostics)
 
-        if not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True):
+        if (not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True)
+                and not CONFIG.get("TRANSITION_ENABLED", True)):
             monitor = HeadClapMonitor(frame_source=camera_relay)
             monitor.start()
         elif args.camera_only:
@@ -991,7 +1026,7 @@ def main():
                 stop_reason = "duration_reached"
                 break
             if (args.switch_count and manager is not None and manager.completed_switches >= args.switch_count
-                    and manager.transition_process is None and not manager.switch_pending):
+                    and not manager.transition_busy and not manager.switch_pending):
                 stop_reason = "switch_count_reached"
                 break
             if next_switch_at is not None and now >= next_switch_at and manager is not None:
@@ -1025,7 +1060,14 @@ def main():
                 stop_reason = "operator_quit"
                 break
             if action == "next" and manager is not None:
-                manager.switch_scene()
+                manager.request_scene("next")
+            if action == "back" and manager is not None:
+                manager.request_scene("back")
+            if isinstance(action, dict) and action.get("action") == "select" and manager is not None:
+                try:
+                    manager.request_scene("select", action.get("scene"))
+                except ConfigurationError as exc:
+                    print(f"[Manager] Rejected scene request: {exc}")
 
             key = -1
             if manager_window_available:
@@ -1040,12 +1082,12 @@ def main():
                     monitor_text = f"Clap Monitor: {monitor.status}"
                 cv2.putText(control_img, monitor_text, (10, 85),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
-                cv2.putText(control_img, "n=Next  q=Quit", (10, 110),
+                cv2.putText(control_img, "n=Next  b=Back  q=Quit", (10, 110),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
                 cv2.imshow("Manager Control", control_img)
-                key = cv2.waitKey(100) & 0xFF
+                key = cv2.waitKey(20) & 0xFF
             else:
-                time.sleep(0.1)
+                time.sleep(0.02)
 
             if key == ord("q"):
                 stop_reason = "user_quit"
@@ -1053,6 +1095,8 @@ def main():
             if key == ord("n") and manager is not None:
                 print("[Manager] Keyboard next scene")
                 manager.switch_scene()
+            if key == ord("b") and manager is not None:
+                manager.request_scene("back")
 
     except KeyboardInterrupt:
         stop_reason = "user_interrupt"

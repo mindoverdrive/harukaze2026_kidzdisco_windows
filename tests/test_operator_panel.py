@@ -237,6 +237,22 @@ class OperatorPanelTests(unittest.TestCase):
             with self.subTest(address=address), self.assertRaises(ValueError):
                 OperatorPanel(None, self.config_path, host=address)
 
+    def test_back_and_select_are_bounded_operator_requests(self):
+        panel = self.panel()
+        self.assertEqual(self.request(panel, "/api/action", {"action": "back"})[0], 202)
+        self.assertEqual(panel.consume_action(), "back")
+        command = {"action": "select", "scene": "finger_mandala_acer.py"}
+        self.assertEqual(self.request(panel, "/api/action", command)[0], 202)
+        self.assertEqual(panel.consume_action(), command)
+        self.assertIsNone(panel.consume_action())
+        self.assertNotEqual(self.request(panel, "/api/action", {"action": "select", "scene": []})[0], 202)
+
+    def test_repeated_unauthorized_posts_deliver_401_without_socket_reset(self):
+        panel = self.panel()
+        for _ in range(100):
+            self.assertEqual(self.request(panel, "/api/camera", {"zoom": 150}, authorized=False)[0], 401)
+        self.assertEqual(self.cap.writer_threads, [])
+
 
 if __name__ == "__main__":
     unittest.main()

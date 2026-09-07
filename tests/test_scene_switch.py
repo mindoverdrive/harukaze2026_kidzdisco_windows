@@ -117,19 +117,20 @@ class SceneSwitchTests(unittest.TestCase):
         self.assertEqual(sm.completed_switches, 0)
         self.assertEqual(sm.completed_promotions, 2)
 
-    def test_old_scene_exit_during_cover_delay_does_not_count_as_a_switch(self):
+    def test_old_scene_exit_while_waiting_for_cover_does_not_count_as_a_switch(self):
         sm, old = self.prepared_manager()
         sm.completed_promotions = 1
         candidate = sm.preloaded_process
         sm.preload_enabled = False
         sm.preloaded_control.poll.return_value = "FIRST_FRAME"
-        sm._start_transition_overlay = mock.Mock(return_value=object())
-        with (mock.patch.dict(manager.CONFIG, {"TRANSITION_COVER_DELAY": 1}),
-              mock.patch.object(manager.time, "monotonic", side_effect=[100, 102]),
-              mock.patch("builtins.print")):
+        sm.transition = mock.Mock(covered=False, busy=True, error=None)
+        sm.transition.consume_action.return_value = None
+        sm.transition.reveal.return_value = True
+        with mock.patch("builtins.print"):
             sm.tick()
             sm._kill_process.assert_not_called()
             old.poll.return_value = 0
+            sm.transition.covered = True
             sm.tick()
         self.assertIs(sm.running_process, candidate)
         self.assertEqual(sm.completed_switches, 0)

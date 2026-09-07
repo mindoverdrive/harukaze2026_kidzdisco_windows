@@ -99,6 +99,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Check imports only; do not open camera/windows")
     parser.add_argument("--audience", action="store_true", help="Use Acer local control and the configured Xiaomi extended display")
+    parser.add_argument("--navigation", action="store_true", help="Use the reviewed multi-scene hold/transition profile (requires --audience)")
     parser.add_argument("--scene", choices=("dots", "spheres", *TRIAL_SCENES), default="dots",
                         help="Scene candidate; every scene except dots requires --audience")
     parser.add_argument("--duration-minutes", type=float, help="Stop after this many minutes of the initial scene")
@@ -108,6 +109,8 @@ def main():
     parser.add_argument("--operator-port", type=int, default=8766)
     parser.add_argument("--no-ui", action="store_true", help="Disable the browser operator panel")
     args = parser.parse_args()
+    if args.navigation and (not args.audience or args.scene != "dots"):
+        parser.error("--navigation requires --audience and cannot be combined with --scene")
     if args.scene != "dots" and not args.audience:
         parser.error(f"--scene {args.scene} requires --audience")
     sys.path.insert(0, str(ROOT))
@@ -115,6 +118,8 @@ def main():
     config_name = "rebirth_acer_xiaomi.json" if args.audience else "kids_test_acer.json"
     if args.scene == "spheres":
         config_name = "rebirth_spheres_acer_xiaomi.json"
+    if args.navigation:
+        config_name = "rebirth_navigation_acer_xiaomi.json"
     config_path = ROOT / "configs" / config_name
     displays = None
     display_failures = []

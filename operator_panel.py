@@ -64,6 +64,15 @@ class OperatorPanel:
 
             def do_POST(self):
                 if not self.authorized():
+                    # Drain only a bounded body before closing the connection. On
+                    # Windows, closing with unread POST bytes can reset the socket
+                    # before the caller receives the 401 response.
+                    try:
+                        rejected_length = int(self.headers.get("Content-Length", "0"))
+                        if 0 < rejected_length <= 2048:
+                            self.rfile.read(rejected_length)
+                    except (ValueError, OSError):
+                        pass
                     self.reply(401, {"error": "起動時の操作URLで開いてください"})
                     return
                 try:
@@ -83,9 +92,15 @@ class OperatorPanel:
                             raise ValueError("適用済みの設定番号を指定してください")
                         saved = save_controls(panel.config_path, panel.relay.controls, data["sequence"])
                         self.reply(200, {"saved": saved})
-                    elif self.path == "/api/action" and data in ({"action": "next"}, {"action": "quit"}):
+                    elif self.path == "/api/action" and data in ({"action": "next"}, {"action": "back"}, {"action": "quit"}):
                         panel.actions.put_nowait(data["action"])
                         self.reply(202, {"action": data["action"]})
+                    elif (self.path == "/api/action" and set(data) == {"action", "scene"}
+                          and data["action"] == "select" and isinstance(data["scene"], str)
+                          and 0 < len(data["scene"]) <= 200):
+                        # The Manager validates this identifier against its allowlist.
+                        panel.actions.put_nowait(data)
+                        self.reply(202, {"action": "select", "scene": data["scene"]})
                     else:
                         self.reply(404, {"error": "対象の操作がありません"})
                 except (ValueError, UnicodeError) as exc:
