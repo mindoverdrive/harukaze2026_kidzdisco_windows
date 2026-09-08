@@ -12,7 +12,12 @@
     "finger_colorfull_dots_acer.py",
     "spider_cursor_acer.py",
     "finger_grid_interaction_acer.py",
-    "saturn_particles_acer.py"
+    "saturn_particles_acer.py",
+    "prism_skin_acer.py",
+    "polygon_vibes_acer.py",
+    "kaleidoscope_camera_acer.py",
+    "polygon_face_acer.py",
+    "living_mosaic_acer.py"
   ],
   "PRELOAD_COUNT": 0,
   "TRANSITION_ENABLED": true,

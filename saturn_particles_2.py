@@ -89,6 +89,8 @@ class SaturnParticlesApp:
         self.background_z = -1600.0
         background_depth = float(self.camera.local.z - self.background_z)
         background_height = 2.0 * math.tan(math.radians(CAMERA_FOV) / 2.0) * background_depth
+        # pygfx FOV describes mean extent, not vertical FOV.
+        background_height *= 2.0 / (1.0 + WINDOW_WIDTH / float(WINDOW_HEIGHT))
         background_width = background_height * (WINDOW_WIDTH / max(1.0, float(WINDOW_HEIGHT)))
         self.cam_tex = gfx.Texture(np.zeros((WINDOW_HEIGHT, WINDOW_WIDTH, 4), dtype=np.uint8), dim=2)
         self.bg_plane = gfx.Mesh(
@@ -127,10 +129,8 @@ class SaturnParticlesApp:
         if self.cap is None or not self.cap.isOpened():
             raise RuntimeError("The shared camera could not be attached")
         
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-        self.camera_layout = display_utils.get_uniform_layout(640, 480, WINDOW_WIDTH, WINDOW_HEIGHT)
+        # Keep the Manager's aspect ratio, exactly as the navigation overlay does.
+        self.camera_layout = None  # Filled from the first actual frame in detect_hands.
 
         # 4. Particle System Initialization
         self.init_particles()
@@ -228,6 +228,7 @@ class SaturnParticlesApp:
         camera_z = float(self.camera.local.z)
         depth = max(1.0, camera_z - world_z)
         half_height = math.tan(math.radians(CAMERA_FOV) / 2.0) * depth
+        half_height *= 2.0 / (1.0 + WINDOW_WIDTH / float(WINDOW_HEIGHT))
         half_width = half_height * (WINDOW_WIDTH / float(WINDOW_HEIGHT))
         world_x = (norm_x - 0.5) * 2.0 * half_width
         world_y = (0.5 - norm_y) * 2.0 * half_height
