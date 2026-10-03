@@ -32,7 +32,7 @@ def white_paper_to_alpha(source):
 
 
 class AlternatingCurtainLogo:
-    def __init__(self, size, rebirth_path=None, on_warning=None):
+    def __init__(self, size, tokyo_path=None, on_warning=None):
         import pygame
 
         self._pygame = pygame
@@ -40,19 +40,19 @@ class AlternatingCurtainLogo:
         self.colony = CurtainLogo(size, on_warning=on_warning)
         self._cycle = None
         self.brand = "colony"
-        self.rebirth = None
+        self.tokyo = None
         try:
-            path = Path(rebirth_path) if rebirth_path is not None else (
-                Path(__file__).resolve().parent / "assets" / "rebirth_logo_source.jpg")
+            path = Path(tokyo_path) if tokyo_path is not None else (
+                Path(__file__).resolve().parent / "assets" / "tokyo_island_2026_logo.webp")
             source = pygame.image.load(str(path))
-            # Preserve artwork; the user now requests transparent white paper.
-            cutout = white_paper_to_alpha(source)
+            # Official RGB and per-pixel alpha are the artwork, including white
+            # year digits and details. Do not apply the old white-paper matte.
             scale = min(size[0] * .52 / source.get_width(), size[1] * .52 / source.get_height())
-            self.rebirth = pygame.transform.smoothscale(cutout, (
+            self.tokyo = pygame.transform.smoothscale(source, (
                 max(1, round(source.get_width() * scale)),
                 max(1, round(source.get_height() * scale))))
         except Exception as exc:
-            message = f"[TransitionBranding] Rebirth unavailable; using Colony: {type(exc).__name__}"
+            message = f"[TransitionBranding] Tokyo Island unavailable; using Colony: {type(exc).__name__}"
             if on_warning is not None:
                 on_warning(message)
             else:
@@ -62,8 +62,8 @@ class AlternatingCurtainLogo:
         cycle = max(1, int(getattr(curtain, "cycle", 1)))
         if self._cycle is None or (curtain.state == "covering" and cycle != self._cycle):
             self._cycle = cycle
-            self.brand = "colony" if cycle % 2 else "rebirth"
-        if self.brand == "colony" or self.rebirth is None:
+            self.brand = "colony" if cycle % 2 else "tokyo_island"
+        if self.brand == "colony" or self.tokyo is None:
             # Keep all Colony typography/motion variants across its appearances.
             state = SimpleNamespace(state=curtain.state, level=curtain.level,
                                     cycle=(self._cycle + 1) // 2)
@@ -80,10 +80,10 @@ class AlternatingCurtainLogo:
             # Whole lockup floats/fades together; no replacement type or recoloring.
             drift = math.sin(now * .28) * min(4, self.size[0] * .002)
             bob = math.sin(now * .35) * min(5, self.size[1] * .004)
-            position = (round((self.size[0] - self.rebirth.get_width()) / 2 + drift),
-                        round((self.size[1] - self.rebirth.get_height()) / 2 + bob))
-            self.rebirth.set_alpha(round(255 * fade))
-            screen.blit(self.rebirth, position)
+            position = (round((self.size[0] - self.tokyo.get_width()) / 2 + drift),
+                        round((self.size[1] - self.tokyo.get_height()) / 2 + bob))
+            self.tokyo.set_alpha(round(255 * fade))
+            screen.blit(self.tokyo, position)
             return True
         finally:
             screen.set_clip(previous_clip)
