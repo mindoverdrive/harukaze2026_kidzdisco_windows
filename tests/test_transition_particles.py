@@ -1,4 +1,5 @@
 from types import ModuleType, SimpleNamespace
+import random
 import unittest
 from unittest import mock
 
@@ -24,7 +25,7 @@ class ParticleCurtainTests(unittest.TestCase):
     BASE = (16, 23, 42, 255)
 
     def setUp(self):
-        self.particles = ParticleCurtain(self.SIZE)
+        self.particles = ParticleCurtain(self.SIZE, rng=random.Random(90210))
         self.assertTrue(self.particles.available, self.particles.warning)
 
     def screen(self):
@@ -88,7 +89,7 @@ class ParticleCurtainTests(unittest.TestCase):
             self.assertLess(len(layout), 650)
 
     def test_cycle_variety_is_stable_until_next_cover_and_reproducible(self):
-        other = ParticleCurtain(self.SIZE)
+        other = ParticleCurtain(self.SIZE, rng=random.Random(90210))
         for cycle in range(1, 21):
             curtain = self.curtain("covering", cycle=cycle)
             first = self.render(curtain, particles=self.particles)
@@ -99,9 +100,9 @@ class ParticleCurtainTests(unittest.TestCase):
             self.assertIs(self.particles._sprite_indices, sprites)
             self.assertIs(self.particles._fragments, fragments)
             self.assertFalse(np.any(np.all(first == self.particles.TRANSPARENT_COLOR, axis=2)))
-        patterns = [ParticleCurtain.pattern_for_cycle(cycle) for cycle in range(1, 81)]
-        self.assertEqual(sum(randomized for _, _, randomized in patterns), 60)
-        self.assertEqual(len(set(patterns)), 40)
+        patterns = [ParticleCurtain.color_pattern_for_cycle(cycle) for cycle in range(1, 81)]
+        self.assertEqual(sum(randomized for _, randomized in patterns), 60)
+        self.assertEqual(len(set(patterns)), 10)
 
     def test_varied_layout_release_starts_identically_and_ends_empty(self):
         for cycle in range(1, 21):

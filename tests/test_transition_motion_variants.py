@@ -163,7 +163,8 @@ def render_contact_sheet(path):
     pygame.font.init()
     try:
         size = (320, 180)
-        particles = ParticleCurtain(size)
+        effect_rng = mock.Mock()
+        particles = ParticleCurtain(size, rng=effect_rng)
         if not particles.available:
             raise RuntimeError(particles.warning)
         sheet = pygame.Surface((1844, 1000))
@@ -182,8 +183,8 @@ def render_contact_sheet(path):
                 y = 128 + row * 220
                 if column == 0:
                     sheet.blit(label_font.render(motion.upper(), True, (201, 216, 230)), (25, y + 69))
-                cycle = next(value for value in range(1, 21)
-                             if particles.pattern_for_cycle(value)[:2] == (column, motion))
+                cycle = row * len(particles.PALETTES) + column + 1
+                effect_rng.choice.return_value = (motion, row)
                 source = pygame.Surface(size)
                 source.fill((16, 23, 42))
                 covered = SimpleNamespace(state="covering", level=1.0, cycle=cycle)

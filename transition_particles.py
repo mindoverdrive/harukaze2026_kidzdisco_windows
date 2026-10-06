@@ -1,4 +1,4 @@
-"""Cached colored chips and deterministic per-transition release variations."""
+"""Cached colored chips with an independent, latched random breakup per cover."""
 
 from dataclasses import dataclass
 import math
@@ -46,10 +46,13 @@ class ParticleCurtain:
                     (53, 83, 146), (94, 67, 140), (99, 159, 170))),
     )
     MOTIONS = ("fall", "rise", "split", "scatter")
+    EFFECTS = tuple((motion, layout) for motion in MOTIONS for layout in range(4))
 
-    def __init__(self, size):
+    def __init__(self, size, rng=None):
         self.available = False
         self.warning = None
+        # This stream never consumes the weighted logo selector's global RNG.
+        self._effect_rng = random.Random() if rng is None else rng
         try:
             import pygame
 
@@ -71,6 +74,7 @@ class ParticleCurtain:
                 for _, palette in self.PALETTES)
             self._cycle = None
             self.motion = "fall"
+            self.effect = ("fall", 0)
             self._sprite_indices = None
             rng = random.Random(self.SEED)
             column_delays = [rng.uniform(0.0, 0.13) for _ in range(columns + 2)]
@@ -171,10 +175,9 @@ class ParticleCurtain:
                 pass
 
     @classmethod
-    def pattern_for_cycle(cls, cycle):
+    def color_pattern_for_cycle(cls, cycle):
         index = max(0, int(cycle) - 1)
         return (index % len(cls.PALETTES),
-                cls.MOTIONS[index % len(cls.MOTIONS)],
                 (index // (len(cls.PALETTES) * len(cls.MOTIONS))) % 4 != 3)
 
     def _select_pattern(self, curtain):
@@ -182,20 +185,23 @@ class ParticleCurtain:
         if cycle <= 0 or cycle == self._cycle:
             return
         # Freeze colors and motion through covered/reveal, including retries.
-        if self._cycle is not None and curtain.state != "covering":
+        if curtain.state != "covering":
             return
-        palette, self.motion, randomized = self.pattern_for_cycle(cycle)
+        palette, randomized = self.color_pattern_for_cycle(cycle)
+        # Pick the motion and fragment layout together once, independent of logo.
+        # Repeated effects are valid random outcomes; frame redraws never repick.
+        self.effect = self._effect_rng.choice(self.EFFECTS)
+        self.motion, layout = self.effect
         self._cycle = cycle
         self._sprites = self._sprite_banks[palette]
-        self._fragments = self._fragment_layouts[((cycle - 1) // len(self.MOTIONS))
-                                                % len(self._fragment_layouts)]
+        self._fragments = self._fragment_layouts[layout]
         rng = random.Random(self.SEED ^ (cycle * 0x9E3779B1))
         self._sprite_indices = tuple(
             (rng.randrange(6) if randomized else
              min(5, max(0, int(chip.y / self.size[1] * 6)))) * 3 + chip.sprite % 3
             for chip in self._chips)
         print(f"[ParticleCurtain] cycle={cycle} palette={self.PALETTES[palette][0]} "
-              f"motion={self.motion} colors={'random-blocks' if randomized else 'bands'}",
+              f"motion={self.motion} layout={layout} colors={'random-blocks' if randomized else 'bands'}",
               flush=True)
 
     @staticmethod
@@ -252,10 +258,12 @@ class ParticleCurtain:
             state = curtain.state
             level = float(curtain.level)
             if (state not in ("covering", "covered", "revealing")
-                    or not math.isfinite(now) or not math.isfinite(level) or level <= 0):
+                    or not math.isfinite(now) or not math.isfinite(level)):
+                return False
+            self._select_pattern(curtain)
+            if level <= 0:
                 return False
             level = min(1.0, level)
-            self._select_pattern(curtain)
             previous_clip = screen.get_clip()
             clip = previous_clip.clip(self._pygame.Rect(rect)).clip(screen.get_rect())
             if clip.width <= 0 or clip.height <= 0:

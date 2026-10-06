@@ -80,7 +80,7 @@ class SoftwareOpacity:
 
 
 class Renderer:
-    def __init__(self, pygame, size, controller):
+    def __init__(self, pygame, size, controller, effect_rng=None):
         from transition_branding import AlternatingCurtainLogo
         from transition_particles import ParticleCurtain
         self.pg, self.controller = pygame, controller
@@ -89,7 +89,7 @@ class Renderer:
         self.output = pygame.Surface(size, depth=32)
         self.opacity = SoftwareOpacity()
         self.logo = AlternatingCurtainLogo(size, rng=controller.selector)
-        self.particles = ParticleCurtain(size)
+        self.particles = ParticleCurtain(size, rng=effect_rng)
         self.check_assets()
 
     def check_assets(self):
