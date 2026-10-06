@@ -53,6 +53,9 @@ class NavigationHold:
         self.progress = 0.0
         self._started = None
         self._last_observed = None
+        # Presentation-only state; none of these fields authorize an action.
+        self.visible_points = ()
+        self.feedback = "ready"
 
     def _cancel(self):
         self.active = self.point = self._started = None
@@ -60,6 +63,8 @@ class NavigationHold:
         self.progress = 0.0
 
     def update(self, points, observed_at, now, *, enabled=True):
+        self.visible_points = ()
+        self.feedback = "disabled" if not enabled else "stale"
         if (observed_at is None or not math.isfinite(observed_at)
                 or not 0 <= now - observed_at <= self.max_age):
             self._cancel()
@@ -69,6 +74,8 @@ class NavigationHold:
             self._cancel()
         points = tuple(point for point in points
                        if len(point) == 2 and all(math.isfinite(value) for value in point))
+        if enabled:
+            self.visible_points = points
         hits = {}
         for action, (x, y, width, height) in self.regions.items():
             inside = [point for point in points
@@ -79,6 +86,10 @@ class NavigationHold:
         # visible fingertip outside them before rearming after a fired action.
         if self.latched and points and not hits:
             self.latched = False
+        if enabled:
+            self.feedback = ("no_hand" if not points else
+                             "release" if self.latched else
+                             "conflict" if len(hits) > 1 else "ready")
         if not enabled or self.latched or len(hits) != 1:
             self._cancel()
             return None
@@ -91,11 +102,13 @@ class NavigationHold:
             self.active = action
             self._started = observed_at
         self.point = point
+        self.feedback = "holding"
         self._last_observed = observed_at
         # Repainting one old detector result must never advance a hold.
         self.progress = min(1.0, max(0.0, (observed_at - self._started) / self.hold_seconds))
         if self.progress >= 1.0:
             self.latched = True
+            self.feedback = "release"
             return action
         return None
 
@@ -399,9 +412,7 @@ class NavigationStyle:
         self.scale = height / 162
         self.shadow_margin = max(3, round(7 * self.scale))
         title_size = max(20, round(54 * self.scale))
-        detail_size = max(12, round(21 * self.scale))
         title = pygame.font.Font(str(font_dir / "bahnschrift.ttf"), title_size)
-        detail = pygame.font.Font(str(font_dir / "YuGothB.ttc"), detail_size)
 
         def label_surface(font, text, color):
             glyph = font.render(text, True, color)
@@ -413,6 +424,8 @@ class NavigationStyle:
             )
             backed.blit(glyph, (0, 0))
             return backed
+
+        self.marker_radius = max(12, round(18 * self.scale))
 
         for action, (_, _, width, height) in regions.items():
             accent = self.COLORS[action]
@@ -450,17 +463,10 @@ class NavigationStyle:
                                (icon_x + direction * arm, icon_y),
                                (icon_x, icon_y + arm)], stroke)
             label = label_surface(title, action.upper(), (243, 245, 255))
-            hint = "1秒キープで " + ("もどる" if action == "back" else "つぎへ")
-            subtitle = label_surface(detail, hint, (213, 221, 242))
-            gap = max(2, round(5 * self.scale))
-            text_top = pill.top + (pill.height - label.get_height() - gap - subtitle.get_height()) // 2
-            label_rect = label.get_rect(midtop=(width // 2, text_top))
-            subtitle_rect = subtitle.get_rect(midtop=(width // 2, label_rect.bottom + gap))
+            label_rect = label.get_rect(center=(width // 2, pill.centery))
             shadow = title.render(action.upper(), False, (12, 15, 27))
             card.blit(shadow, label_rect.move(2, 2))
             card.blit(label, label_rect)
-            card.blit(detail.render(hint, False, (12, 15, 27)), subtitle_rect.move(1, 1))
-            card.blit(subtitle, subtitle_rect)
             self.cards[action] = card
             lights = []
             for step in range(8):
@@ -490,6 +496,12 @@ def draw_navigation(screen, pygame, style, hold, now=None):
             pygame.draw.rect(screen, style.COLORS[action], pill, width=2,
                              border_radius=pill.height // 2)
             draw_charge(screen, pygame, pill, hold.progress, now, index * .31)
+    # Hollow rings identify navigation detections separately from scene cursors.
+    # Keep all fresh points visible during a conflict or the release latch.
+    for point in hold.visible_points:
+        center = tuple(map(int, point))
+        pygame.draw.circle(screen, (12, 15, 27), center, style.marker_radius + 2, 4)
+        pygame.draw.circle(screen, (235, 245, 255), center, style.marker_radius, 2)
     if hold.point is not None:
         x, y = map(int, hold.point)
         pygame.draw.circle(screen, (245, 250, 255), (x, y), 5)
@@ -587,7 +599,11 @@ def run_overlay(port, token, geometry):
                 failure = failure or detection_error
                 curtain.fail()
             enabled = revealed_once and curtain.state == "idle" and failure is None
-            action = hold.update(points, observed_at, now, enabled=enabled)
+            # The worker can publish while commands/events are being processed.
+            # Judge this snapshot against a clock read AFTER acquiring it, not
+            # the earlier animation time (which can reject fresh or accept stale data).
+            nav_now = time.monotonic()
+            action = hold.update(points, observed_at, nav_now, enabled=enabled)
             try:
                 if action is not None:
                     send({"event": "ACTION", "token": token, "cycle": curtain.cycle, "action": action})
