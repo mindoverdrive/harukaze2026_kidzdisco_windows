@@ -53,6 +53,7 @@ from hand_focus_overlay import draw_pygame as draw_hand_overlay
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS = 60
+MAX_HANDS = 6  # Three participants can each use both hands.
 
 # Colors will be dynamic, but we define some base constants
 COLOR_BG_DARK = (5, 5, 10)
@@ -241,7 +242,7 @@ class ModernOtedamaGame:
         # MediaPipe
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(model_complexity=1, 
-            max_num_hands=2,
+            max_num_hands=MAX_HANDS,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.5
         )
@@ -357,6 +358,9 @@ class ModernOtedamaGame:
         frame_rgb.flags.writeable = False 
         results = self.hands.process(frame_rgb)
         
+        # Rebuild from this frame only. Each detected hand is independent: Left/
+        # Right labels repeat across participants and detection order can change.
+        # No per-index hand velocity/history is used to drive the ball response.
         self.hand_colliders.clear()
 
         if results.multi_hand_landmarks:
