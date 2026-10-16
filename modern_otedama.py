@@ -63,6 +63,10 @@ AIR_RESISTANCE = 0.995
 BOUNCE_FACTOR = 0.85
 HAND_BOUNCE_FACTOR = 1.3
 MAX_SPEED = 35.0
+SPEED_RAMP_SECONDS = 90.0
+MAX_SPEED_MULTIPLIER = 1.5
+MAX_ACTIVE_FRAME_SECONDS = 0.1
+PAUSED_FRAME_SECONDS = 0.5
 
 # Game States
 STATE_TITLE = 0
@@ -84,6 +88,11 @@ KONAMI_CODE = [
 def hsv_to_rgb(h, s, v):
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def gameplay_speed_multiplier(play_seconds):
+    progress = min(1.0, max(0.0, play_seconds) / SPEED_RAMP_SECONDS)
+    return 1.0 + (MAX_SPEED_MULTIPLIER - 1.0) * progress
 
 # -----------------------------------------------------------------------------
 # Classes
@@ -173,8 +182,9 @@ class Otedama:
         g = GRAVITY * 0.5 if self.fever else GRAVITY
         
         self.vy += g * dt_scale
-        self.vx *= AIR_RESISTANCE
-        self.vy *= AIR_RESISTANCE
+        damping = AIR_RESISTANCE ** dt_scale
+        self.vx *= damping
+        self.vy *= damping
         
         self.x += self.vx * dt_scale
         self.y += self.vy * dt_scale
@@ -193,7 +203,7 @@ class Otedama:
 
         # Update trail
         self.trail.append((self.x, self.y, self.radius * (random.uniform(0.8, 1.2))))
-        self.base_hue = (self.base_hue + 0.005) % 1.0
+        self.base_hue = (self.base_hue + 0.005 * dt_scale) % 1.0
 
     def draw(self, Surface, global_hue):
         current_hue = (self.base_hue + global_hue) % 1.0
@@ -261,6 +271,8 @@ class ModernOtedamaGame:
         self.input_history = []
         self.fever_mode = False
         self.fever_timer = 0
+        self.play_elapsed_seconds = 0.0
+        self._start_frame_pending = False
         
     def reset_game(self):
         self.score = 0
@@ -270,6 +282,38 @@ class ModernOtedamaGame:
         self.balls.append(Otedama(WINDOW_WIDTH // 2, 0))
         self.state = STATE_PLAYING
         self.fever_mode = False
+        self.play_elapsed_seconds = 0.0
+        self._start_frame_pending = True
+
+    def advance_play_time(self, frame_seconds):
+        if self.state != STATE_PLAYING:
+            return 0.0
+        if self._start_frame_pending:
+            self._start_frame_pending = False
+            return 0.0
+        # Keep the wall clock independent of the physics budget, including 5 FPS.
+        # Long stopped/debugger intervals do not count as active gameplay.
+        if not math.isfinite(frame_seconds) or frame_seconds > PAUSED_FRAME_SECONDS:
+            return 0.0
+        active_seconds = max(0.0, frame_seconds)
+        self.play_elapsed_seconds += active_seconds
+        return min(MAX_ACTIVE_FRAME_SECONDS, active_seconds)
+
+    def advance_ball(self, ball, active_seconds, speed_multiplier):
+        # Time-scale the existing gravity and movement without compounding velocity.
+        # Substeps keep a faster ball from skipping a hand between display frames.
+        if active_seconds <= 0:
+            return False
+        frame_scale = active_seconds * FPS * speed_multiplier
+        steps = max(1, math.ceil(frame_scale))
+        step_scale = frame_scale / steps
+        hit = False
+        for _ in range(steps):
+            ball.update(dt_scale=step_scale)
+            hit = self.check_hand_collision(ball) or hit
+            if ball.is_dead:
+                break
+        return hit
 
     def toggle_fever(self):
         self.fever_mode = True
@@ -327,13 +371,15 @@ class ModernOtedamaGame:
                 
                 self.hand_colliders.append({'pos': (cx, cy), 'radius': radius, 'landmarks': hand_landmarks})
 
-    def update(self):
+    def update(self, frame_seconds=1.0 / FPS):
         self.global_hue = (self.global_hue + 0.002) % 1.0
         
         # Camera
         success, img = self.cap.read()
         self.frame_processed = bool(success and img is not None)
         if self.frame_processed:
+            if self.camera_failure_since is not None:
+                self._start_frame_pending = True
             self.camera_failure_since = None
             img = cv2.flip(img, 1) 
             self.process_hands(img)
@@ -361,6 +407,7 @@ class ModernOtedamaGame:
             self.bg_surf = pygame.image.frombuffer(img_rgb.tobytes(), img_rgb.shape[1::-1], "RGB")
             self.bg_surf.set_alpha(150) # Semi-transparent
         else:
+            self.hand_colliders.clear()
             if self.camera_failure_since is None:
                 self.camera_failure_since = time.monotonic()
             elif time.monotonic() - self.camera_failure_since >= 1.0:
@@ -368,6 +415,7 @@ class ModernOtedamaGame:
                 raise RuntimeError("Shared camera did not provide a frame for one second")
             self.bg_surf = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
             self.bg_surf.fill(COLOR_BG_DARK)
+            return
 
         # Start Button Logic
         if self.state in [STATE_TITLE, STATE_GAMEOVER]:
@@ -376,6 +424,8 @@ class ModernOtedamaGame:
 
         # Game State Logic
         if self.state == STATE_PLAYING:
+            active_seconds = self.advance_play_time(frame_seconds)
+            speed_multiplier = gameplay_speed_multiplier(self.play_elapsed_seconds)
             if len(self.balls) < 1 + int(self.score / 500) and not self.fever_mode:
                 if random.randint(0, 300) == 0:
                     self.balls.append(Otedama(random.randint(200, WINDOW_WIDTH-200), 0))
@@ -388,8 +438,7 @@ class ModernOtedamaGame:
 
             active_balls = []
             for ball in self.balls:
-                ball.update()
-                hit = self.check_hand_collision(ball)
+                hit = self.advance_ball(ball, active_seconds, speed_multiplier)
                 if hit:
                     self.combo += 1
                     points = 100 * self.combo * (2 if self.fever_mode else 1)
@@ -534,9 +583,13 @@ class ModernOtedamaGame:
             draw_glitch_text("HIT BUTTON TO RESTART", WINDOW_WIDTH//2, WINDOW_HEIGHT*2//3, self.font_sub, (200, 200, 200))
 
     def run(self):
+        previous_frame_at = time.monotonic()
         try:
             while self.handle_input():
-                self.update()
+                frame_at = time.monotonic()
+                frame_seconds = frame_at - previous_frame_at
+                previous_frame_at = frame_at
+                self.update(frame_seconds)
                 self.draw()
                 self.clock.tick(FPS)
         finally:
