@@ -38,7 +38,6 @@ import pygame
 import display_utils
 import cv2
 import mediapipe as mp
-import numpy as np
 import random
 from collections import deque
 import math
@@ -395,29 +394,6 @@ class ModernOtedamaGame:
             self.camera_failure_since = None
             img = cv2.flip(img, 1) 
             self.process_hands(img)
-            img = cv2.resize(img, (WINDOW_WIDTH, WINDOW_HEIGHT))
-            # Psychedelic Background Effect
-            # Tint the camera feed heavily with the global hue inverted
-            tint_color = hsv_to_rgb((self.global_hue + 0.5) % 1.0, 1.0, 1.0)
-            
-            # Simple tinting using numpy
-            # Convert to float for math
-            img_float = img.astype(float)
-            # Add color tint
-            img_float[:, :, 0] *= (tint_color[2] / 255.0) # B
-            img_float[:, :, 1] *= (tint_color[1] / 255.0) # G
-            img_float[:, :, 2] *= (tint_color[0] / 255.0) # R
-            
-            # Boost brightness/contrast
-            img_float = img_float * 1.5
-            np.clip(img_float, 0, 255, out=img_float)
-            
-            img_final = img_float.astype(np.uint8)
-            img_rgb = cv2.cvtColor(img_final, cv2.COLOR_BGR2RGB)
-            
-            # Use tobytes instead of tostring to fix deprecation
-            self.bg_surf = pygame.image.frombuffer(img_rgb.tobytes(), img_rgb.shape[1::-1], "RGB")
-            self.bg_surf.set_alpha(150) # Semi-transparent
         else:
             self.hand_colliders.clear()
             if self.camera_failure_since is None:
@@ -425,8 +401,6 @@ class ModernOtedamaGame:
             elif time.monotonic() - self.camera_failure_since >= 1.0:
                 notify_exit_request("camera_read_failed_timeout")
                 raise RuntimeError("Shared camera did not provide a frame for one second")
-            self.bg_surf = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
-            self.bg_surf.fill(COLOR_BG_DARK)
             return
 
         # Start Button Logic
@@ -511,11 +485,8 @@ class ModernOtedamaGame:
             self.particles.append(Particle(x, y, color))
             
     def draw(self):
-        # 1. Background
-        if hasattr(self, 'bg_surf'):
-            self.screen.blit(self.bg_surf, (0,0))
-        else:
-            self.screen.fill(COLOR_BG_DARK)
+        # Camera frames drive hand detection only; keep the stage background dark.
+        self.screen.fill(COLOR_BG_DARK)
             
         # 3. Start Button (if applicable)
         if self.state in [STATE_TITLE, STATE_GAMEOVER]:

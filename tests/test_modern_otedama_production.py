@@ -12,12 +12,66 @@ import pygame
 
 import manager
 import modern_otedama
+from hand_focus_overlay import CYAN
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ModernOtedamaProductionTests(unittest.TestCase):
+    def test_camera_pixels_stay_hidden_while_palm_feedback_and_ball_collision_work(self):
+        frame = np.full((18, 32, 3), (10, 60, 230), dtype=np.uint8)
+        frame[:, :8] = (220, 80, 15)
+        cap = mock.Mock()
+        cap.isOpened.return_value = True
+        cap.read.return_value = (True, frame)
+        landmarks = [SimpleNamespace(x=.5, y=.6, z=0.) for _ in range(21)]
+        landmarks[0].y, landmarks[9].y = .8, .53
+        hand = SimpleNamespace(landmark=landmarks)
+        hands = mock.Mock()
+        hands.process.return_value = SimpleNamespace(multi_hand_landmarks=[hand])
+        with (
+            mock.patch.object(modern_otedama.display_utils, "open_camera", return_value=cap),
+            mock.patch.object(modern_otedama.display_utils, "setup_pygame_scaled_fullscreen",
+                              return_value=(pygame.Surface((1280, 720)), pygame.Surface((1280, 720)), None)),
+            mock.patch.object(modern_otedama.display_utils, "present_pygame_scaled"),
+            mock.patch.object(modern_otedama.mp.solutions.hands, "Hands", return_value=hands),
+            mock.patch.object(modern_otedama, "notify_first_frame"),
+        ):
+            game = modern_otedama.ModernOtedamaGame()
+            try:
+                game.reset_game()
+                game._start_frame_pending = False
+                game.balls[0].x, game.balls[0].y = 640, 350
+                game.balls[0].vx, game.balls[0].vy = 0, 5
+                game.update(1 / 60)
+                cap.read.assert_called_once_with()
+                np.testing.assert_array_equal(hands.process.call_args.args[0], frame[:, ::-1, ::-1])
+                self.assertEqual(game.hand_colliders[0]['pos'], (640, 478))
+                self.assertEqual(game.hand_colliders[0]['radius'], 120)
+                self.assertGreater(game.score, 0)
+                self.assertLess(game.balls[0].vy, 0)
+                game.draw()
+                self.assertEqual(game.screen.get_size(), (1280, 720))
+                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], modern_otedama.COLOR_BG_DARK)
+                self.assertEqual(tuple(game.screen.get_at((647, 478)))[:3], CYAN)
+
+                # A brighter camera frame must not change the empty stage background.
+                cap.read.return_value = (True, np.full_like(frame, 255))
+                game.update(1 / 60)
+                game.draw()
+                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], modern_otedama.COLOR_BG_DARK)
+                self.assertEqual(hands.process.call_count, 2)
+
+                cap.read.return_value = (False, None)
+                game.update(1 / 60)
+                game.draw()
+                self.assertEqual(game.hand_colliders, [])
+                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], modern_otedama.COLOR_BG_DARK)
+                self.assertEqual(tuple(game.screen.get_at((647, 478)))[:3], modern_otedama.COLOR_BG_DARK)
+            finally:
+                game.cleanup()
+
     def test_speed_rises_gradually_and_stops_at_a_child_friendly_cap(self):
         speed = modern_otedama.gameplay_speed_multiplier
         self.assertEqual(speed(0), 1.0)

@@ -18,9 +18,16 @@
 - Existing playlist (5), scene protocol (7), scene navigation (10), real fixture switching (10), exit observations (8), cleanup (8), operator navigation (7), and launcher (8) tests passed: 67 tests total including the new tests. Tests that spawn scene processes were run outside the restricted Windows sandbox after the sandbox blocked child process communication. No physical camera was used.
 - `scripts/launch_production.py --check-only` reached the display check and stopped: expected audience `\\.\DISPLAY5`, detected only `\\.\DISPLAY1`. The current production display layout, Otedama hand interaction, NEXT/BACK on the real monitors, and final camera release therefore remain unverified on hardware.
 
+## Camera background removal follow-up (2026-10-16)
+
+- The confirmed display-removal scope is the camera image composited into the Pygame game background; this scene has no separate camera-preview window. Removed its resize/tint/alpha-surface pipeline and the now-unused NumPy import. Every draw now clears the stage with the existing `COLOR_BG_DARK = (5, 5, 10)`.
+- Shared camera acquisition, mirrored RGB hand inference, palm colliders and their visible rings/skeleton, balls, particles, score, start/replay controls, the 90-second speed ramp, FIRST_FRAME acknowledgement, and cleanup remain in place. Logical rendering stays at 1280 x 720; screen-size adaptation remains pending below.
+- Focused verification: all 16 tests passed (12 Otedama production tests and 4 hand-overlay tests). The added regression uses asymmetric colored and white synthetic frames to verify that camera pixels stay hidden, the input is still mirrored and converted correctly, palm collisions bounce the ball and score, the exact palm marker remains visible, and a missing frame clears stale hand feedback. Existing tests cover active timing, camera loss/recovery, startup acknowledgement, Esc, and resource release.
+- Inspected a synthetic-input screenshot produced by the actual renderer: dark background, visible ball, hand skeleton, and palm collision circle. No physical camera or audience display was used. This narrow follow-up did not change Manager navigation; real-monitor NEXT/BACK and final camera release still require the on-site check.
+
 ## On-site check remaining
 
 - **未完了・最終確認前に実施:** Otedamaシーンを、実際に使用する画面サイズに合わせる。2026-10-16の追加指示では後工程として指定されているため、Earth追加作業では画面サイズ調整を実装しない。使用画面の解像度・縦横比が確定した後、表示、カメラ座標、掌の衝突位置、開始ボタンの配置を合わせて確認する。
-- **表示削除の範囲を確認中:** 「カメラ映像ウィンドウを削除」の追加指示に対し、`modern_otedama.py` には独立したカメラプレビューウィンドウがなく、Pygameのゲーム背景への半透明カメラ合成だけがあると確認した。変更案はこの背景合成を既存の暗色背景へ置き換え、取得・手検出・掌衝突・骨格表示・ゲーム描画を保つこと。独立ウィンドウだけの削除とは異なるため、構成を先に報告し、対象範囲が確定するまで実装しない。実装する場合はEarth追加とは別コミットにする。
+- **Camera background removal implemented and automatically verified:** Scope was confirmed on 2026-10-16 and implemented as described above. Visual quality and interaction on hardware remain part of final acceptance.
 
 With the intended audience monitor and camera connected, use the production launcher, select Modern Otedama with NEXT/BACK, check that hands start and bounce the game, switch away and back, then exit from the operator panel. Confirm that the Manager and shared camera finish cleanly. Do not interrupt an event session to perform this check.
