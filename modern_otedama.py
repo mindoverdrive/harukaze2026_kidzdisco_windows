@@ -44,6 +44,8 @@ from collections import deque
 import math
 import sys
 import colorsys
+import time
+from scene_control import notify_exit_request, notify_first_frame
 
 # -----------------------------------------------------------------------------
 # Constants & Configuration
@@ -236,9 +238,12 @@ class ModernOtedamaGame:
         
         # Camera
         self.cap = display_utils.open_camera()
-        if not self.cap.isOpened():
-             print("Warning: Default camera not found, trying index 1")
-             self.cap = display_utils.open_camera()
+        if self.cap is None or not self.cap.isOpened():
+            self.hands.close()
+            pygame.quit()
+            raise RuntimeError("The shared camera could not be attached")
+        self.camera_failure_since = None
+        self.frame_processed = False
 
         # Game Data
         self.state = STATE_TITLE
@@ -279,9 +284,11 @@ class ModernOtedamaGame:
     def handle_input(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                notify_exit_request("pygame_quit")
                 return False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    notify_exit_request("key_escape")
                     return False
                 
                 # Hidden Command
@@ -325,7 +332,9 @@ class ModernOtedamaGame:
         
         # Camera
         success, img = self.cap.read()
-        if success:
+        self.frame_processed = bool(success and img is not None)
+        if self.frame_processed:
+            self.camera_failure_since = None
             img = cv2.flip(img, 1) 
             self.process_hands(img)
             img = cv2.resize(img, (WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -352,6 +361,11 @@ class ModernOtedamaGame:
             self.bg_surf = pygame.image.frombuffer(img_rgb.tobytes(), img_rgb.shape[1::-1], "RGB")
             self.bg_surf.set_alpha(150) # Semi-transparent
         else:
+            if self.camera_failure_since is None:
+                self.camera_failure_since = time.monotonic()
+            elif time.monotonic() - self.camera_failure_since >= 1.0:
+                notify_exit_request("camera_read_failed_timeout")
+                raise RuntimeError("Shared camera did not provide a frame for one second")
             self.bg_surf = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
             self.bg_surf.fill(COLOR_BG_DARK)
 
@@ -472,6 +486,7 @@ class ModernOtedamaGame:
         self.draw_ui()
 
         display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
+        notify_first_frame(self.cap, frame_processed=self.frame_processed)
 
     def draw_ui(self):
         # Unified Glitch Text Function
@@ -519,21 +534,22 @@ class ModernOtedamaGame:
             draw_glitch_text("HIT BUTTON TO RESTART", WINDOW_WIDTH//2, WINDOW_HEIGHT*2//3, self.font_sub, (200, 200, 200))
 
     def run(self):
-        while True:
-            keep_running = self.handle_input()
-            if not keep_running:
-                break
-            self.update()
-            self.draw()
-            self.clock.tick(FPS)
-        
-        self.cleanup()
+        try:
+            while self.handle_input():
+                self.update()
+                self.draw()
+                self.clock.tick(FPS)
+        finally:
+            self.cleanup()
 
     def cleanup(self):
-        self.hands.close()
-        self.cap.release()
-        pygame.quit()
-        sys.exit()
+        try:
+            self.hands.close()
+        finally:
+            try:
+                self.cap.release()
+            finally:
+                pygame.quit()
 
 if __name__ == "__main__":
     game = ModernOtedamaGame()
