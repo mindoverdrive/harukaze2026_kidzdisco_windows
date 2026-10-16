@@ -32,6 +32,14 @@ The real GPU renderer was exercised offscreen with the original textures. The tr
 - `git diff --check` passed. Actual model/GPU checks used Python 3.12.10 from the verified Windows production runtime, without a physical camera or visible test window.
 - `scripts/launch_production.py --check-only` stopped as designed: expected `\\.\DISPLAY5`, detected only `\\.\DISPLAY1`. It did not launch Manager or acquire a camera.
 
+## Camera-HUD display request confirmed (2026-10-16)
+
+The follow-up request to show hand detection inside Earth's camera view is already implemented by the adoption commit `96db86536142ef2465f8159be3163ff208fdab0b`. No duplicate overlay or Earth source change was needed. The separate Otedama camera-background removal does not affect Earth.
+
+- Re-ran 27 Earth tests and 4 common-overlay tests: **31 passed**.
+- Checked actual OpenCV overlay pixels in synthetic 640x360, 640x480, and 360x640 camera inputs. Each input is mirrored once before inference. Camera imagery and both active palm markers remain together in the 320x240 HUD, with image sizes/offsets of 320x180/(0,30), 320x240/(0,0), and 135x240/(92,0), respectively. Skeleton and palm projection use that same layout; there is no second mirror. Independent review also verified that unknown handedness remains passive.
+- This verification used synthetic camera frames and hand landmarks; it did not acquire a physical camera or open a visible window.
+
 ## Hardware checks remaining
 
 This is not production acceptance. The audience `\\.\DISPLAY5` was absent from this preflight. Live handedness/recognition, control feel, actual screen appearance, NEXT/BACK transitions, and repeated camera release/restart on the event setup remain to be checked when the machine is free. Otedama screen fitting remains separately recorded for immediately before final verification and is not implemented by this change.
