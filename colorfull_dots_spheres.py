@@ -10,6 +10,7 @@ import time
 from scene_control import notify_exit_request, notify_first_frame
 from spheres_camera import SpheresCameraFeed
 from spheres_visuals import SphereRenderer, TipSmoother
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 
 
 def main():
@@ -75,6 +76,11 @@ def main():
             if camera_surface is not None:
                 screen.blit(camera_surface, (0, 0))
             visible = renderer.draw(screen, elapsed, tips)
+            if snapshot is not None:
+                # Mark the same smoothed index inputs used by the field. Both
+                # bones and focus vanish on an absent/expired hand snapshot.
+                draw_hand_overlay(screen, snapshot.hand_landmarks,
+                                  layout=snapshot.hand_layout, focus=(), active_points=tips)
             pygame.display.flip()
             draw_count += 1
             if snapshot is not None and snapshot is not presented_snapshot:

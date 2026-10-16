@@ -32,7 +32,7 @@ class NativeFakes:
         self.make_hands = mock.Mock(return_value=self.hands)
         self.camera_image = object()
         self.stage_image = object()
-        self.layout = object()
+        self.layout = dict(offset_x=0, offset_y=0, scaled_width=100, scaled_height=60)
         self.camera_rgb = mock.Mock()
         self.stage_rgb = mock.Mock()
         self.stage_rgb.tobytes.return_value = b"RGB stage pixels"
@@ -150,7 +150,8 @@ class SpheresCameraTests(unittest.TestCase):
         namespace = {}
         exec(compile(ast.Module(body=[projection], type_ignores=[]), str(path), "exec"), namespace)
         native.display.normalized_to_stage.side_effect = namespace["normalized_to_stage"]
-        hands = [SimpleNamespace(landmark=[None] * 8 + [SimpleNamespace(x=x, y=y)])
+        hands = [SimpleNamespace(landmark=[SimpleNamespace(x=x, y=y, z=0.0)
+                                          for _ in range(21)])
                  for x, y in ((0.0, 0.0), (1.0, 1.0))]
         native.hands.process.return_value = SimpleNamespace(multi_hand_landmarks=hands)
         native.frames.put((1, object()))
@@ -160,6 +161,15 @@ class SpheresCameraTests(unittest.TestCase):
             self.assertTrue(entered.wait(1.0))
             snapshot = self.await_snapshot(feed)
             self.assertEqual(snapshot.tips, ((10, 0), (89, 59)))
+            self.assertEqual(snapshot.hand_landmarks[0], ((0.0, 0.0, 0.0),) * 21)
+            self.assertEqual(snapshot.hand_landmarks[1], ((1.0, 1.0, 0.0),) * 21)
+            self.assertEqual(snapshot.hand_layout, native.layout)
+            with self.assertRaises(TypeError):
+                snapshot.hand_layout["offset_x"] = 99
+            hands[0].landmark[0].x = .75
+            native.layout["offset_x"] = 99
+            self.assertEqual(snapshot.hand_landmarks[0][0], (0.0, 0.0, 0.0))
+            self.assertEqual(snapshot.hand_layout["offset_x"], 10)
             for call in native.display.normalized_to_stage.call_args_list:
                 self.assertIs(call.args[2], native.layout)
             self.assertEqual(snapshot.rgb_bytes, b"RGB stage pixels")
@@ -192,6 +202,34 @@ class SpheresCameraTests(unittest.TestCase):
         finally:
             gate.set()
             next_gate.set()
+            feed.close()
+
+    def test_hand_free_result_replaces_previous_bones_without_losing_camera_frame(self):
+        native = NativeFakes()
+        hand = SimpleNamespace(landmark=[SimpleNamespace(x=.4, y=.6, z=0.) for _ in range(21)])
+        native.display.normalized_to_stage.return_value = (40, 35)
+        native.hands.process.side_effect = [SimpleNamespace(multi_hand_landmarks=[hand]),
+                                           SimpleNamespace(multi_hand_landmarks=None)]
+        native.frames.put((1, object()))
+        first_entered, first_gate = native.hold_read()
+        native.frames.put((2, object()))
+        second_entered, second_gate = native.hold_read()
+        feed = native.feed().start()
+        try:
+            self.assertTrue(first_entered.wait(1.0))
+            first = self.await_snapshot(feed)
+            self.assertEqual(len(first.hand_landmarks), 1)
+            first_gate.set()
+            self.assertTrue(second_entered.wait(1.0))
+            second = self.await_snapshot(feed)
+            self.assertEqual(second.last_read_frame_id, 2)
+            self.assertEqual(second.hand_landmarks, ())
+            self.assertEqual(second.tips, ())
+            self.assertEqual(second.rgb_bytes, first.rgb_bytes)
+            self.assertEqual(native.hands.process.call_count, 2)
+        finally:
+            first_gate.set()
+            second_gate.set()
             feed.close()
 
     def test_startup_and_runtime_errors_propagate_and_release_all_acquired_resources(self):
@@ -576,6 +614,7 @@ class SpheresCameraTests(unittest.TestCase):
             self.assertEqual(snapshot.rgb_bytes, b"RGB stage pixels")
             self.assertEqual(snapshot.size, (100, 60))
             self.assertEqual(snapshot.tips, ())
+            self.assertEqual(snapshot.hand_landmarks, ())
             self.assertEqual(snapshot.last_read_frame_id, 17)
             self.assertEqual(snapshot.shm_name, "fake-manager-camera")
             with self.assertRaises(FrozenInstanceError):

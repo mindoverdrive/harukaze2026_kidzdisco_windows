@@ -1,10 +1,11 @@
-"""Camera-only kaleidoscope; fixed-size polar remap, no landmark dependency."""
+"""Camera kaleidoscope with the detected hand frame reflected with its image."""
 from contextlib import ExitStack
 import time
 import numpy as np
 import cv2
 import pygame
 import display_utils
+from hand_focus_overlay import PassiveHandDetector, draw_cv2
 from scene_control import notify_first_frame
 
 
@@ -35,6 +36,8 @@ def main():
         resources.callback(cap.release)
         if not cap.isOpened():
             raise RuntimeError('Kaleidoscope: shared camera unavailable')
+        hand_detector = PassiveHandDetector()
+        resources.callback(hand_detector.close)
         clock = pygame.time.Clock()
         started = time.monotonic()
         render_width, render_height = 640, max(1, round(640 * height / width))
@@ -48,12 +51,18 @@ def main():
             ok, frame = cap.read()
             screen.fill((0, 0, 0))
             if ok and frame is not None:
-                _, stage, _ = display_utils.prepare_camera_frame(frame, render_width, render_height)
+                camera, stage, layout = display_utils.prepare_camera_frame(frame, render_width, render_height)
+                hands = hand_detector.detect(camera)
+                # Reflect the frame with the camera pixels; an unwarped overlay
+                # would incorrectly mark a hand at a different screen position.
+                draw_cv2(stage, hands, layout=layout, focus=())
                 mx, my = kaleidoscope_maps(render_width, render_height, time.monotonic() - started)
                 image = cv2.remap(stage, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
                 rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 surface = pygame.image.frombuffer(rgb.tobytes(), (render_width, render_height), 'RGB')
                 screen.blit(pygame.transform.smoothscale(surface, (width, height)), (0, 0))
+            else:
+                hand_detector.detect(None)
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=bool(ok and frame is not None))
             clock.tick(60)

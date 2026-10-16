@@ -43,6 +43,7 @@ class SceneTimingTests(unittest.TestCase):
                   math=math, ExitStack=ExitStack, atexit=mock.Mock(), cv2=mock.Mock(),
                   mp=mock.Mock(), python=mock.Mock(), vision=vision, np=mock.MagicMock(),
                   gfx=mock.MagicMock(), la=mock.Mock(), display_utils=display,
+                  PygfxHandOverlay=mock.Mock(),
                   RenderCanvas=mock.Mock(), loop=mock.Mock(), notify_first_frame=mock.Mock(),
                   WINDOW_WIDTH=640, WINDOW_HEIGHT=360)
         tree = ast.parse((ROOT / filename).read_text(encoding="utf-8"))

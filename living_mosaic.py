@@ -4,6 +4,7 @@ import time
 import cv2
 import pygame
 import display_utils
+from hand_focus_overlay import PassiveHandDetector, draw_cv2
 from living_mosaic_field import LivingMosaic
 from scene_control import notify_first_frame
 
@@ -20,6 +21,8 @@ def main():
         resources.callback(cap.release)
         if not cap.isOpened():
             raise RuntimeError('Living Mosaic: shared camera unavailable')
+        hand_detector = PassiveHandDetector()
+        resources.callback(hand_detector.close)
         rw, rh = 640, round(640 * height / width)
         mosaic = LivingMosaic(rw, rh)
         clock = pygame.time.Clock()
@@ -36,15 +39,21 @@ def main():
             ok, frame = cap.read()
             screen.fill((0, 0, 0))
             if ok and frame is not None:
-                camera, _, _ = display_utils.prepare_camera_frame(frame, rw, rh)
+                camera, _, layout = display_utils.prepare_camera_frame(frame, rw, rh)
+                hands = hand_detector.detect(camera)
                 # Motion and face averages use undimmed input, not inverted output.
-                source = display_utils.fit_frame_to_size(camera, rw, rh)
+                source = display_utils.fit_frame_to_size(camera, rw, rh, layout=layout)
                 output = mosaic.render(source, now-started, dt)
                 # Opacity is applied AFTER inversion so zero still means black.
                 output = display_utils.apply_camera_opacity(output, display_utils._camera_presentation.opacity())
+                # Use the same letterbox mapping as the mosaic, then scale both
+                # together. Full-frame motion remains the control input.
+                draw_cv2(output, hands, layout=layout, focus=())
                 rgb = cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
                 surface = pygame.image.frombuffer(rgb.tobytes(), (rw,rh), 'RGB')
                 screen.blit(pygame.transform.smoothscale(surface, (width,height)), (0,0))
+            else:
+                hand_detector.detect(None)
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=bool(ok and frame is not None))
             clock.tick(30)

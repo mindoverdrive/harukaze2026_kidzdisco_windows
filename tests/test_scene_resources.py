@@ -18,7 +18,7 @@ def namespace():
     return dict(__name__="resource_test", atexit=mock.Mock(), ExitStack=ExitStack,
                 pygame=mock.Mock(), mp=mock.Mock(), cv2=mock.Mock(), display_utils=display,
                 math=math, WINDOW_WIDTH=640, WINDOW_HEIGHT=360, RenderCanvas=mock.Mock(),
-                gfx=mock.Mock(), notify_exit_request=mock.Mock())
+                gfx=mock.Mock(), notify_exit_request=mock.Mock(), draw_hand_overlay=mock.Mock())
 
 
 def run_exit_callbacks(ns):
@@ -98,9 +98,9 @@ class SceneResourceTests(unittest.TestCase):
         ns["notify_first_frame"] = mock.Mock()
         try:
             exec(compile(tree, "finger_colorfull_dots_2.py", "exec"), ns)
-            markers = [call for call in ns["pygame"].draw.circle.call_args_list
-                       if call.args[1] == (255, 255, 255)]
-            self.assertEqual(len(markers), 1)
+            overlays = ns["draw_hand_overlay"].call_args_list
+            self.assertEqual([call.args[1] for call in overlays], [[hand], (), ()])
+            self.assertTrue(all(call.kwargs["focus"] == (8,) for call in overlays))
             self.assertEqual(ns["cursors"], [])
             self.assertIsNone(ns["camera_surface"])
         finally:

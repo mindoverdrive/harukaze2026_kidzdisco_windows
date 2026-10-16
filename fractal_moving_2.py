@@ -36,6 +36,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_first_frame, notify_exit_request
 import math
 import colorsys
@@ -271,12 +272,14 @@ def main():
         # カメラ映像の取得と処理
         ret, frame = cap.read()
         target_points = []
-        if ret:
+        detected_hands = ()
+        if ret and frame is not None:
             frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, WIDTH, HEIGHT)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             stage_rgb = cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGB)
             camera_surface = pygame.image.frombuffer(stage_rgb.tobytes(), (WIDTH, HEIGHT), "RGB")
             results = hands.process(rgb_frame)
+            detected_hands = results.multi_hand_landmarks or ()
             
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
@@ -417,9 +420,10 @@ def main():
         screen.blit(trail_surface, (0, 0))
         for p in pointers:
             draw_pointer_feedback(screen, p, frame_dt)
-            
+
+        draw_hand_overlay(screen, detected_hands, layout=camera_layout, focus=(8,))
         pygame.display.flip()
-        notify_first_frame(cap, frame_processed=bool(ret))
+        notify_first_frame(cap, frame_processed=bool(ret and frame is not None))
         clock.tick(60)
 
     resources.close()

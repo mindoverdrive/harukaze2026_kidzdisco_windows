@@ -5,6 +5,7 @@ import cv2
 import mediapipe as mp
 import pygame
 import display_utils
+from hand_focus_overlay import PassiveHandDetector, draw_pygame, draw_focus_points
 from polygon_face_field import FaceField, mouth_openness
 from scene_control import notify_first_frame
 
@@ -24,6 +25,8 @@ def main():
         detector = resources.enter_context(mp.solutions.face_mesh.FaceMesh(
             max_num_faces=1, refine_landmarks=False,
             min_detection_confidence=.5, min_tracking_confidence=.5))
+        hand_detector = PassiveHandDetector()
+        resources.callback(hand_detector.close)
         field = FaceField(width, height)
         surface = pygame.Surface((width, height))
         surface.set_alpha(155)
@@ -40,9 +43,11 @@ def main():
             dt, previous = now - previous, now
             ok, frame = cap.read()
             mouth, opening = None, 0.
+            hands, layout = (), None
             screen.fill((0, 0, 0))
             if ok and frame is not None:
                 camera, stage, layout = display_utils.prepare_camera_frame(frame, width, height)
+                hands = hand_detector.detect(camera)
                 result = detector.process(cv2.cvtColor(camera, cv2.COLOR_BGR2RGB))
                 if result.multi_face_landmarks:
                     lm = result.multi_face_landmarks[0].landmark
@@ -51,12 +56,17 @@ def main():
                                                                (lm[13].y + lm[14].y) / 2, layout)
                 rgb = cv2.cvtColor(stage, cv2.COLOR_BGR2RGB)
                 screen.blit(pygame.image.frombuffer(rgb.tobytes(), (width, height), 'RGB'), (0, 0))
+            else:
+                hand_detector.detect(None)
             triangles, colors = field.step(mouth, opening, dt, now - started)
             surface.fill((8, 12, 20))
             for tri, color in zip(triangles.tolist(), colors.tolist()):
                 pygame.draw.polygon(surface, color, tri)
             screen.blit(surface, (0, 0))
+            draw_pygame(screen, hands, layout=layout, focus=())
             if mouth is not None:
+                # Mouth position/openness controls this scene, not a fingertip.
+                draw_focus_points(screen, (mouth,))
                 pygame.draw.circle(screen, (255, 245, 190), mouth, round(8 + field.opening * 16), 2)
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=bool(ok and frame is not None))

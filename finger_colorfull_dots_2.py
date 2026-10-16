@@ -36,6 +36,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_first_frame, notify_exit_request
 import math
 import cv2
@@ -83,13 +84,15 @@ while running:
     # Read frame from webcam
     ret, frame = cap.read()
     cursors = []
-    if ret:
+    detected_hands = ()
+    if ret and frame is not None:
         frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, w, h)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         stage_rgb = cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGB)
         camera_surface = pygame.image.frombuffer(stage_rgb.tobytes(), (w, h), "RGB")
         # Process the frame with MediaPipe
         results = hands.process(rgb_frame)
+        detected_hands = results.multi_hand_landmarks or ()
         
         if results.multi_hand_landmarks:
             new_cursors = []
@@ -110,10 +113,6 @@ while running:
     # Ambient motion has no finger marker; only current detections drive markers.
     influencers = cursors or [(w * (0.5 + 0.15 * math.cos(t * 0.03)),
                                h * (0.5 + 0.18 * math.sin(t * 0.027)))]
-
-    # Draw cursors
-    for cx, cy in cursors:
-        pygame.draw.circle(screen, (255, 255, 255), (cx, cy), 8)
 
     for y in range(rows):
         for x in range(cols):
@@ -149,6 +148,7 @@ while running:
             notify_exit_request("key_escape" if event.key == pygame.K_ESCAPE else "key_q")
             running = False
 
+    draw_hand_overlay(screen, detected_hands, layout=camera_layout, focus=(8,))
     pygame.display.flip()
-    notify_first_frame(cap, frame_processed=bool(ret))
+    notify_first_frame(cap, frame_processed=bool(ret and frame is not None))
     clock.tick(60)

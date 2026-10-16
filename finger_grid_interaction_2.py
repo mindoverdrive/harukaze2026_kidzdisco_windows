@@ -37,6 +37,7 @@ import atexit
 from contextlib import ExitStack
 import pygame
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_first_frame
 import math
 import cv2
@@ -119,9 +120,18 @@ def get_hands_data(frame):
             dist_sq = (x - tx)**2 + (y - ty)**2
             is_pinching = dist_sq < 1600 # 40*40
             
-            hands_data.append({'pos': (x, y), 'pinching': is_pinching})
+            hands_data.append({'pos': (x, y), 'pinching': is_pinching,
+                               'landmarks': hand_landmarks, 'layout': camera_layout})
             
     return hands_data, stage_frame
+
+
+def draw_hand_feedback(surface, hands_data):
+    for hand in hands_data:
+        # Index drags the cloth; thumb participates when the pinch cuts it.
+        draw_hand_overlay(surface, (hand['landmarks'],), layout=hand['layout'],
+                          focus=(8, 4) if hand['pinching'] else (8,))
+
 
 start_ticks = pygame.time.get_ticks()
 
@@ -162,13 +172,6 @@ while running:
     
     for hand in hands_list:
         interactions.append(hand)
-        # Draw visual indicator for hands
-        hx, hy = hand['pos']
-        # Hand indicator also colorful? Maybe just white ring
-        pygame.draw.circle(s, (255, 255, 255), (hx, hy), 12, 1)
-        # Inner fill based on pinch
-        fill_col = (255, 50, 50) if hand['pinching'] else (50, 255, 255)
-        pygame.draw.circle(s, fill_col, (hx, hy), 8)
 
 
     # Verlet Integration
@@ -366,7 +369,8 @@ while running:
                     stick[4] = current_time - REGEN_DELAY - REGEN_DURATION
 
 
+    draw_hand_feedback(s, hands_list)
     pygame.display.flip()
-    notify_first_frame(cap, frame_processed=bool(ret))
+    notify_first_frame(cap, frame_processed=bool(ret and frame is not None))
     clock.tick(60)
 

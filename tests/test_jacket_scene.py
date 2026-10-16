@@ -28,12 +28,17 @@ class JacketHarness(TreeHarness):
                                       render=mock.Mock(return_value=(mock.sentinel.pattern, mock.sentinel.alpha)))
         self.factory = mock.Mock(return_value=self.effect)
         self.blend = mock.Mock(return_value=self.stage_frame)
+        self.overlay_detector = mock.Mock()
+        self.overlay_detector.detect.return_value = (mock.sentinel.hand,)
+        self.overlay_factory = mock.Mock(return_value=self.overlay_detector)
+        self.overlay_draw = mock.Mock()
 
     def run(self):
         values = {"pygame": self.pygame, "display_utils": self.display, "cv2": self.cv2,
                   "mp": self.mp, "time": self.time, "atexit": self.atexit,
                   "notify_first_frame": self.first, "notify_exit_request": self.reason,
-                  "JacketFlow": self.factory, "blend_on_stage": self.blend}
+                  "JacketFlow": self.factory, "blend_on_stage": self.blend,
+                  "PassiveHandDetector": self.overlay_factory, "draw_pygame": self.overlay_draw}
         with mock.patch.dict(scene.__dict__, values):
             scene.main()
 
@@ -50,6 +55,9 @@ class JacketSceneTests(unittest.TestCase):
         harness.hands.close.assert_called_once()
         harness.cap.release.assert_called_once()
         harness.pygame.quit.assert_called_once()
+        harness.overlay_detector.detect.assert_called_once_with(harness.camera_frame)
+        harness.overlay_detector.close.assert_called_once()
+        self.assertEqual(harness.overlay_draw.call_args.kwargs, {"layout": harness.layout, "focus": ()})
 
     def test_quit_and_both_exit_keys_prevent_another_camera_read(self):
         for event, reason in ((SimpleNamespace(type=1), "pygame_quit"),
@@ -78,6 +86,21 @@ class JacketSceneTests(unittest.TestCase):
         harness.reason.assert_called_once_with("camera_read_failed_timeout")
         self.assertEqual(harness.effect.clear.call_count, 3)
         harness.cap.release.assert_called_once()
+        self.assertEqual(sum(call.args == (None,) for call in harness.overlay_detector.detect.call_args_list), 4)
+        self.assertEqual(harness.overlay_draw.call_args.args[1], ())
+
+    def test_overlay_constructor_or_processing_failure_still_closes_camera_and_segmentation(self):
+        for failure_at in ("constructor", "inference"):
+            harness = JacketHarness()
+            target = harness.overlay_factory if failure_at == "constructor" else harness.overlay_detector.detect
+            target.side_effect = RuntimeError(failure_at)
+            with self.assertRaisesRegex(RuntimeError, failure_at):
+                harness.run()
+            harness.hands.close.assert_called_once()
+            harness.cap.release.assert_called_once()
+            harness.pygame.quit.assert_called_once()
+            if failure_at == "inference":
+                harness.overlay_detector.close.assert_called_once()
 
     def test_processing_and_present_errors_cannot_ack_first_frame_and_still_release(self):
         for failure_at in ("processing", "present"):

@@ -44,6 +44,7 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
 import display_utils
+from hand_focus_pygfx import PygfxHandOverlay
 from scene_control import notify_first_frame
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
@@ -137,20 +138,11 @@ class SaturnParticlesApp:
         
         # 5. Interaction State
         self.hand_data_list = []  # List of hand data dicts
+        self.hand_overlay = PygfxHandOverlay(WINDOW_WIDTH, WINDOW_HEIGHT)
         
         # 6. Time Tracking
         self.last_time = time.monotonic()
         self.last_timestamp = 0
-
-        # Hand Cursors
-        self.cursors = []
-        cursor_geo = gfx.sphere_geometry(15)
-        for _ in range(2):
-            cursor_mat = gfx.MeshBasicMaterial(color="#00ff00")
-            mesh = gfx.Mesh(cursor_geo, cursor_mat)
-            mesh.visible = False
-            self.scene.add(mesh)
-            self.cursors.append(mesh)
 
         # Event Handling
         self.canvas.add_event_handler(self.on_event, "key_down")
@@ -349,11 +341,9 @@ class SaturnParticlesApp:
         points_obj.geometry.colors.update_range()
 
     def detect_hands(self):
+        self._clear_hands()
         ret, frame = self.cap.read()
-        if not ret:
-            self.hand_data_list = []
-            for c in self.cursors:
-                c.visible = False
+        if not ret or frame is None:
             return
         
         try:
@@ -372,15 +362,9 @@ class SaturnParticlesApp:
             self.last_timestamp = timestamp
             
             if self.detector is None:
-                self.hand_data_list = []
                 return
 
             result = self.detector.detect_for_video(mp_img, timestamp)
-            
-            # Reset
-            self.hand_data_list = []
-            for c in self.cursors:
-                c.visible = False
             
             if result.hand_landmarks:
                 # Sort hands by X coordinate to ensure consistent assignment?
@@ -426,24 +410,22 @@ class SaturnParticlesApp:
                     }
                     self.hand_data_list.append(hand_info)
                     
-                    # Update Cursor
-                    if i < len(self.cursors):
-                        self.cursors[i].visible = True
-                        self.cursors[i].local.position = tuple(index_world)
-                        col = "#ff0000" if is_pinch else "#00ff00"
-                        
-                        # Hand assignment color hint
-                        if i == 0: # Planet
-                            col = "#ffcc00" # Gold-ish
-                        else: # Ring
-                            col = "#00ccff" # Cyan-ish
-                            
-                        self.cursors[i].material.color = col
+            # Index position and thumb/index distance are the actual inputs.
+            # Openness is measured above but does not drive this scene's forces.
+            self.hand_overlay.update(
+                (result.hand_landmarks or ())[:2], layout=camera_layout, focus=(4, 8),
+                cursor_colors=((255, 204, 0), (0, 204, 255)),
+            )
 
             return True
 
         except Exception as e:
+            self._clear_hands()
             print(f"Hand detection error: {e}")
+
+    def _clear_hands(self):
+        self.hand_data_list = []
+        self.hand_overlay.clear()
 
     def animate(self):
         try:
@@ -459,7 +441,8 @@ class SaturnParticlesApp:
             self.update_physics(dt)
             
             try:
-                self.renderer.render(self.scene, self.camera)
+                self.renderer.render(self.scene, self.camera, flush=False)
+                self.renderer.render(self.hand_overlay.scene, self.hand_overlay.camera, clear=False)
             except RuntimeError:
                 pass
             else:

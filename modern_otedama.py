@@ -46,6 +46,7 @@ import sys
 import colorsys
 import time
 from scene_control import notify_exit_request, notify_first_frame
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 
 # -----------------------------------------------------------------------------
 # Constants & Configuration
@@ -253,6 +254,8 @@ class ModernOtedamaGame:
             pygame.quit()
             raise RuntimeError("The shared camera could not be attached")
         self.camera_failure_since = None
+        self.camera_last_frame_id = None
+        self.camera_last_fresh_at = None
         self.frame_processed = False
 
         # Game Data
@@ -377,6 +380,15 @@ class ModernOtedamaGame:
         # Camera
         success, img = self.cap.read()
         self.frame_processed = bool(success and img is not None)
+        frame_id = getattr(self.cap, "last_read_frame_id", None)
+        if self.frame_processed and type(frame_id) is int:
+            now = time.monotonic()
+            if frame_id != self.camera_last_frame_id:
+                self.camera_last_frame_id = frame_id
+                self.camera_last_fresh_at = now
+            elif self.camera_last_fresh_at is not None and now - self.camera_last_fresh_at >= 0.25:
+                # Shared memory can return its last frame during a camera stall.
+                self.frame_processed = False
         if self.frame_processed:
             if self.camera_failure_since is not None:
                 self._start_frame_pending = True
@@ -505,20 +517,6 @@ class ModernOtedamaGame:
         else:
             self.screen.fill(COLOR_BG_DARK)
             
-        # 2. Hands (model_complexity=1, Psychedelic Wireframe)
-        for hand in self.hand_colliders:
-            hx, hy = hand['pos']
-            hr = hand['radius']
-            
-            hand_col = hsv_to_rgb(self.global_hue, 1, 1)
-            pygame.draw.circle(self.screen, hand_col, (hx, hy), hr + 5, 3)
-            
-            lm = hand['landmarks'].landmark
-            points = [(int(p.x * WINDOW_WIDTH), int(p.y * WINDOW_HEIGHT)) for p in lm]
-            for connection in self.mp_hands.HAND_CONNECTIONS:
-                start, end = connection
-                pygame.draw.line(self.screen, (255, 255, 255), points[start], points[end], 2)
-
         # 3. Start Button (if applicable)
         if self.state in [STATE_TITLE, STATE_GAMEOVER]:
             self.start_button.draw(self.screen, self.global_hue)
@@ -533,6 +531,12 @@ class ModernOtedamaGame:
             
         # 6. UI
         self.draw_ui()
+
+        # The entire palm collider is the input; keep its exact center/radius visible.
+        draw_hand_overlay(
+            self.screen, [hand['landmarks'] for hand in self.hand_colliders],
+            palm_focus=True,
+            palm_circles=[(*hand['pos'], hand['radius']) for hand in self.hand_colliders])
 
         display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
         notify_first_frame(self.cap, frame_processed=self.frame_processed)

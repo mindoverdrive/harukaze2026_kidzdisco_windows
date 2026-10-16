@@ -19,7 +19,7 @@ scene.__dict__.update(ExitStack=ExitStack, colorsys=colorsys, math=math, random=
                       Body=Body, SkeletonPeople=SkeletonPeople, person_roi=person_roi,
                       atexit=mock.Mock(), pygame=mock.Mock(), cv2=mock.Mock(), mp=mock.Mock(),
                       display_utils=mock.Mock(), time=mock.Mock(), notify_first_frame=mock.Mock(),
-                      notify_exit_request=mock.Mock())
+                      notify_exit_request=mock.Mock(), PassiveHandDetector=mock.Mock(), draw_pygame=mock.Mock())
 source = ast.parse((ROOT / "skeleton_glitch.py").read_text(encoding="utf-8"))
 definitions = [node for node in source.body if isinstance(node, (ast.Assign, ast.FunctionDef))]
 exec(compile(ast.Module(body=definitions, type_ignores=[]), "skeleton_glitch.py", "exec"), scene.__dict__)
@@ -183,13 +183,18 @@ class Harness:
         self.atexit = mock.Mock()
         self.time = SimpleNamespace(monotonic=mock.Mock(side_effect=times or [0]))
         self.draw = mock.Mock(side_effect=lambda *args: self.trace.append("draw"))
+        self.overlay_detector = mock.Mock()
+        self.overlay_detector.detect.side_effect = lambda frame: () if frame is None else (mock.sentinel.hand,)
+        self.overlay_factory = mock.Mock(return_value=self.overlay_detector)
+        self.overlay_draw = mock.Mock()
 
     def run(self):
         with ExitStack() as patches:
             for key, value in {"pygame":self.pygame, "display_utils":self.display, "cv2":self.cv2,
                                "mp":self.mp, "SkeletonPeople":mock.Mock(return_value=self.people),
                                "notify_first_frame":self.first, "notify_exit_request":self.reason,
-                               "atexit":self.atexit, "time":self.time, "draw_skeletons":self.draw}.items():
+                               "atexit":self.atexit, "time":self.time, "draw_skeletons":self.draw,
+                               "PassiveHandDetector":self.overlay_factory, "draw_pygame":self.overlay_draw}.items():
                 patches.enter_context(mock.patch.object(scene,key,value))
             scene.main()
 
@@ -203,11 +208,16 @@ class SceneTests(unittest.TestCase):
         h.display.open_camera.assert_called_once_with()
         h.display.prepare_camera_frame.assert_called_once()
         h.atexit.unregister.assert_called_once()
+        h.overlay_detector.detect.assert_called_once_with(h.display.prepare_camera_frame.return_value[0])
+        h.overlay_detector.close.assert_called_once()
+        self.assertEqual(h.overlay_draw.call_args.kwargs, {"layout": mock.sentinel.layout, "focus": ()})
 
     def test_true_none_is_not_a_first_frame_and_recovers(self):
         h=Harness(reads=[(True,None),(True,Frame())], events=[[],[],[SimpleNamespace(type=1)]],times=[0,.1]); h.run()
         self.assertEqual([call.kwargs["frame_processed"] for call in h.first.call_args_list],[False,True])
         h.people.invalidate_motion.assert_called_once()
+        self.assertEqual(h.overlay_draw.call_args_list[0].args[1], ())
+        self.assertEqual(h.overlay_detector.detect.call_args_list[0], mock.call(None))
 
     def test_read_timeout_exits_and_closes_all(self):
         h=Harness(reads=[(False,None)]*2, events=[[],[]],times=[0,1.01]); h.run()
@@ -228,7 +238,20 @@ class SceneTests(unittest.TestCase):
         h=Harness(reads=[(True,Frame())]*2,events=[[],[],[SimpleNamespace(type=1)]],times=[0,.05])
         h.cap.last_read_frame_id=7; h.run()
         h.people.update.assert_called_once()
+        h.overlay_detector.detect.assert_called_once()
         self.assertEqual([call.kwargs["frame_processed"] for call in h.first.call_args_list],[True,False])
+
+    def test_stale_shared_frame_clears_hand_overlay_before_scene_timeout(self):
+        h=Harness(reads=[(True,Frame())]*2, events=[[],[],[SimpleNamespace(type=1)]], times=[0,.3])
+        h.cap.last_read_frame_id=7; h.run()
+        h.overlay_detector.detect.assert_called_with(None)
+        self.assertEqual(h.overlay_draw.call_args.args[1], ())
+
+    def test_hand_detector_failure_closes_prior_resources(self):
+        h=Harness(); h.overlay_factory.side_effect=RuntimeError("overlay constructor")
+        with self.assertRaisesRegex(RuntimeError,"overlay constructor"): h.run()
+        h.cap.release.assert_called_once(); h.people.close.assert_called_once()
+        h.face.close.assert_called_once(); h.pygame.quit.assert_called_once()
 
     def test_display_failure_cannot_emit_first_frame(self):
         h=Harness(); h.pygame.display.flip.side_effect=RuntimeError("flip failed")

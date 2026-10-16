@@ -38,6 +38,7 @@ from contextlib import ExitStack
 import cv2
 import pygame
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_first_frame, notify_exit_request
 import mediapipe as mp
 import numpy as np
@@ -470,7 +471,15 @@ def main():
             bugs.append(Bug(width, height))
 
         ret, frame = cap.read()
-        if not ret:
+        if not ret or frame is None:
+            if camera_surface is not None:
+                # Retry with the last artwork, without a stale hand marker.
+                screen.blit(camera_surface, (0, 0))
+                for bug in bugs:
+                    bug.draw(screen)
+                spider_1.draw(screen)
+                spider_2.draw(screen)
+                pygame.display.flip()
             now = time.monotonic()
             if camera_failure_since is None:
                 camera_failure_since = now
@@ -530,11 +539,9 @@ def main():
         spider_1.draw(screen)
         spider_2.draw(screen)
 
-        if target1 is not None:
-            pygame.draw.circle(screen, (255, 255, 255), (int(target1[0]), int(target1[1])), 10, 2)
-        if target2 is not None:
-            pygame.draw.circle(screen, (0, 255, 255), (int(target2[0]), int(target2[1])), 10, 2)
-
+        # The single-hand second spider offset is artwork, not another detected hand.
+        draw_hand_overlay(screen, results.multi_hand_landmarks or (),
+                          layout=camera_layout, focus=(8,))
         pygame.display.flip()
         notify_first_frame(cap, frame_processed=bool(ret))
         clock.tick(60)

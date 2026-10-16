@@ -115,6 +115,38 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         self.assertGreaterEqual(checks[0], 30)
         self.assertGreaterEqual(checks[1], 30)
 
+    def test_frozen_shared_frame_clears_feedback_and_excludes_recovery_interval(self):
+        cap = mock.Mock(last_read_frame_id=1)
+        cap.isOpened.return_value = True
+        cap.read.return_value = (True, np.zeros((18, 32, 3), dtype=np.uint8))
+        hands = mock.Mock()
+        hands.process.return_value = SimpleNamespace(multi_hand_landmarks=None)
+        with (
+            mock.patch.object(modern_otedama.display_utils, "open_camera", return_value=cap),
+            mock.patch.object(modern_otedama.display_utils, "setup_pygame_scaled_fullscreen",
+                              return_value=(pygame.Surface((1280, 720)), pygame.Surface((1280, 720)), None)),
+            mock.patch.object(modern_otedama.mp.solutions.hands, "Hands", return_value=hands),
+            mock.patch.object(modern_otedama.time, "monotonic", return_value=10),
+        ):
+            game = modern_otedama.ModernOtedamaGame()
+            try:
+                game.reset_game()
+                game._start_frame_pending = False
+                game.camera_last_frame_id = 1
+                game.camera_last_fresh_at = 9.7
+                game.hand_colliders = [{'pos': (640, 0), 'radius': 80}]
+                game.update(.3)
+                self.assertFalse(game.frame_processed)
+                self.assertEqual(game.hand_colliders, [])
+                self.assertEqual(game.play_elapsed_seconds, 0)
+                hands.process.assert_not_called()
+                cap.last_read_frame_id = 2
+                game.update(.3)
+                self.assertTrue(game.frame_processed)
+                self.assertEqual(game.play_elapsed_seconds, 0)
+            finally:
+                game.cleanup()
+
     def test_production_playlist_registers_one_valid_otedama_entrypoint(self):
         config = manager.load_config(ROOT / "configs/rebirth_operator_acer_xiaomi.json")
         scenes = manager.resolve_production_scenes(config)

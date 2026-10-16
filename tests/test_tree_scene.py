@@ -16,6 +16,7 @@ scene.__dict__.update(
     atexit=mock.MagicMock(),
     cv2=mock.MagicMock(),
     display_utils=mock.MagicMock(),
+    draw_hand_overlay=mock.Mock(),
     json=mock.MagicMock(),
     math=math,
     mp=mock.MagicMock(),
@@ -64,6 +65,7 @@ class SceneHarness:
             self.trace.append("first") if kwargs.get("frame_processed") else None
         ))
         self.reason = mock.Mock()
+        self.overlay = mock.Mock()
         self.font = mock.MagicMock()
 
         self.pygame = SimpleNamespace(
@@ -112,12 +114,38 @@ class SceneHarness:
             mock.patch.object(scene, "atexit", self.atexit),
             mock.patch.object(scene, "notify_first_frame", self.first),
             mock.patch.object(scene, "notify_exit_request", self.reason),
+            mock.patch.object(scene, "draw_hand_overlay", self.overlay),
             mock.patch.object(scene, "FINGER_PARAMS", finger_params),
         ):
             scene.main()
 
 
 class TreeSceneTests(unittest.TestCase):
+    def test_feedback_matches_single_and_dual_hand_input_rules(self):
+        hand = neutral_hand()
+        hand.landmark[4].x = hand.landmark[5].x
+        for tip, pip in zip((8, 12, 16, 20), (6, 10, 14, 18)):
+            hand.landmark[tip].y = hand.landmark[pip].y + 0.1
+        self.assertEqual(scene.active_hand_landmarks(hand), (0,))
+        self.assertEqual(scene.active_hand_landmarks(hand, True), (0, 9, 4, 8))
+        hand.landmark[12].y = hand.landmark[10].y - 0.1
+        self.assertEqual(scene.count_raised_fingers(hand), 1)
+        self.assertEqual(scene.active_hand_landmarks(hand), (0, 12))
+        self.assertEqual(scene.active_hand_landmarks(hand, True), (0, 12, 9, 4, 8))
+
+    def test_feedback_reuses_current_hands_and_drops_them_on_camera_failure(self):
+        harness = SceneHarness(reads=[(True, object()), (False, None)],
+                               events=[[], [], [SimpleNamespace(type=1)]], times=[0])
+        observed = [neutral_hand(.25), neutral_hand(.75)]
+        harness.hands.process.return_value = SimpleNamespace(multi_hand_landmarks=observed)
+        harness.run()
+        first, missing = harness.overlay.call_args_list
+        self.assertEqual(first.args[1], observed)
+        self.assertEqual(first.kwargs["focus"](observed[0]), (0, 4, 8, 12, 16, 20, 9))
+        self.assertEqual(missing.args[1], [])
+        harness.hands.process.assert_called_once()
+        self.assertEqual(harness.pygame.display.flip.call_count, 2)
+
     def test_finger_count_keeps_the_existing_zero_to_five_range(self):
         self.assertEqual(scene.count_raised_fingers(neutral_hand()), 5)
         folded = neutral_hand()

@@ -1,10 +1,12 @@
 """One worker owns camera/Hands; the render thread only reads immutable snapshots."""
 
 from contextlib import ExitStack
+from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 import threading
 import time
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,9 @@ class CameraSnapshot:
     tips: tuple[tuple[int, int], ...]
     last_read_frame_id: int
     shm_name: str | None
+    # Copy model-owned mutable protobuf values before crossing to the renderer.
+    hand_landmarks: tuple[tuple[tuple[float, float, float], ...], ...] = ()
+    hand_layout: Mapping[str, float] | None = None
 
 
 def _load_native():
@@ -161,13 +166,19 @@ class SpheresCameraFeed:
             tips = tuple(
                 display.normalized_to_stage(hand.landmark[8].x, hand.landmark[8].y, layout)
                 for hand in (result.multi_hand_landmarks or ()))
+            hand_landmarks = tuple(
+                tuple((float(point.x), float(point.y), float(point.z))
+                      for point in hand.landmark)
+                for hand in (result.multi_hand_landmarks or ()))
             snapshot = CameraSnapshot(
                 timestamp=timestamp,
                 rgb_bytes=cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGB).tobytes(),
                 size=self._size,
                 tips=tips,
                 last_read_frame_id=frame_id,
-                shm_name=getattr(camera, "shm_name", None))
+                shm_name=getattr(camera, "shm_name", None),
+                hand_landmarks=hand_landmarks,
+                hand_layout=MappingProxyType(dict(layout)))
             with self._lock:
                 if not self._stop.is_set():
                     self._snapshot = snapshot

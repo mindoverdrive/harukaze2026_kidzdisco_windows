@@ -16,6 +16,7 @@ import mediapipe as mp
 import pygame
 
 import display_utils
+from hand_focus_overlay import PassiveHandDetector, draw_pygame
 from scene_control import notify_exit_request, notify_first_frame
 from skeleton_people import Body, SkeletonPeople, person_roi
 
@@ -110,11 +111,14 @@ def main():
             resources.callback(cap.release)
         if cap is None or not cap.isOpened():
             raise RuntimeError("The shared camera could not be attached")
+        hand_detector = PassiveHandDetector()
+        resources.callback(hand_detector.close)
         failure_since = None
         camera_layout = None
         last_frame_id = None
         last_fresh_time = None
         bodies = []
+        hands = ()
         running = True
         connections = tuple(mp.solutions.pose.POSE_CONNECTIONS)
         while running:
@@ -131,6 +135,7 @@ def main():
             ret, frame = cap.read()
             frame_processed = False
             if not ret or frame is None:
+                hands = hand_detector.detect(None)
                 people.invalidate_motion()
                 bodies = [Body(body.track_id, body.points, (0.0,) * len(body.points)) for body in bodies]
                 if failure_since is None:
@@ -147,13 +152,18 @@ def main():
                     break
                 if not duplicate:
                     camera_frame, _stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, width, height)
+                    hands = hand_detector.detect(camera_frame)
                     rgb_frame = cv2.cvtColor(camera_frame, cv2.COLOR_BGR2RGB)
                     result = face_detector.process(rgb_frame)
                     bodies = people.update(rgb_frame, getattr(result, "detections", None), now)
                     frame_processed = True
                     last_fresh_time = now
                     last_frame_id = frame_id if type(frame_id) is int else None
+                elif last_fresh_time is not None and now - last_fresh_time >= 0.25:
+                    hands = hand_detector.detect(None)
             draw_skeletons(screen, bodies, camera_layout, connections, now)
+            # Whole-body movement still drives the glitches; no finger is active.
+            draw_pygame(screen, hands, layout=camera_layout, focus=())
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=frame_processed)
             clock.tick(60)

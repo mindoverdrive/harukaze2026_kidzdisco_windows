@@ -55,6 +55,7 @@ class SceneHarness:
         self.display.prepare_camera_frame.return_value = (object(), object(), object())
         self.display.normalized_to_stage.side_effect = lambda x, y, layout: (round(x * 640), round(y * 360))
         self.first, self.reason = mock.Mock(), mock.Mock()
+        self.overlay = mock.Mock()
         self.trace, self.frame_cursor_counts = [], []
         self.cursor_count = 0
 
@@ -87,6 +88,7 @@ class SceneHarness:
             mp=SimpleNamespace(solutions=SimpleNamespace(hands=SimpleNamespace(
                 Hands=mock.Mock(return_value=self.hands)))),
             notify_first_frame=self.first, notify_exit_request=self.reason,
+            draw_hand_overlay=self.overlay,
         )
         tree = ast.parse((ROOT / "finger_mandala_3.py").read_text(encoding="utf-8"))
         definitions = [node for node in tree.body if isinstance(node, (ast.Assign, ast.ClassDef, ast.FunctionDef))]
@@ -112,6 +114,21 @@ class SceneHarness:
 
 
 class Mandala3SceneTests(unittest.TestCase):
+    def test_feedback_highlights_only_accepted_strokes_and_erases_on_camera_gap(self):
+        observed = [hand(.2, .4), hand(.21, .41), hand(.205, .405)]
+        scene = SceneHarness(reads=[(True, object()), (False, None)], observations=[observed], times=[0])
+        scene.run()
+        scene.overlay.assert_called_once()
+        call = scene.overlay.call_args
+        self.assertEqual(call.args[1], observed)
+        self.assertEqual(call.kwargs["focus"], ())
+        # First and third carry the same handedness and are deduplicated.
+        self.assertEqual(call.kwargs["active_points"], [(128, 144), (134, 148)])
+        self.assertEqual(scene.trace, ["flip", "first", "flip"])
+        self.assertEqual(scene.screen.blit.call_args_list[-1],
+                         mock.call(scene.artwork_colors.refresh.return_value, (0, 0)))
+        scene.hands.process.assert_called_once()
+
     def test_acer_entrypoint_runs_mandala3(self):
         with mock.patch.object(scene_profile_runner, "run_scene") as run_scene:
             runpy.run_path(str(ROOT / "finger_mandala_acer.py"), run_name="__main__")
@@ -330,7 +347,7 @@ class Mandala3SceneTests(unittest.TestCase):
         )
         scene.run()
         self.assertEqual(scene.cap.read.call_count, 3)
-        self.assertEqual(scene.trace, ["flip", "first", "flip", "first"])
+        self.assertEqual(scene.trace, ["flip", "first", "flip", "flip", "first"])
         self.assertEqual(len(scene.artwork_calls("circle")), 48)
         self.assertEqual(scene.artwork_calls("line"), [])
         scene.canvas.fill.assert_called_once_with((0, 0, 0, 0))

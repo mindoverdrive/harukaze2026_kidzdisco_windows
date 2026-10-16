@@ -14,6 +14,7 @@ import mediapipe as mp
 import pygame
 
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_exit_request, notify_first_frame
 
 
@@ -30,7 +31,8 @@ TARGET_LERP_SPEED = 5.0
 CAMERA_FAILURE_TIMEOUT_SECONDS = 1.0
 
 
-def count_raised_fingers(hand_landmarks):
+def raised_finger_ids(hand_landmarks):
+    """Use the scene's existing gesture rules for both control and feedback."""
     tips = (4, 8, 12, 16, 20)
     pips = (3, 6, 10, 14, 18)
     thumb_tip = hand_landmarks.landmark[4]
@@ -38,16 +40,32 @@ def count_raised_fingers(hand_landmarks):
     wrist = hand_landmarks.landmark[0]
     middle_mcp = hand_landmarks.landmark[9]
 
-    count = 0
+    raised = []
     if middle_mcp.x - wrist.x > 0:
         if thumb_tip.x > index_mcp.x + 0.01:
-            count += 1
+            raised.append(4)
     elif thumb_tip.x < index_mcp.x - 0.01:
-        count += 1
+        raised.append(4)
     for index in range(1, 5):
         if hand_landmarks.landmark[tips[index]].y < hand_landmarks.landmark[pips[index]].y:
-            count += 1
-    return max(0, min(5, count))
+            raised.append(tips[index])
+    return tuple(raised)
+
+
+def count_raised_fingers(hand_landmarks):
+    return len(raised_finger_ids(hand_landmarks))
+
+
+def active_hand_landmarks(hand_landmarks, multiple_hands=False):
+    """Wrist positions branches; raised tips set density and bend branches.
+
+    Two-hand mode additionally uses palm direction and thumb/index opening,
+    so those inputs stay highlighted even when the fingers are folded.
+    """
+    indices = (0,) + raised_finger_ids(hand_landmarks)
+    if multiple_hands:
+        indices += (9, 4, 8)
+    return tuple(dict.fromkeys(indices))
 
 
 def _stage_position(landmark, width, height, camera_layout):
@@ -193,6 +211,7 @@ def main():
         multi_hand_specs = []
         single_hand_base_path = None
         camera_surface = None
+        camera_layout = None
         camera_failure_since = None
         running = True
 
@@ -213,6 +232,7 @@ def main():
             target_spread, target_ratio, target_depth = FINGER_PARAMS[2]
             ret, frame = cap.read()
             frame_processed = False
+            hands_list = []
             if not ret or frame is None:
                 now = time.monotonic()
                 if camera_failure_since is None:
@@ -352,6 +372,9 @@ def main():
                         smooth_targets,
                         base_path,
                     )
+            draw_hand_overlay(screen, hands_list[:2], layout=camera_layout,
+                              focus=lambda hand, multiple=len(hands_list) > 1:
+                              active_hand_landmarks(hand, multiple))
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=frame_processed)
             clock.tick(60)

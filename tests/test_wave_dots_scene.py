@@ -17,6 +17,7 @@ scene.__dict__.update(
     atexit=mock.MagicMock(),
     cv2=mock.MagicMock(),
     display_utils=mock.MagicMock(),
+    draw_hand_overlay=mock.Mock(),
     json=mock.MagicMock(),
     math=math,
     mp=mock.MagicMock(),
@@ -54,6 +55,7 @@ class SceneHarness:
         self.atexit = mock.MagicMock()
         self.first = mock.Mock(side_effect=lambda *_args, **_kwargs: self.trace.append("first"))
         self.reason = mock.Mock()
+        self.overlay = mock.Mock()
 
         color = mock.MagicMock()
         self.pygame = SimpleNamespace(
@@ -99,11 +101,25 @@ class SceneHarness:
             mock.patch.object(scene, "atexit", self.atexit),
             mock.patch.object(scene, "notify_first_frame", self.first),
             mock.patch.object(scene, "notify_exit_request", self.reason),
+            mock.patch.object(scene, "draw_hand_overlay", self.overlay),
         ):
             scene.main()
 
 
 class WaveDotsSceneTests(unittest.TestCase):
+    def test_hand_feedback_marks_all_force_inputs_and_erases_during_camera_gap(self):
+        harness = SceneHarness(reads=[(True, object()), (False, None)],
+                               events=[[], [], [SimpleNamespace(type=1)]], times=[0])
+        observed = [hand(thumb=(0.1, 0.2), index=(0.8, 0.4))]
+        harness.hands.process.return_value = SimpleNamespace(multi_hand_landmarks=observed)
+        harness.overlay.side_effect = lambda *_args, **_kwargs: harness.trace.append("overlay")
+        harness.run()
+        harness.overlay.assert_called_once_with(harness.screen, observed,
+                                                layout={"layout": True}, focus=(4, 8, 12, 16, 20))
+        self.assertEqual(harness.trace, ["camera", "overlay", "flip", "first", "camera", "flip"])
+        harness.hands.process.assert_called_once()
+        harness.first.assert_called_once()
+
     def test_grid_density_and_original_particle_force_are_preserved(self):
         particles = scene.create_particles(30, 30)
         self.assertEqual(len(particles), 4)

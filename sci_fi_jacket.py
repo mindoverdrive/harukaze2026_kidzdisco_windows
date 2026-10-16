@@ -14,6 +14,7 @@ import mediapipe as mp
 import pygame
 
 from jacket_effect import JacketFlow, blend_on_stage
+from hand_focus_overlay import PassiveHandDetector, draw_pygame
 from scene_control import notify_exit_request, notify_first_frame
 
 
@@ -46,6 +47,8 @@ def main():
             raise RuntimeError("The shared camera could not be attached")
         segmentation = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=1)
         resources.callback(segmentation.close)
+        hand_detector = PassiveHandDetector()
+        resources.callback(hand_detector.close)
         clock = pygame.time.Clock()
         effect = None
         camera_failure_since = None
@@ -64,7 +67,9 @@ def main():
             now = time.monotonic()
             frame_processed = False
             camera_surface = None
+            hands, layout = (), None
             if not ret or frame is None:
+                hand_detector.detect(None)
                 if effect is not None:
                     effect.clear()
                 if camera_failure_since is None:
@@ -75,6 +80,7 @@ def main():
             else:
                 camera_failure_since = None
                 camera_frame, stage_frame, layout = display_utils.prepare_camera_frame(frame, width, height)
+                hands = hand_detector.detect(camera_frame)
                 small = processing_frame(camera_frame)
                 size = (small.shape[1], small.shape[0])
                 if effect is None or effect.size != size:
@@ -88,6 +94,8 @@ def main():
             screen.fill((0, 0, 0))
             if camera_surface is not None:
                 screen.blit(camera_surface, (0, 0))
+            # Garment segmentation remains the input; fingers are detection-only.
+            draw_pygame(screen, hands, layout=layout, focus=())
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=frame_processed)
             clock.tick(60)

@@ -12,6 +12,7 @@ import mediapipe as mp
 import pygame
 
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from mandala_colors import ArtworkHueCycle
 from mandala_motion import ArtworkOutwardDrift
 from scene_control import notify_exit_request, notify_first_frame
@@ -253,6 +254,7 @@ def main():
         hue = 0
         tracker = ParticipantTracker(max_people=3)
         camera_failure_since = None
+        camera_surface = None
         running = True
 
         while running:
@@ -267,9 +269,14 @@ def main():
                 break
 
             ret, frame = cap.read()
-            if not ret:
+            if not ret or frame is None:
                 # Do not connect strokes across a missing camera observation.
                 tracker.update([], w)
+                if camera_surface is not None:
+                    # Keep the existing camera/artwork; erase the last observed hand.
+                    screen.blit(camera_surface, (0, 0))
+                    screen.blit(colored_canvas, (0, 0))
+                    pygame.display.flip()
                 now = time.monotonic()
                 if camera_failure_since is None:
                     camera_failure_since = now
@@ -328,6 +335,10 @@ def main():
             screen.blit(camera_surface, (0, 0))
             screen.blit(colored_canvas, (0, 0))
             screen.blit(cursor_layer, (0, 0))
+            # Only accepted participant strokes are active, including deduplication.
+            draw_hand_overlay(screen, results.multi_hand_landmarks or (),
+                              layout=camera_layout, focus=(),
+                              active_points=[tracked["current"] for tracked in tracked_hands])
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=True)
             clock.tick(120)

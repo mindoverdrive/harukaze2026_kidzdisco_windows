@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCREEN_SIZE = (16, 9)
 
 
-def snapshot(frame_id=1, tips=((4, 3),)):
+def snapshot(frame_id=1, tips=((4, 3),), hand_landmarks=()):
     return CameraSnapshot(
         timestamp=100.0,
         rgb_bytes=bytes((frame_id, 20, 30)) * (SCREEN_SIZE[0] * SCREEN_SIZE[1]),
@@ -25,6 +25,8 @@ def snapshot(frame_id=1, tips=((4, 3),)):
         tips=tips,
         last_read_frame_id=frame_id,
         shm_name="fake-manager-shared-camera",
+        hand_landmarks=hand_landmarks,
+        hand_layout=dict(offset_x=0, offset_y=0, scaled_width=16, scaled_height=9),
     )
 
 
@@ -62,6 +64,7 @@ class FakeScene:
         self.make_renderer = mock.Mock(return_value=self.renderer)
         self.notify_frame = mock.Mock(side_effect=self.record("notify_frame"))
         self.notify_exit = mock.Mock(side_effect=self.record("notify_exit"))
+        self.overlay = mock.Mock(side_effect=self.record("hand_overlay"))
         timestamps = iter([100.0] + [100.0 + (i + 1) / 60 for i in range(len(snapshots))])
         namespace = dict(
             ExitStack=ExitStack, json=json,
@@ -69,6 +72,7 @@ class FakeScene:
             time=SimpleNamespace(monotonic=lambda: 100.0, perf_counter=lambda: next(timestamps)),
             SpheresCameraFeed=self.make_feed, SphereRenderer=self.make_renderer,
             TipSmoother=TipSmoother,
+            draw_hand_overlay=self.overlay,
             notify_first_frame=self.notify_frame, notify_exit_request=self.notify_exit,
         )
         source = ROOT / "colorfull_dots_spheres.py"
@@ -113,7 +117,32 @@ class SpheresSceneTests(unittest.TestCase):
         scene.frombuffer.assert_not_called()
         scene.screen.blit.assert_not_called()
         scene.notify_frame.assert_not_called()
+        scene.overlay.assert_not_called()
         scene.make_feed.assert_called_once_with(*SCREEN_SIZE)
+        self.assert_all_resources_closed(scene)
+
+    def test_hand_overlay_uses_current_snapshot_and_exact_smoothed_field_inputs(self):
+        hands = (((.1, .2, 0.0),) * 21, ((.8, .6, 0.0),) * 21)
+        first = snapshot(tips=((4, 3), (10, 7)), hand_landmarks=hands)
+        moved = snapshot(2, ((7, 3), (12, 7)), hand_landmarks=hands)
+        hand_free = snapshot(3, (), ())
+        scene = FakeScene([first, moved, None, hand_free])
+        scene.run()
+        self.assertEqual(scene.overlay.call_count, 3)
+        for frame_index, call_index, frame in ((0, 0, first), (1, 1, moved), (3, 2, hand_free)):
+            call = scene.overlay.call_args_list[call_index]
+            self.assertIs(call.args[0], scene.screen)
+            self.assertIs(call.args[1], frame.hand_landmarks)
+            self.assertIs(call.kwargs["layout"], frame.hand_layout)
+            self.assertEqual(call.kwargs["focus"], ())
+            self.assertEqual(call.kwargs["active_points"],
+                             scene.renderer.draw.call_args_list[frame_index].args[2])
+        self.assertNotEqual(scene.overlay.call_args_list[1].kwargs["active_points"], moved.tips)
+        self.assertEqual(scene.overlay.call_args_list[2].args[1], ())
+        self.assertEqual(scene.overlay.call_args_list[2].kwargs["active_points"], ())
+        relevant = [call for call in scene.calls if call in {"draw", "hand_overlay", "flip"}]
+        self.assertEqual(relevant, ["draw", "hand_overlay", "flip"] * 2 +
+                         ["draw", "flip", "draw", "hand_overlay", "flip"])
         self.assert_all_resources_closed(scene)
 
     def test_real_snapshot_is_acknowledged_only_after_its_background_draw_and_flip(self):

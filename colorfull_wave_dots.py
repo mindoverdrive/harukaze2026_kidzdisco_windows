@@ -14,6 +14,7 @@ import mediapipe as mp
 import pygame
 
 import display_utils
+from hand_focus_overlay import draw_pygame as draw_hand_overlay
 from scene_control import notify_exit_request, notify_first_frame
 
 
@@ -172,6 +173,7 @@ def main():
 
         particles = create_particles(width, height)
         camera_failure_since = None
+        camera_surface = None
         running = True
         while running:
             for event in pygame.event.get():
@@ -186,6 +188,11 @@ def main():
 
             ret, frame = cap.read()
             if not ret or frame is None:
+                if camera_surface is not None:
+                    screen.blit(camera_surface, (0, 0))
+                    for particle in particles:
+                        draw_particle(screen, particle)
+                    pygame.display.flip()
                 now = time.monotonic()
                 if camera_failure_since is None:
                     camera_failure_since = now
@@ -210,6 +217,9 @@ def main():
             for particle in particles:
                 update_particle(particle, active_fingertips)
                 draw_particle(screen, particle)
+            # All five tips repel particles; pinching strengthens the same inputs.
+            draw_hand_overlay(screen, results.multi_hand_landmarks or (),
+                              layout=camera_layout, focus=FINGERTIP_IDS)
             pygame.display.flip()
             notify_first_frame(cap, frame_processed=True)
             clock.tick(60)

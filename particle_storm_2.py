@@ -45,6 +45,7 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import wgpu
 import display_utils
+from hand_focus_pygfx import PygfxHandOverlay
 from scene_control import notify_first_frame
 from rendercanvas.auto import RenderCanvas, loop
 import pygfx as gfx
@@ -132,6 +133,8 @@ class ParticleStormApp:
         self.overlay_scene = gfx.Scene()
         self.overlay_camera = gfx.OrthographicCamera(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.overlay_camera.local.z = 100
+        self.hand_overlay = PygfxHandOverlay(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.overlay_scene.add(self.hand_overlay.mesh)
         self.camera_layout = display_utils.get_uniform_layout(*self.camera_input_size, WINDOW_WIDTH, WINDOW_HEIGHT)
 
         # 5. Particle System Initialization
@@ -189,16 +192,6 @@ class ParticleStormApp:
         # self.grid.local.rotation = la.quat_from_euler((-1.57, 0, 0)) # Lie flat
         # self.scene.add(self.grid)
         
-        # Hand Cursors (Visual Feedback)
-        self.cursors = []
-        cursor_geo = gfx.sphere_geometry(18)
-        for _ in range(2):
-            cursor_mat = gfx.MeshBasicMaterial(color="#ff0044")
-            mesh = gfx.Mesh(cursor_geo, cursor_mat)
-            mesh.visible = False
-            self.overlay_scene.add(mesh)
-            self.cursors.append(mesh)
-
     def create_soft_particle_texture(self):
         size = 64
         # Create float32 RGBA
@@ -302,12 +295,6 @@ class ParticleStormApp:
         self.geometry.colors.update_range()
 
 
-    def _stage_to_overlay(self, stage_x, stage_y):
-        return (
-            stage_x - WINDOW_WIDTH / 2.0,
-            WINDOW_HEIGHT / 2.0 - stage_y,
-        )
-
     def _landmark_to_world(self, landmark, camera_layout):
         stage_x, stage_y = display_utils.normalized_to_stage(landmark.x, landmark.y, camera_layout)
         norm_x = stage_x / float(WINDOW_WIDTH)
@@ -322,14 +309,10 @@ class ParticleStormApp:
         return np.array([world_x, world_y, world_z], dtype=np.float32), (stage_x, stage_y)
 
     def analyze_hands(self, result, camera_layout):
-        self.hand_data = []
-        
-        # Reset visibility
-        for c in self.cursors:
-            c.visible = False
+        self._clear_hands()
 
         if result.hand_landmarks:
-            for i, hand_lms in enumerate(result.hand_landmarks):
+            for hand_lms in result.hand_landmarks:
                 # 1. Position Calculation
                 wrist = hand_lms[0]
                 index_tip = hand_lms[8]
@@ -353,16 +336,18 @@ class ParticleStormApp:
                 
                 self.hand_data.append({'pos': pos, 'gest': gesture_factor, 'screen_pos': screen_pos})
                 
-                # Update Cursor
-                if i < len(self.cursors):
-                    self.cursors[i].visible = True
-                    overlay_x, overlay_y = self._stage_to_overlay(*screen_pos)
-                    self.cursors[i].local.position = (overlay_x, overlay_y, 0)
-                    # Change cursor color based on state
-                    if gesture_factor < 0:
-                        self.cursors[i].material.color = "#00ffff" # Explode (Cyan)
-                    else:
-                        self.cursors[i].material.color = "#ff0044" # Attract (Red)
+        # Position follows the index; the palm ring denotes the open/closed
+        # whole-hand gesture. Reuse these Tasks results without another model.
+        self.hand_overlay.update(
+            result.hand_landmarks, layout=camera_layout, focus=(8,),
+            palm_focus=True,
+            cursor_colors=[(0, 255, 255) if hand['gest'] < 0 else (255, 0, 68)
+                           for hand in self.hand_data],
+        )
+
+    def _clear_hands(self):
+        self.hand_data = []
+        self.hand_overlay.clear()
 
 
     def animate(self):
@@ -373,8 +358,10 @@ class ParticleStormApp:
         # Cap dt to avoid explosion on lag
         if dt > 0.1: dt = 0.1
         
+        self._clear_hands()
+        frame_processed = False
         ret, frame = self.cap.read()
-        if ret:
+        if ret and frame is not None:
             camera_frame, stage_frame, camera_layout = display_utils.prepare_camera_frame(frame, WINDOW_WIDTH, WINDOW_HEIGHT)
             self.camera_layout = camera_layout
             rgb = cv2.cvtColor(camera_frame, cv2.COLOR_BGR2RGB)
@@ -385,20 +372,21 @@ class ParticleStormApp:
             timestamp_ms = max(int(now * 1000), self.last_timestamp + 1)
             self.last_timestamp = timestamp_ms
             if self.detector is not None:
-                result = self.detector.detect_for_video(mp_img, timestamp_ms)
-                self.analyze_hands(result, camera_layout)
+                try:
+                    result = self.detector.detect_for_video(mp_img, timestamp_ms)
+                    self.analyze_hands(result, camera_layout)
+                    frame_processed = True
+                except Exception as error:
+                    self._clear_hands()
+                    print(f"Hand detection error: {error}")
             else:
-                self.hand_data = []
-                for c in self.cursors:
-                    c.visible = False
+                self._clear_hands()
             
             rgba = cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGBA)
             self.cam_tex.data[:] = rgba
             self.cam_tex.update_range((0,0,0), self.cam_tex.size)
         else:
-            self.hand_data = []
-            for c in self.cursors:
-                c.visible = False
+            self._clear_hands()
 
         # Physics
         self.update_physics(dt)
@@ -420,7 +408,7 @@ class ParticleStormApp:
         except RuntimeError:
             rendered = False
 
-        notify_first_frame(self.cap, frame_processed=bool(ret and rendered and self.detector is not None))
+        notify_first_frame(self.cap, frame_processed=bool(frame_processed and rendered))
         
         self.canvas.request_draw()
 

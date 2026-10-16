@@ -21,6 +21,17 @@ def load_scene_functions(namespace):
 
 
 class FractalFeedbackTests(unittest.TestCase):
+    def test_shared_feedback_is_after_art_and_uses_only_current_index_inputs(self):
+        result = self.run_loop(frames=(True, True, False),
+                               detections=[[(.2, .4), (.8, .6)], [], []])
+        calls = result["overlay"].call_args_list
+        self.assertEqual([len(call.args[1]) for call in calls], [2, 0, 0])
+        self.assertTrue(all(call.kwargs["focus"] == (8,) for call in calls))
+        self.assertEqual(result["hands"].process.call_count, 2)
+        kinds = [event[1] for event in result["timeline"] if event[0] == 0]
+        self.assertLess(kinds.index("art"), kinds.index("overlay"))
+        self.assertLess(kinds.index("overlay"), kinds.index("flip"))
+
     def test_marker_uses_actual_fingertip_instead_of_eased_artwork_position(self):
         pygame = mock.Mock()
         scene = load_scene_functions({"pygame": pygame})
@@ -127,6 +138,7 @@ class FractalFeedbackTests(unittest.TestCase):
             pygame=pygame, display_utils=display, cv2=cv2, mp=mp, math=math,
             ExitStack=ExitStack, atexit=atexit, sys=mock.Mock(),
             notify_first_frame=notify, notify_exit_request=notify_exit,
+            draw_hand_overlay=mock.Mock(side_effect=lambda *args, **kwargs: record("overlay", args, kwargs)),
             draw_fractal=mock.Mock(side_effect=lambda *args: record("art", args[1], args[2])),
         ))
         scene["sys"].exit.side_effect = SystemExit(0)
@@ -146,7 +158,8 @@ class FractalFeedbackTests(unittest.TestCase):
         hands.close.assert_called_once_with()
         pygame.quit.assert_called_once_with()
         return dict(timeline=timeline, cap=cap, hands=hands, pygame=pygame,
-                    notify=notify, notify_exit=notify_exit, trails=trails)
+                    notify=notify, notify_exit=notify_exit, trails=trails,
+                    overlay=scene["draw_hand_overlay"])
 
     def test_first_frame_is_notified_after_camera_artwork_feedback_and_display_flip(self):
         result = self.run_loop()
