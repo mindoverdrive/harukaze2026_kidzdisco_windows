@@ -2,11 +2,11 @@
 
 ## Scope and implementation
 
-All 18 entries in `configs/rebirth_operator_acer_xiaomi.json` now show detected hand bones and a palm-center circle. Muted gray bones/circles identify detection; a steady cyan/white marker with a dark border identifies the part actually used by that scene. There is no default active finger. Existing backgrounds, artwork, logo transitions, camera ownership, operator controls and NEXT/BACK remain in their existing paths.
+All 19 entries in `configs/rebirth_operator_acer_xiaomi.json` now show detected hand bones and a palm-center circle (Earth was added after the initial 18-scene pass; see `EARTH_PRODUCTION_ADOPTION_20261016.md`). Muted gray bones/circles identify detection; a steady cyan/white marker with a dark border identifies the part actually used by that scene. There is no default active finger. Existing backgrounds, artwork, logo transitions, camera ownership, operator controls and NEXT/BACK remain in their existing paths.
 
 `hand_focus_overlay.py` renders Pygame and OpenCV feedback from Solutions landmarks, Tasks landmarks or immutable worker snapshots. It uses the scene's existing mirrored inference frame and its exact letterbox transform. There is no additional mirror. Filtered inputs can supply explicit active points. Otedama supplies its exact palm collision centers/radii. `hand_focus_pygfx.py` places the same RGBA drawing in a final orthographic render pass so 3D particles do not cover it; the old duplicated sphere cursors are replaced and their state colors remain in the marker centers.
 
-The 13 scenes that already infer hands reuse their existing results. Five scenes without a hand model use one lightweight `PassiveHandDetector` at up to 15 Hz on the existing acquired frame. It owns no camera and closes with the scene. Missing frames and empty results clear feedback; cached passive results last at most one sampling interval. The Spheres worker copies landmarks before publishing its immutable snapshot. Skeleton and Otedama also clear feedback after 0.25 seconds of repeated shared-memory frame IDs. Otedama freezes gameplay during this camera stall and excludes the first recovery interval.
+The 14 scenes that already infer hands reuse their existing results. Five scenes without a hand model use one lightweight `PassiveHandDetector` at up to 15 Hz on the existing acquired frame. It owns no camera and closes with the scene. Missing frames and empty results clear feedback; cached passive results last at most one sampling interval. The Spheres worker copies landmarks before publishing its immutable snapshot. Skeleton, Earth and Otedama also clear feedback after 0.25 seconds of repeated shared-memory frame IDs. Otedama freezes gameplay during this camera stall and excludes the first recovery interval.
 
 ## Scene mapping
 
@@ -30,6 +30,7 @@ The 13 scenes that already infer hands reuse their existing results. Five scenes
 | `polygon_face_acer.py` | `polygon_face_stage.py` | Mouth center (face landmarks 13/14); hands are passive |
 | `living_mosaic_acer.py` | `living_mosaic.py` | No active finger; full-image motion remains the input |
 | `modern_otedama_acer.py` | `modern_otedama.py` | Actual palm collision circle and its center |
+| `earth_acer.py` | `earth.py` | Actual left/right palm centers in the existing camera HUD; no fingertip input |
 
 ## Verification
 

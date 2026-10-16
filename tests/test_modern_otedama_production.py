@@ -152,8 +152,8 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         scenes = manager.resolve_production_scenes(config)
         names = [Path(scene).name for scene in scenes]
         self.assertEqual(names.count("modern_otedama_acer.py"), 1)
-        self.assertEqual(len(names), 18)
-        self.assertEqual(names[-1], "modern_otedama_acer.py")
+        self.assertEqual(len(names), 19)
+        self.assertEqual(names[-2], "modern_otedama_acer.py")
 
     def test_missing_shared_camera_fails_without_retry_or_resource_leak(self):
         hands = mock.Mock()

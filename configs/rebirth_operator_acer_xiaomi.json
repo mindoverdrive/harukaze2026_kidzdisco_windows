@@ -18,7 +18,8 @@
     "kaleidoscope_camera_acer.py",
     "polygon_face_acer.py",
     "living_mosaic_acer.py",
-    "modern_otedama_acer.py"
+    "modern_otedama_acer.py",
+    "earth_acer.py"
   ],
   "PRELOAD_COUNT": 0,
   "TRANSITION_ENABLED": true,
