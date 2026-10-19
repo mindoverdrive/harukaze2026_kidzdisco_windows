@@ -18,7 +18,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = Path.home() / '.gemini/antigravity/scratch/harukaze2026_kidzdisco_windows/.venv/Lib/site-packages'
 ORDER = (("asobi_tune", "あそびTUNE"), ("colony", "Colony"),
-         ("tokyo_island", "TOKYO ISLAND"))
+         ("matahari_land", "MATAHARI LAND"))
 
 
 class FixedBrandChoice:
@@ -93,7 +93,7 @@ class Renderer:
         self.check_assets()
 
     def check_assets(self):
-        if (self.logo.asobi is None or self.logo.tokyo is None
+        if (self.logo.asobi is None or self.logo.matahari is None
                 or not self.logo.colony.available or not self.particles.available):
             raise RuntimeError('Logo/transition unavailable. Preview stopped; no substitute logo shown.')
 
@@ -444,7 +444,7 @@ def render_contact_sheet(pygame, path):
     sheet = pygame.Surface((size[0] * 3, 880))
     sheet.fill((14, 20, 31))
     font = ui_font(pygame, 28)
-    sheet.blit(font.render('TOKYO ISLAND 2026 / Manual logo preview', True, (235, 242, 250)), (20, 12))
+    sheet.blit(font.render('MATAHARI LAND / Manual logo preview', True, (235, 242, 250)), (20, 12))
     sheet.blit(ui_font(pygame, 19).render('Synthetic background. No camera captured. Top: hold / Bottom: release + persistent controls.', True, (174, 193, 212)), (20, 51))
     now = 0.0
     for index in range(3):

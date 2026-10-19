@@ -46,7 +46,7 @@ class EffectCatalogTests(unittest.TestCase):
         weights = dict(zip(AlternatingCurtainLogo.BRANDS, AlternatingCurtainLogo.WEIGHTS))
         total = sum(weights.values())
         self.assertEqual({brand: value / total for brand, value in weights.items()},
-                         {"asobi_tune": .5, "colony": .25, "tokyo_island": .25})
+                         {"asobi_tune": .5, "colony": .25, "matahari_land": .25})
 
 
 @unittest.skipUnless(REAL_GRAPHICS, "Real pygame/numpy required for offscreen effects")
@@ -197,7 +197,7 @@ class AllLogoEffectCompositionsTests(unittest.TestCase):
         assets = Path(__file__).resolve().parents[1] / "assets"
         source_paths = {
             "asobi_tune": assets / "asobi_tune_logo.png",
-            "tokyo_island": assets / "tokyo_island_2026_logo.webp",
+            "matahari_land": assets / "matahari_land_logo.png",
             "colony": assets / "transition_logo.png",
         }
         source_files = {brand: path.read_bytes() for brand, path in source_paths.items()}
@@ -214,13 +214,13 @@ class AllLogoEffectCompositionsTests(unittest.TestCase):
             controller.selector.brand = brand
             renderer = preview.Renderer(pygame, self.SIZE, controller, effect_rng=rng)
             cached_art = {"asobi_tune": renderer.logo.asobi,
-                          "tokyo_island": renderer.logo.tokyo,
+                          "matahari_land": renderer.logo.matahari,
                           "colony": renderer.logo.colony._logo}
             cache_pixels = {key: pygame.image.tobytes(surface, "RGBA")
                             for key, surface in cached_art.items()}
             # Color artwork retains source RGB/per-pixel alpha after the existing
             # size fit. Colony intentionally uses its existing white silhouette.
-            for color_brand in ("asobi_tune", "tokyo_island"):
+            for color_brand in ("asobi_tune", "matahari_land"):
                 expected = pygame.transform.smoothscale(sources[color_brand], cached_art[color_brand].get_size())
                 self.assertEqual(cache_pixels[color_brand], pygame.image.tobytes(expected, "RGBA"))
             now = 0.0

@@ -35,10 +35,10 @@ def white_paper_to_alpha(source):
 class AlternatingCurtainLogo:
     """Legacy entry point; pick one logo once per transition, with weights 1:1:2."""
 
-    BRANDS = ("colony", "tokyo_island", "asobi_tune")
+    BRANDS = ("colony", "matahari_land", "asobi_tune")
     WEIGHTS = (1, 1, 2)
 
-    def __init__(self, size, tokyo_path=None, on_warning=None, asobi_path=None, rng=None):
+    def __init__(self, size, matahari_path=None, on_warning=None, asobi_path=None, rng=None):
         import pygame
 
         self._pygame = pygame
@@ -49,9 +49,19 @@ class AlternatingCurtainLogo:
         self._rng = random if rng is None else rng
         self.brand = "colony"
         assets = Path(__file__).resolve().parent / "assets"
-        self.tokyo = self._load_color_logo(
-            Path(tokyo_path) if tokyo_path is not None else assets / "tokyo_island_2026_logo.webp",
-            "Tokyo Island", on_warning)
+        self.matahari = self._load_color_logo(
+            Path(matahari_path) if matahari_path is not None else assets / "matahari_land_logo.png",
+            "MATAHARI LAND", on_warning)
+        self._matahari_plate = None
+        if self.matahari is not None:
+            # The accepted artwork is dark brown. Put light behind its visible
+            # ink without recoloring its RGB, alpha, or the other brand slots.
+            padding = max(8, round(self.size[1] * .018))
+            bounds = self.matahari.get_bounding_rect(min_alpha=16).inflate(padding * 2, padding * 2)
+            plate = pygame.Surface(bounds.size, pygame.SRCALPHA, 32)
+            pygame.draw.rect(plate, (245, 239, 226, 255), plate.get_rect(),
+                             border_radius=max(4, padding))
+            self._matahari_plate = plate, bounds.topleft
         self.asobi = self._load_color_logo(
             Path(asobi_path) if asobi_path is not None else assets / "asobi_tune_logo.png",
             "Asobi Tune", on_warning)
@@ -80,10 +90,10 @@ class AlternatingCurtainLogo:
             self._cycle = cycle
             self.brand = self._rng.choices(self.BRANDS, weights=self.WEIGHTS, k=1)[0]
             if (self.brand == "colony"
-                    or (self.brand == "tokyo_island" and self.tokyo is None)
+                    or (self.brand == "matahari_land" and self.matahari is None)
                     or (self.brand == "asobi_tune" and self.asobi is None)):
                 self._colony_cycle += 1
-        artwork = self.tokyo if self.brand == "tokyo_island" else self.asobi
+        artwork = self.matahari if self.brand == "matahari_land" else self.asobi
         if self.brand == "colony" or artwork is None:
             # Keep all Colony typography/motion variants across its appearances.
             state = SimpleNamespace(state=curtain.state, level=curtain.level,
@@ -103,6 +113,10 @@ class AlternatingCurtainLogo:
             bob = math.sin(now * .35) * min(5, self.size[1] * .004)
             position = (round((self.size[0] - artwork.get_width()) / 2 + drift),
                         round((self.size[1] - artwork.get_height()) / 2 + bob))
+            if self.brand == "matahari_land" and self._matahari_plate is not None:
+                plate, offset = self._matahari_plate
+                plate.set_alpha(round(255 * fade))
+                screen.blit(plate, (position[0] + offset[0], position[1] + offset[1]))
             artwork.set_alpha(round(255 * fade))
             screen.blit(artwork, position)
             return True

@@ -45,7 +45,7 @@ class PreviewControllerTests(unittest.TestCase):
     def test_order_starts_with_asobi_and_fixed_choice_does_not_draw_randomly(self):
         self.assertEqual(preview.ORDER, (("asobi_tune", "あそびTUNE"),
                                         ("colony", "Colony"),
-                                        ("tokyo_island", "TOKYO ISLAND")))
+                                        ("matahari_land", "MATAHARI LAND")))
         self.assertEqual(self.controller.index, 0)
         self.assertEqual(self.controller.selector.brand, "asobi_tune")
         self.assertEqual(self.controller.curtain.state, "covering")
@@ -56,7 +56,7 @@ class PreviewControllerTests(unittest.TestCase):
         for brand, _label in preview.ORDER:
             self.controller.selector.brand = brand
             self.assertEqual(self.controller.selector.choices(
-                ("colony", "tokyo_island", "asobi_tune"), weights=(1, 1, 2), k=1),
+                ("colony", "matahari_land", "asobi_tune"), weights=(1, 1, 2), k=1),
                 [brand])
 
     def test_busy_actions_are_discarded_and_quit_remains_available(self):
@@ -98,7 +98,7 @@ class PreviewControllerTests(unittest.TestCase):
             self.assertEqual(self.present(reveal_time), "REVEALED")
             self.assertEqual(self.present(cover_time), "COVERED")
         self.assertEqual(self.controller.index, 2)
-        self.assertEqual(self.controller.selector.brand, "tokyo_island")
+        self.assertEqual(self.controller.selector.brand, "matahari_land")
         self.assertFalse(self.controller.action("next", 12.1))
         self.assertEqual(self.controller.curtain.state, "covered")
         for action_time, reveal_time, cover_time in ((13.0, 15.0, 17.0), (18.0, 20.0, 22.0)):
@@ -202,7 +202,7 @@ class PreviewRendererTests(unittest.TestCase):
         self.renderer.check_assets()
         for owner, attribute, unavailable in (
             (self.renderer.logo, "asobi", None),
-            (self.renderer.logo, "tokyo", None),
+            (self.renderer.logo, "matahari", None),
             (self.renderer.logo.colony, "available", False),
             (self.renderer.particles, "available", False),
         ):

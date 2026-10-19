@@ -21,11 +21,11 @@ class TransitionBrandingTests(unittest.TestCase):
         with mock.patch("transition_branding.CurtainLogo") as colony:
             result = AlternatingCurtainLogo((640, 360),
                                            rng=rng if rng is not None else mock.Mock(
-                                               choices=mock.Mock(return_value=["tokyo_island"])))
+                                               choices=mock.Mock(return_value=["matahari_land"])))
         return result
 
     def test_weighted_choice_is_once_per_cover_and_latches_all_three_logos(self):
-        brands = ["asobi_tune", "asobi_tune", "colony", "tokyo_island", "colony", "asobi_tune"]
+        brands = ["asobi_tune", "asobi_tune", "colony", "matahari_land", "colony", "asobi_tune"]
         rng = mock.Mock(choices=mock.Mock(side_effect=[[brand] for brand in brands]))
         logo = self.make_logo(rng)
         screen = pygame.Surface((640, 360))
@@ -42,7 +42,7 @@ class TransitionBrandingTests(unittest.TestCase):
             logo.draw(screen, screen.get_rect(), 0, curtain)
             self.assertEqual(logo.brand, expected)
         self.assertEqual(rng.choices.call_count, len(brands))
-        rng.choices.assert_called_with(("colony", "tokyo_island", "asobi_tune"),
+        rng.choices.assert_called_with(("colony", "matahari_land", "asobi_tune"),
                                        weights=(1, 1, 2), k=1)
         # Neither color logo adds Colony text; Colony appearances advance variants.
         self.assertEqual(logo.colony.draw.call_count, 8)
@@ -56,7 +56,7 @@ class TransitionBrandingTests(unittest.TestCase):
         for cycle in range(1, 2001):
             logo.draw(screen, empty, 0, SimpleNamespace(state="covering", level=1, cycle=cycle))
             counts[logo.brand] += 1
-        for brand, probability in (("asobi_tune", .5), ("colony", .25), ("tokyo_island", .25)):
+        for brand, probability in (("asobi_tune", .5), ("colony", .25), ("matahari_land", .25)):
             self.assertAlmostEqual(counts[brand] / 2000, probability, delta=.04)
 
     def test_original_rebirth_is_preserved_for_rollback(self):
@@ -71,18 +71,18 @@ class TransitionBrandingTests(unittest.TestCase):
         self.assertEqual(cutout.get_at((400, 315)).a, 0)  # Interior white hole.
         self.assertGreater(cutout.get_at((600, 200)).a, 240)  # Dark outer arc.
 
-    def test_tokyo_official_asset_and_render_preserve_rgb_alpha(self):
+    def test_matahari_accepted_asset_and_render_preserve_rgb_alpha(self):
         logo = self.make_logo()
-        path = Path(__file__).resolve().parents[1] / "assets" / "tokyo_island_2026_logo.webp"
+        path = Path(__file__).resolve().parents[1] / "assets" / "matahari_land_logo.png"
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
-                         "2aa13aec05387fa2b3280846da722f4201c87a996b26af1ea98e120492839068")
+                         "ce45dc404444163a5ba199c1dc16abc0123e018e243f905462fc6277bcef0eeb")
         original = pygame.image.load(str(path))
-        self.assertEqual(original.get_size(), (1560, 1147))
+        self.assertEqual(original.get_size(), (1254, 1254))
         self.assertEqual(original.get_at((0, 0)).a, 0)
-        expected = pygame.transform.smoothscale(original, logo.tokyo.get_size())
-        self.assertEqual(pygame.image.tobytes(logo.tokyo, "RGBA"),
+        expected = pygame.transform.smoothscale(original, logo.matahari.get_size())
+        self.assertEqual(pygame.image.tobytes(logo.matahari, "RGBA"),
                          pygame.image.tobytes(expected, "RGBA"))
-        before = pygame.image.tobytes(logo.tokyo, "RGBA")
+        before = pygame.image.tobytes(logo.matahari, "RGBA")
         screen = pygame.Surface((640, 360), pygame.SRCALPHA)
         screen.fill((20, 30, 40, 255))
         clip = pygame.Rect(10, 10, 600, 320)
@@ -90,7 +90,7 @@ class TransitionBrandingTests(unittest.TestCase):
         self.assertTrue(logo.draw(screen, screen.get_rect(), 10,
                         SimpleNamespace(state="covering", level=.6, cycle=2)))
         self.assertEqual(screen.get_clip(), clip)
-        self.assertEqual(pygame.image.tobytes(logo.tokyo, "RGBA"), before)
+        self.assertEqual(pygame.image.tobytes(logo.matahari, "RGBA"), before)
         self.assertEqual(screen.get_at((320, 180)).a, 255)
 
     def test_asobi_two_line_source_and_render_preserve_rgb_alpha(self):
@@ -120,13 +120,13 @@ class TransitionBrandingTests(unittest.TestCase):
         source.set_at((1, 1), (255, 255, 255, 255))  # White year/details.
         source.set_at((2, 1), (250, 80, 30, 255))  # Saturated original color.
         source.set_at((1, 2), (30, 160, 240, 128))  # Antialiased alpha.
-        for brand in ("tokyo_island", "asobi_tune"):
+        for brand in ("matahari_land", "asobi_tune"):
             with self.subTest(brand=brand):
                 with mock.patch("transition_branding.CurtainLogo"), \
                         mock.patch("pygame.image.load", return_value=source):
                     logo = AlternatingCurtainLogo((8, 8), rng=mock.Mock(
                         choices=mock.Mock(return_value=[brand])))
-                artwork = logo.tokyo if brand == "tokyo_island" else logo.asobi
+                artwork = logo.matahari if brand == "matahari_land" else logo.asobi
                 self.assertEqual(pygame.image.tobytes(artwork, "RGBA"),
                                  pygame.image.tobytes(source, "RGBA"))
                 screen = pygame.Surface((8, 8))
@@ -137,11 +137,33 @@ class TransitionBrandingTests(unittest.TestCase):
                     if level == 1.0:
                         self.assertEqual(tuple(screen.get_at((3, 3)))[:3], (255, 255, 255))
                         self.assertEqual(tuple(screen.get_at((4, 3)))[:3], (250, 80, 30))
-                        self.assertEqual(tuple(screen.get_at((2, 2)))[:3], (0, 0, 0))
+                        # MATAHARI's transparent holes reveal its separate pale
+                        # support, while Asobi still reveals the curtain itself.
+                        expected_background = (245, 239, 226) if brand == "matahari_land" else (0, 0, 0)
+                        self.assertEqual(tuple(screen.get_at((2, 2)))[:3], expected_background)
                     elif level == .5:
-                        self.assertTrue(126 <= screen.get_at((3, 3)).r <= 129)
+                        expected_red = 189 if brand == "matahari_land" else 128
+                        self.assertAlmostEqual(screen.get_at((3, 3)).r, expected_red, delta=2)
                     else:
                         self.assertEqual(tuple(screen.get_at((3, 3)))[:3], (0, 0, 0))
+
+    def test_dark_matahari_ink_has_a_light_backing_and_panel_clip_is_restored(self):
+        import numpy as np
+        logo = self.make_logo()
+        screen = pygame.Surface((640, 360))
+        screen.fill((0, 0, 0))
+        clip = pygame.Rect(220, 100, 200, 160)
+        screen.set_clip(clip)
+        self.assertTrue(logo.draw(screen, screen.get_rect(), 0,
+                                 SimpleNamespace(state="covered", level=1, cycle=1)))
+        self.assertEqual(screen.get_clip(), clip)
+        pixels = pygame.surfarray.array3d(screen)
+        self.assertGreater(np.count_nonzero(np.all(pixels == (245, 239, 226), axis=2)), 100)
+        # Dark original ink stays dark, surrounded by the contrasting support.
+        brightness = pixels.sum(axis=2)
+        self.assertGreater(np.count_nonzero((brightness > 10) & (brightness < 200)), 100)
+        self.assertFalse(np.any(pixels[:clip.left]))
+        self.assertFalse(np.any(pixels[clip.right:]))
 
     def test_colony_source_is_unchanged(self):
         path = Path(__file__).resolve().parents[1] / "assets" / "transition_logo.png"
@@ -161,12 +183,12 @@ class TransitionBrandingTests(unittest.TestCase):
         self.assertEqual(tuple(background.get_at((20, 20)))[:3], (70, 130, 180))
         self.assertEqual(tuple(background.get_at((20, 10)))[:3], (30, 24, 22))
 
-    def test_missing_tokyo_falls_back_without_breaking_cover(self):
+    def test_missing_matahari_falls_back_without_breaking_cover(self):
         with mock.patch("transition_branding.CurtainLogo"):
             warnings = []
-            logo = AlternatingCurtainLogo((640, 360), tokyo_path="missing-logo-file.webp",
+            logo = AlternatingCurtainLogo((640, 360), matahari_path="missing-logo-file.webp",
                                          on_warning=warnings.append, rng=mock.Mock(
-                                             choices=mock.Mock(return_value=["tokyo_island"])))
+                                             choices=mock.Mock(return_value=["matahari_land"])))
         self.assertEqual(len(warnings), 1)
         screen = pygame.Surface((640, 360))
         logo.draw(screen, screen.get_rect(), 0, SimpleNamespace(state="covered", level=1, cycle=2))
