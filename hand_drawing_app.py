@@ -12,7 +12,8 @@ import mediapipe as mp
 import numpy as np
 
 import display_utils
-from hand_drawing_effects import EFFECT_NAMES, FadingInk
+from hand_drawing_effects import FadingInk
+from hand_drawing_feedback import draw_color_guidance
 from hand_drawing_tracking import HandTracks
 from hand_drawing_gestures import (
     COLOR_STABLE_SECONDS, FINGER_COLORS_BGR, StableFingerColor, finger_states, valid_hand,
@@ -161,22 +162,7 @@ def render_frame(stage, ink, feedback, layout, now):
     cv2.add(image, ink.render(now), dst=image)
     # Same muted bones/palm frames and active-point rings as Mandala/Grid/Otedama.
     draw_hand_overlay(image, feedback.hands, layout=layout, focus=(), active_points=feedback.active_points)
-    for count, color in FINGER_COLORS_BGR.items():
-        center = (24 + (count - 1) * 48, 26)
-        cv2.circle(image, center, 13, color, -1, cv2.LINE_AA)
-        cv2.putText(image, str(count), (center[0] - 5, 31), cv2.FONT_HERSHEY_SIMPLEX,
-                    .45, (15, 15, 15), 1, cv2.LINE_AA)
-    for hand in feedback.inputs:
-        x, y = hand.anchor
-        label = f"H{hand.track_id} {(hand.handedness or '?')[0]} {hand.selected_count}: {EFFECT_NAMES[hand.effect_id]}"
-        origin = (max(5, min(image.shape[1] - 175, x - 45)),
-                  max(55, min(image.shape[0] - 35, y + 18)))
-        cv2.putText(image, label, origin, cv2.FONT_HERSHEY_SIMPLEX, .36, (8, 10, 12), 3, cv2.LINE_AA)
-        cv2.putText(image, label, origin, cv2.FONT_HERSHEY_SIMPLEX, .36,
-                    FINGER_COLORS_BGR[hand.selected_count], 1, cv2.LINE_AA)
-    cv2.putText(image, "BOTH INDEX FINGERS: DRAW   EACH HAND 1-5: COLOR   UP TO 8 HANDS   ESC/Q: EXIT",
-                (14, image.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, .42,
-                (210, 220, 225), 1, cv2.LINE_AA)
+    draw_color_guidance(image, feedback.inputs, feedback.active_points)
     return image
 
 
