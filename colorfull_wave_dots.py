@@ -149,6 +149,7 @@ def draw_particle(screen, particle):
 
 
 def main():
+    from hand_input_profile import solutions_options
     resources = ExitStack()
     atexit.register(resources.close)
     try:
@@ -158,12 +159,7 @@ def main():
         width, height = screen.get_size()
         clock = pygame.time.Clock()
 
-        hands = mp.solutions.hands.Hands(
-            model_complexity=1,
-            max_num_hands=5,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5,
-        )
+        hands = mp.solutions.hands.Hands(**solutions_options(5))
         resources.callback(hands.close)
         cap = display_utils.open_camera()
         if cap is not None:

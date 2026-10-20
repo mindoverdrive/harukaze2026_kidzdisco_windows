@@ -180,6 +180,7 @@ def draw_tree(
 
 
 def main():
+    from hand_input_profile import solutions_options
     resources = ExitStack()
     atexit.register(resources.close)
     try:
@@ -188,12 +189,7 @@ def main():
         screen, _stage_size = display_utils.setup_pygame_fullscreen()
         width, height = screen.get_size()
 
-        hands = mp.solutions.hands.Hands(
-            model_complexity=1,
-            max_num_hands=2,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5,
-        )
+        hands = mp.solutions.hands.Hands(**solutions_options(2))
         resources.callback(hands.close)
         cap = display_utils.open_camera()
         if cap is not None:

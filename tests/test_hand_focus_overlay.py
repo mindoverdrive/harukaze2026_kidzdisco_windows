@@ -40,7 +40,8 @@ class HandFocusOverlayTests(unittest.TestCase):
                 overlay.draw_pygame(screen, [hand], focus=(8,))
                 x, y = overlay.stage_points(hand, screen.get_size())[8]
                 self.assertEqual(tuple(screen.get_at((x + 7, y)))[:3], overlay.CYAN)
-                self.assertEqual(tuple(screen.get_at((x + 16, y)))[:3], overlay.DARK)
+                self.assertEqual(tuple(screen.get_at((x + 20, y)))[:3], overlay.DARK)
+                self.assertEqual(tuple(screen.get_at((x + 13, y)))[:3], overlay.INDEX_COLOR)
 
     def test_explicit_active_point_and_palm_circle_match_game_inputs_in_both_renderers(self):
         hand = synthetic_hand()

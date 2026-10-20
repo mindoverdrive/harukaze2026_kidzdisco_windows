@@ -5,7 +5,6 @@
     "finger_mandala_acer.py",
     "colorfull_wave_dots_acer.py",
     "colorfull_tree_acer.py",
-    "sci_fi_jacket_acer.py",
     "skeleton_glitch_acer.py",
     "particle_storm_acer.py",
     "colorfull_dots_spheres_acer.py",
@@ -19,7 +18,9 @@
     "polygon_face_acer.py",
     "living_mosaic_acer.py",
     "modern_otedama_acer.py",
-    "earth_acer.py"
+    "earth_acer.py",
+    "hand_drawing_acer.py",
+    "hand_shapes_acer.py"
   ],
   "PRELOAD_COUNT": 0,
   "TRANSITION_ENABLED": true,

@@ -82,3 +82,38 @@ def apply_audience_displays(config):
         result[f"DISPLAY_{key.upper()}"] = displays["audience"][key]
     result["_DISPLAY_OBSERVATION"] = displays
     return result
+
+
+def external_test_config(config, audience_name=None, monitors=None):
+    """Resolve roles from this session's extended desktop, never a stale DISPLAY id.
+
+    The sole primary is the operator. With one external screen its role is
+    unambiguous; otherwise the caller must explicitly name the audience screen.
+    This establishes a role, not a manufacturer/TV identity.
+    """
+    if monitors is None:
+        try:
+            from screeninfo import get_monitors
+            monitors = get_monitors()
+        except Exception as exc:
+            raise DisplayConfigurationError(f"Cannot enumerate external test screens: {exc}") from exc
+    monitors = list(monitors)
+    primaries = [m for m in monitors if getattr(m, 'is_primary', False)]
+    externals = [m for m in monitors if not getattr(m, 'is_primary', False)]
+    if len(primaries) != 1:
+        raise DisplayConfigurationError('External test requires exactly one primary operator screen')
+    if audience_name is None:
+        if len(externals) != 1:
+            raise DisplayConfigurationError(
+                'Connect one extended audience screen, or specify --audience-display for multiple screens; '
+                + repr([getattr(m, 'name', None) for m in monitors]))
+        audience_name = externals[0].name
+    result = dict(config)
+    result['DISPLAY_TARGET'] = 'audience'
+    result['CONTROL_DISPLAY_NAME'] = primaries[0].name
+    result['DISPLAY_NAME'] = audience_name
+    displays = resolve_audience_displays(result, monitors)
+    for key in ('x', 'y', 'width', 'height'):
+        result['DISPLAY_' + key.upper()] = displays['audience'][key]
+    result['_DISPLAY_OBSERVATION'] = displays
+    return result

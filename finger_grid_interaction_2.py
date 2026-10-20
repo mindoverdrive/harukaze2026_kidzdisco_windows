@@ -55,11 +55,8 @@ clock = pygame.time.Clock()
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(model_complexity=1, 
-    max_num_hands=5,  # Support 5 hands
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
-)
+from hand_input_profile import solutions_options
+hands = mp_hands.Hands(**solutions_options(5))
 _resources.callback(hands.close)
 
 # Particle System Setup

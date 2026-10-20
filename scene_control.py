@@ -150,6 +150,9 @@ class SceneLaunchControl:
         if self.state == "FAILED":
             raise SceneControlError(self.error)
         try:
+            # Check the state deadline before consuming queued notifications.
+            # A late READY/ACK must not erase its own expired deadline.
+            self._check_deadline()
             if process.poll() is not None:
                 raise SceneControlError(f"child exited before promotion: code={process.returncode}")
             if self.channel is None:
@@ -190,19 +193,22 @@ class SceneLaunchControl:
                     self._log(event, pid=pid, launcher_pid=process.pid, frame_id=message.get("frame_id"))
                 if self.channel.eof and self.state != "FIRST_FRAME":
                     raise SceneControlError("control connection closed before FIRST_FRAME")
-            now = time.monotonic()
-            if self.state == "LAUNCHED" and now - self.created_at >= self.ready_timeout:
-                raise SceneControlError("READY timeout")
-            if self.state == "START_SENT" and now - self.started_at >= self.ack_timeout:
-                raise SceneControlError("START_ACK timeout")
-            if self.state in {"START_SENT", "START_ACK"} and now - self.started_at >= self.frame_timeout:
-                raise SceneControlError("FIRST_FRAME timeout")
+            self._check_deadline()
         except (OSError, SceneControlError) as exc:
             self.error = str(exc)
             self.state = "FAILED"
             self._log("FAILED", pid=process.pid, reason=self.error)
             raise SceneControlError(self.error) from exc
         return self.state
+
+    def _check_deadline(self):
+        now = time.monotonic()
+        if self.state == "LAUNCHED" and now - self.created_at >= self.ready_timeout:
+            raise SceneControlError("READY timeout")
+        if self.state == "START_SENT" and now - self.started_at >= self.ack_timeout:
+            raise SceneControlError("START_ACK timeout")
+        if self.state in {"START_SENT", "START_ACK"} and now - self.started_at >= self.frame_timeout:
+            raise SceneControlError("FIRST_FRAME timeout")
 
     def start(self):
         if self.state != "READY":

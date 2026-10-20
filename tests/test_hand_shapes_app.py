@@ -137,10 +137,9 @@ class ShapeInputTests(unittest.TestCase):
             self.assertFalse(frame.strokes)
         changed = controller.update(result(hand(4)), self.layout, .381)
         self.assertEqual(changed.shapes[0].selected_count, 4)
-        self.assertEqual(len(changed.strokes), 3)
-        for stroke in changed.strokes:
-            self.assertEqual((stroke.effect_id, stroke.track_id, stroke.color_bgr),
-                             (initial.shapes[0].effect_id, initial.shapes[0].track_id, initial.shapes[0].color_bgr))
+        self.assertFalse(changed.strokes, 'A morph replaces the old shape without a second fading outline')
+        self.assertEqual((changed.shapes[0].effect_id, changed.shapes[0].track_id),
+                         (initial.shapes[0].effect_id, initial.shapes[0].track_id))
         for now in (.4, .5):
             self.assertTrue(controller.update(result(hand(0)), self.layout, now).shapes)
         fist = controller.update(result(hand(0)), self.layout, .581)
@@ -189,8 +188,9 @@ class ShapeInputTests(unittest.TestCase):
         self.assertFalse(second.strokes)
         poses[0] = hand(5, x=.12, y=.30, scale=.45)
         changed = controller.update(result(*poses), self.layout, .1)
-        self.assertEqual(len(changed.strokes), 41)
-        changed_keys = {stroke.track_id for stroke in changed.strokes}
+        self.assertFalse(changed.strokes)
+        changed_keys = {shape.track_id for shape in changed.shapes
+                        if shape.selected_count != expected[shape.track_id][1]}
         self.assertEqual(len(changed_keys), 1)
         for shape in changed.shapes:
             if shape.track_id not in changed_keys:

@@ -60,13 +60,15 @@ def resolve_camera_index(camera_index, camera_name_hint=None, exclude_name_hints
         hints = [hints]
     hints = [str(item).lower() for item in hints if str(item).strip()]
 
-    for idx, name in enumerate(devices):
-        lower_name = name.lower()
-        if any(ex in lower_name for ex in excludes):
-            continue
-        if any(hint in lower_name for hint in hints):
-            print(f"[shared_camera] Selected camera by name: index={idx} name={name}")
-            return idx
+    matches = [(idx, name) for idx, name in enumerate(devices)
+               if not any(ex in name.lower() for ex in excludes)
+               and any(hint in name.lower() for hint in hints)]
+    if require_name_match and len(matches) > 1:
+        raise RuntimeError(f"Ambiguous required camera hints {hints}; detected matches: {matches}")
+    if matches:
+        idx, name = matches[0]
+        print(f"[shared_camera] Selected camera by name: index={idx} name={name}")
+        return idx
 
     print(f"[shared_camera] Camera hint did not match. Available devices: {devices}")
     if require_name_match:

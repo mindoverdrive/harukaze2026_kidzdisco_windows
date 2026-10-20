@@ -114,6 +114,7 @@ class SpheresCameraFeed:
                 self._pending_error.add_note(f"Additional camera cleanup failure: {error}")
 
     def _run(self):
+        from hand_input_profile import solutions_options
         try:
             with ExitStack() as resources:
                 try:
@@ -128,9 +129,7 @@ class SpheresCameraFeed:
                         raise RuntimeError("Manager shared camera is not open")
                     if self._stop.is_set():
                         return
-                    hands = make_hands(
-                        model_complexity=1, max_num_hands=6,
-                        min_detection_confidence=0.7, min_tracking_confidence=0.5)
+                    hands = make_hands(**solutions_options(6))
                     resources.callback(hands.close)
                     self._read_frames(camera, hands, display, cv2)
                 except BaseException as error:

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ModernOtedamaProductionTests(unittest.TestCase):
-    def test_camera_pixels_stay_hidden_while_palm_feedback_and_ball_collision_work(self):
+    def test_camera_pixels_are_mirrored_while_palm_feedback_and_ball_collision_work(self):
         frame = np.full((18, 32, 3), (10, 60, 230), dtype=np.uint8)
         frame[:, :8] = (220, 80, 15)
         cap = mock.Mock()
@@ -40,7 +40,7 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         ):
             game = modern_otedama.ModernOtedamaGame()
             try:
-                game.reset_game()
+                game.refill_balls()
                 game._start_frame_pending = False
                 game.balls[0].x, game.balls[0].y = 640, 350
                 game.balls[0].vx, game.balls[0].vy = 0, 5
@@ -53,14 +53,14 @@ class ModernOtedamaProductionTests(unittest.TestCase):
                 self.assertLess(game.balls[0].vy, 0)
                 game.draw()
                 self.assertEqual(game.screen.get_size(), (1280, 720))
-                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], modern_otedama.COLOR_BG_DARK)
+                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], (230, 60, 10))
                 self.assertEqual(tuple(game.screen.get_at((647, 478)))[:3], CYAN)
 
-                # A brighter camera frame must not change the empty stage background.
+                # A new camera frame must replace the displayed background.
                 cap.read.return_value = (True, np.full_like(frame, 255))
                 game.update(1 / 60)
                 game.draw()
-                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], modern_otedama.COLOR_BG_DARK)
+                self.assertEqual(tuple(game.screen.get_at((2, 700)))[:3], (255, 255, 255))
                 self.assertEqual(hands.process.call_count, 2)
 
                 cap.read.return_value = (False, None)
@@ -74,43 +74,36 @@ class ModernOtedamaProductionTests(unittest.TestCase):
 
     def test_speed_rises_gradually_and_stops_at_a_child_friendly_cap(self):
         speed = modern_otedama.gameplay_speed_multiplier
-        self.assertEqual(speed(0), 1.0)
-        self.assertAlmostEqual(speed(30), 1 + 1 / 6)
-        self.assertAlmostEqual(speed(60), 1 + 1 / 3)
-        self.assertEqual(speed(90), 1.5)
-        self.assertEqual(speed(300), 1.5)
+        self.assertEqual(speed(0), 0.25)
+        self.assertAlmostEqual(speed(30), 0.55)
+        self.assertEqual(speed(60), 0.85)
+        self.assertEqual(speed(90), 0.85)
+        self.assertEqual(speed(300), 0.85)
 
-    def test_only_active_play_time_counts_and_replay_resets_speed(self):
+    def test_only_active_play_time_counts_and_empty_field_resets_speed(self):
         game = modern_otedama.ModernOtedamaGame.__new__(modern_otedama.ModernOtedamaGame)
-        game.state = modern_otedama.STATE_TITLE
-        game.play_elapsed_seconds = 0.0
-        game._start_frame_pending = False
-        self.assertEqual(game.advance_play_time(20), 0)
-        game.reset_game()
+        game.score = 700
+        game.refill_balls()
         self.assertEqual(game.advance_play_time(1 / 60), 0)
         self.assertEqual(game.play_elapsed_seconds, 0)
         self.assertEqual(game.advance_play_time(1 / 60), 1 / 60)
-        game.state = modern_otedama.STATE_GAMEOVER
         self.assertEqual(game.advance_play_time(20), 0)
         self.assertAlmostEqual(game.play_elapsed_seconds, 1 / 60)
-        game.state = modern_otedama.STATE_PLAYING
-        self.assertEqual(game.advance_play_time(20), 0)
-        self.assertAlmostEqual(game.play_elapsed_seconds, 1 / 60)
-        game.reset_game()
-        self.assertEqual(modern_otedama.gameplay_speed_multiplier(game.play_elapsed_seconds), 1)
+        game.refill_balls()
+        self.assertEqual(game.score, 700)
+        self.assertEqual(modern_otedama.gameplay_speed_multiplier(game.play_elapsed_seconds), .25)
 
     def test_speed_progression_uses_seconds_at_different_frame_rates(self):
         factors = []
         for fps in (5, 10, 30, 60, 120):
             game = modern_otedama.ModernOtedamaGame.__new__(modern_otedama.ModernOtedamaGame)
-            game.state = modern_otedama.STATE_PLAYING
             game.play_elapsed_seconds = 0.0
             game._start_frame_pending = False
             for _ in range(fps * 60):
                 game.advance_play_time(1 / fps)
             factors.append(modern_otedama.gameplay_speed_multiplier(game.play_elapsed_seconds))
         for factor in factors:
-            self.assertAlmostEqual(factor, 1 + 1 / 3, places=7)
+            self.assertAlmostEqual(factor, 0.85, places=7)
 
     def test_all_substeps_check_collisions_after_first_hit_and_zero_time_does_not(self):
         game = modern_otedama.ModernOtedamaGame.__new__(modern_otedama.ModernOtedamaGame)
@@ -136,7 +129,7 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         ):
             game = modern_otedama.ModernOtedamaGame()
             try:
-                game.reset_game()
+                game.refill_balls()
                 game._start_frame_pending = False
                 game.hand_colliders = [{'pos': (640, 0), 'radius': 80}]
                 game.update(1 / 60)
@@ -184,7 +177,7 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         ):
             game = modern_otedama.ModernOtedamaGame()
             try:
-                game.reset_game()
+                game.refill_balls()
                 game._start_frame_pending = False
                 game.camera_last_frame_id = 1
                 game.camera_last_fresh_at = 9.7
@@ -206,8 +199,8 @@ class ModernOtedamaProductionTests(unittest.TestCase):
         scenes = manager.resolve_production_scenes(config)
         names = [Path(scene).name for scene in scenes]
         self.assertEqual(names.count("modern_otedama_acer.py"), 1)
-        self.assertEqual(len(names), 19)
-        self.assertEqual(names[-2], "modern_otedama_acer.py")
+        self.assertEqual(len(names), 20)
+        self.assertEqual(names[-4], "modern_otedama_acer.py")
 
     def test_missing_shared_camera_fails_without_retry_or_resource_leak(self):
         hands = mock.Mock()

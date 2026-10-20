@@ -209,6 +209,7 @@ def draw_pointer_feedback(surface, pointer, dt):
 
 
 def main():
+    from hand_input_profile import solutions_options
     resources = ExitStack()
     atexit.register(resources.close)
     resources.callback(pygame.quit)
@@ -238,11 +239,7 @@ def main():
         raise RuntimeError("The shared camera could not be attached")
     mp_hands = mp.solutions.hands
     # 検出する手を最大4本に変更
-    hands = mp_hands.Hands(model_complexity=1, 
-        max_num_hands=4,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.5
-    )
+    hands = mp_hands.Hands(**solutions_options(4))
     resources.callback(hands.close)
     
     # 4本指分のポインターを準備（それぞれに0~3の異なるフラクタルタイプを割り当てる）

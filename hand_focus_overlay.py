@@ -11,6 +11,7 @@ DARK = (12, 17, 23)
 MUTED = (157, 172, 182)
 WHITE = (255, 255, 255)
 CYAN = (0, 225, 245)
+INDEX_COLOR = (255, 214, 36)
 
 
 def stage_points(hand, size, layout=None):
@@ -58,7 +59,9 @@ def _marker(draw_circle, center, scale):
 def _draw(size, hands, layout, focus, active_points, palm_focus, palm_circles,
           line, circle):
     scale = max(0.65, min(size) / 720)
+    index_points = []
     for points, center, radius, active in _geometry(hands, size, layout, focus, palm_circles):
+        index_points.append(points[8])
         for start, end in HAND_CONNECTIONS:
             line(DARK, points[start], points[end], max(3, round(3 * scale)))
             line(MUTED, points[start], points[end], max(1, round(scale)))
@@ -72,6 +75,14 @@ def _draw(size, hands, layout, focus, active_points, palm_focus, palm_circles,
             _marker(circle, point, scale)
     for point in active_points:
         _marker(circle, point, scale)
+    # Draw last so another active fingertip or palm marker cannot hide the ring.
+    # Hollow center preserves each scene's existing state/hand-assignment color.
+    index_scale = min(scale, 1.75)
+    for point in index_points:
+        for radius, color, width in ((21, DARK, 7), (18, WHITE, 3),
+                                     (14, INDEX_COLOR, 4)):
+            circle(color, point, max(1, round(radius * index_scale)),
+                   max(1, round(width * index_scale)))
 
 
 def draw_focus_points(screen, points):
@@ -85,7 +96,7 @@ def draw_focus_points(screen, points):
 
 def draw_pygame(screen, hands, *, layout=None, focus=(), active_points=(),
                 palm_focus=False, palm_circles=None):
-    """Draw after scene art; no focus is implied by detection alone."""
+    """Detected indices get yellow rings; cyan retains scene-specific inputs."""
     import pygame
     _draw(screen.get_size(), hands, layout, focus, active_points, palm_focus, palm_circles,
           lambda color, a, b, width: pygame.draw.line(screen, color, a, b, width),
@@ -108,10 +119,9 @@ class PassiveHandDetector:
     """At most one 15 Hz hand detector, reusing the scene's existing camera frame."""
 
     def __init__(self, max_hands=2, interval=1 / 15):
+        from hand_input_profile import solutions_options
         import mediapipe as mp
-        self.hands = mp.solutions.hands.Hands(
-            model_complexity=0, max_num_hands=max_hands,
-            min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        self.hands = mp.solutions.hands.Hands(**solutions_options(max_hands))
         self.interval = interval
         self.last_at = None
         self.cached = ()
@@ -124,6 +134,7 @@ class PassiveHandDetector:
         now = time.monotonic()
         if self.last_at is None or now - self.last_at >= self.interval:
             import cv2
+            self.cached = ()
             result = self.hands.process(cv2.cvtColor(camera_bgr, cv2.COLOR_BGR2RGB))
             self.cached = tuple(getattr(result, "multi_hand_landmarks", None) or ())
             self.last_at = now

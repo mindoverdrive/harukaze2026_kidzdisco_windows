@@ -34,6 +34,7 @@ class SceneTimingTests(unittest.TestCase):
         detector = StrictVideoDetector()
         display = mock.Mock()
         display.is_valid_model_asset.return_value = True
+        display.get_camera_frame_size.return_value = (1280, 720)
         display.open_camera.return_value.isOpened.return_value = True
         display.open_camera.return_value.read.return_value = (True, object())
         display.prepare_camera_frame.return_value = (object(), object(), object())

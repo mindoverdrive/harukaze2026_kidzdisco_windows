@@ -422,6 +422,7 @@ class Spider:
         pygame.draw.circle(surface, draw_color, (int(self.pos[0]), int(self.pos[1])), 10)
 
 def main():
+    from hand_input_profile import solutions_options
     resources = ExitStack()
     atexit.register(resources.close)
     resources.callback(pygame.quit)
@@ -439,11 +440,7 @@ def main():
     if cap is None or not cap.isOpened():
         raise RuntimeError("The shared camera could not be attached")
     mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(model_complexity=1, 
-        max_num_hands=2,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.7
-    )
+    hands = mp_hands.Hands(**solutions_options(2))
     resources.callback(hands.close)
 
     spider_1 = Spider(width//2 - 100, height//2, True)

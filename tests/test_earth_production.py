@@ -99,13 +99,13 @@ class EarthProductionTests(unittest.TestCase):
         self.assertIs(app.cap, self.cap)
         self.canvas.add_event_handler.assert_called()
 
-    def test_production_playlist_registers_nineteen_unique_scenes_and_one_earth_wrapper(self):
+    def test_production_playlist_registers_twenty_unique_scenes_and_one_earth_wrapper(self):
         config = json.loads((ROOT / "configs" / "rebirth_operator_acer_xiaomi.json").read_text(encoding="utf-8"))
         scenes = config["PRODUCTION_SCENES"]
-        self.assertEqual(len(scenes), 19)
-        self.assertEqual(len(set(scenes)), 19)
+        self.assertEqual(len(scenes), 20)
+        self.assertEqual(len(set(scenes)), 20)
         self.assertEqual(scenes.count("earth_acer.py"), 1)
-        self.assertEqual(scenes[-1], "earth_acer.py")
+        self.assertEqual(scenes[-3:], ["earth_acer.py", "hand_drawing_acer.py", "hand_shapes_acer.py"])
         targets = []
         for scene in scenes:
             wrapper = ast.parse((ROOT / scene).read_text(encoding="utf-8"))

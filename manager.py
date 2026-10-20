@@ -265,6 +265,16 @@ except ConfigurationError as exc:
     CONFIG_LOAD_ERROR = exc
 
 
+def revisioned_operator_action(action, manager):
+    """Reject a delayed browser click issued against a previous staff state."""
+    if isinstance(action, dict) and "revision" in action:
+        if manager is None or action["revision"] != manager.mode_revision:
+            return None
+        if action.get("action") in {"next", "back", "restart"}:
+            return action["action"]
+    return action
+
+
 class GestureInterpreter:
     def __init__(self):
         self.last_state = None
@@ -404,9 +414,12 @@ class SceneManager:
             creationflags=self._creationflags(),
             **({"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT} if self.diagnostics else {}),
         )
+        # A dead launcher is not proof that pre-Job descendants stopped.
+        proc._scene_containment_incomplete = os.name == "nt"
         try:
             if os.name == "nt":
                 proc._scene_job = WindowsSceneJob(proc)
+            proc._scene_containment_incomplete = False
             if self.diagnostics:
                 self.diagnostics.capture_stdout(proc)
                 self.diagnostics.record("scene_spawn", launcher_pid=proc.pid, argv=argv)
@@ -471,13 +484,20 @@ class SceneManager:
         graceful_timeout = float(CONFIG.get("SCENE_GRACEFUL_TIMEOUT", 2.0))
         terminate_timeout = float(CONFIG.get("SCENE_TERMINATE_TIMEOUT", 3.0))
         job = get_scene_job(proc)
+        containment_incomplete = (
+            vars(proc).get("_scene_containment_incomplete") is True
+            or (job is not None and getattr(job, "containment_complete", True) is False)
+        )
 
         def stopped():
             if job is not None:
                 if not job.wait(terminate_timeout):
                     return False
-                job.close()
-            return True
+                if not containment_incomplete:
+                    job.close()
+            # Preserve the uncontained-process owner when a child could
+            # have escaped before Job assignment/adoption completed.
+            return not containment_incomplete
 
         try:
             if proc.poll() is not None and (job is None or not job.is_alive()):
@@ -506,6 +526,20 @@ class SceneManager:
                     report(f"[Manager] Error: owned scene job stop failed for {scene_name}: {exc}")
                     return False
 
+            if containment_incomplete:
+                # No Job owns the tree. Use only Popen's exact process handle;
+                # a launcher PID may be reused after a graceful-exit race.
+                for label, stop in (("terminate", proc.terminate), ("kill", proc.kill)):
+                    if proc.poll() is not None:
+                        return False
+                    try:
+                        stop()
+                        proc.wait(timeout=terminate_timeout)
+                        return False  # Unknown descendants remain unverified.
+                    except Exception as exc:
+                        report(f"[Manager] Warning: owned root {label} failed for {scene_name}: {exc}")
+                return False
+
             try:
                 if os.name == "nt":
                     subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
@@ -514,7 +548,7 @@ class SceneManager:
                 else:
                     proc.terminate()
                 proc.wait(timeout=terminate_timeout)
-                return True
+                return not containment_incomplete
             except subprocess.TimeoutExpired:
                 report(f"[Manager] Warning: terminate timed out: {scene_name}")
             except Exception as exc:
@@ -535,7 +569,7 @@ class SceneManager:
             except Exception as exc:
                 report(f"[Manager] Error: force stop failed for {scene_name}: {exc}")
                 return False
-            return proc.poll() is not None
+            return proc.poll() is not None and not containment_incomplete
         finally:
             gc.collect()
 
@@ -962,6 +996,8 @@ def main():
     trial_started_at = None
     next_switch_at = None
     observed_promotions = 0
+    observed_rotation_generation = 0
+    observed_mode_revision = 0
     next_sample_at = 0.0
     stop_reason = "error"
     exit_code = 0
@@ -1013,7 +1049,13 @@ def main():
         )
 
         if not args.camera_only:
-            manager = SceneManager(camera_env=camera_env, scenes=production_scenes, diagnostics=diagnostics)
+            # Reuse this exact module/config when launched through runpy as __main__.
+            manager_factory = SceneManager
+            if isinstance(manager_factory, type):
+                sys.modules.setdefault("manager", sys.modules[__name__])
+                from staff_scene_manager import StaffSceneManager
+                manager_factory = StaffSceneManager
+            manager = manager_factory(camera_env=camera_env, scenes=production_scenes, diagnostics=diagnostics)
 
         if (not args.camera_only and CONFIG.get("CLAP_MONITOR_ENABLED", True)
                 and not CONFIG.get("TRANSITION_ENABLED", True)):
@@ -1044,16 +1086,18 @@ def main():
                 raise RuntimeError(f"Camera capture thread stopped: {camera_relay.last_error}")
             if manager is not None:
                 manager.tick()
-                if manager.fatal_error:
+                if manager.fatal_error and not manager.staff_locked:
                     raise RuntimeError(manager.fatal_error)
-                if (args.switch_interval_seconds or args.duration_seconds) and manager.last_switch_error:
+                if (args.switch_interval_seconds or args.duration_seconds) and manager.last_switch_error and not manager.staff_locked and not manager.staff_error:
                     raise RuntimeError(f"Trial switch failed: {manager.last_switch_error}")
 
             if trial_started_at is None and (manager is None or manager.is_scene_running()):
                 trial_started_at = time.monotonic()
                 if diagnostics:
                     diagnostics.record("trial_started")
-            if manager is not None and manager.completed_promotions != observed_promotions:
+            if manager is not None and (manager.completed_promotions != observed_promotions
+                                        or manager.rotation_generation != observed_rotation_generation):
+                observed_rotation_generation = manager.rotation_generation
                 observed_promotions = manager.completed_promotions
                 next_switch_at = time.monotonic() + args.switch_interval_seconds if args.switch_interval_seconds else None
             if diagnostics and now >= next_sample_at:
@@ -1067,14 +1111,17 @@ def main():
                 stop_reason = "switch_count_reached"
                 break
             if (next_switch_at is not None and now >= next_switch_at and manager is not None
-                    and manager.safe_requested is not True):
+                    and manager.safe_requested is not True and not manager.staff_locked):
                 if manager.switch_scene():
                     next_switch_at = None
-            if monitor and monitor.consume_clap() and manager is not None and manager.safe_requested is not True:
+            if monitor and monitor.consume_clap() and manager is not None and manager.safe_requested is not True and not manager.staff_locked:
                 print("[Manager] Head clap detected. Switching scene.")
                 manager.switch_scene()
 
-            if manager is not None and manager.safe_requested is not True and not manager.is_scene_running() and not manager.switch_pending:
+            if (manager is not None and not manager.staff_locked and manager.safe_requested is not True
+                    and not manager.is_scene_running() and not manager.switch_pending
+                    and (not manager.transition_busy or
+                         (manager.transition is not None and manager.transition.holding_cover is True))):
                 exited_launcher = manager.running_process
                 if exited_launcher is not None:
                     # The Windows venv launcher may be a redirector; this is its
@@ -1093,7 +1140,23 @@ def main():
                 print(f"[Manager] Scene '{manager.current_scene_name}' exited. Launching next...")
                 manager.switch_scene()
 
+            if operator is not None and manager is not None:
+                # Drop clicks queued against a previous mode before accepting more.
+                if manager.mode_revision != observed_mode_revision:
+                    operator.discard_actions(manager.mode_revision)
+                    observed_mode_revision = manager.mode_revision
+                operator.publish(manager.operator_snapshot())
             action = operator.consume_action() if operator is not None else None
+            action = revisioned_operator_action(action, manager)
+            if isinstance(action, dict) and action.get("action") in {"staff_start", "staff_return"} and manager is not None:
+                if action.get("revision") == manager.mode_revision:
+                    try:
+                        if action["action"] == "staff_start":
+                            manager.request_staff(action.get("scene"))
+                        else:
+                            manager.return_to_rotation()
+                    except (ConfigurationError, SceneControlError) as exc:
+                        manager.operator_feedback = str(exc)
             if action == "quit":
                 stop_reason = "operator_quit"
                 break

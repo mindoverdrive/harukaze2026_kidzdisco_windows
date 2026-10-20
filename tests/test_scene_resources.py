@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+from hand_input_profile import solutions_options
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,7 +19,8 @@ def namespace():
     return dict(__name__="resource_test", atexit=mock.Mock(), ExitStack=ExitStack,
                 pygame=mock.Mock(), mp=mock.Mock(), cv2=mock.Mock(), display_utils=display,
                 math=math, WINDOW_WIDTH=640, WINDOW_HEIGHT=360, RenderCanvas=mock.Mock(),
-                gfx=mock.Mock(), notify_exit_request=mock.Mock(), draw_hand_overlay=mock.Mock())
+                gfx=mock.Mock(), notify_exit_request=mock.Mock(), draw_hand_overlay=mock.Mock(),
+                solutions_options=solutions_options)
 
 
 def run_exit_callbacks(ns):

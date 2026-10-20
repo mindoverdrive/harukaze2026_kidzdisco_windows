@@ -39,6 +39,9 @@ Minecraft-like 3D Block Builder with Gesture Control
 Pygame + Pygfx + MediaPipe
 """
 
+from contextlib import ExitStack
+import scene_control
+from minecraft_reset import (TwoHandReset, reset_sample, MAX_PARTICLES, RESET_SECONDS)
 import math
 import time
 import numpy as np
@@ -91,32 +94,47 @@ def np_distance(p1, p2):
 
 class GestureManager:
     def __init__(self):
+        self._resources = ExitStack()
+        try:
+            self._initialize()
+        except BaseException as error:
+            try:
+                self._resources.close()
+            except BaseException as cleanup_error:
+                error.add_note(f"Minecraft gesture cleanup failed: {cleanup_error}")
+            raise
+
+    def close(self):
+        self._resources.close()
+
+    def _initialize(self):
+        from hand_input_profile import solutions_options
         self.mp_hands = mp.solutions.hands
         self.mp_face_mesh = mp.solutions.face_mesh
         
-        self.hands = self.mp_hands.Hands(model_complexity=1, 
-            max_num_hands=2,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.7
-        )
+        self.hands = self.mp_hands.Hands(**solutions_options(3))
+        self._resources.callback(self.hands.close)
         self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=1,
+            max_num_faces=2,  # Reset is single-player; visible extra faces inhibit it.
             refine_landmarks=True,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.7
         )
         
+        self._resources.callback(self.face_mesh.close)
         self.mouth_state = "closed" # closed, open
         self.last_mouth_open_time = 0
         self.color_cycle_trigger = False
         
-        self.both_hands_fist_time = 0
+        self.detected_hands = ()
+        self.reset_gesture = TwoHandReset()
         self.reset_trigger = False
 
     def process(self, image):
         # Image is RGB
         h, w, _ = image.shape
         results_hands = self.hands.process(image)
+        self.detected_hands = tuple(results_hands.multi_hand_landmarks or ())
         results_face = self.face_mesh.process(image)
         
         gestures = {
@@ -162,26 +180,11 @@ class GestureManager:
 
         # --- Detect Gestures ---
         
-        # Check for Double Fist -> Open (Reset)
-        is_left_fist = self.is_fist(left_hand_lm) if left_hand_lm else False
-        is_right_fist = self.is_fist(right_hand_lm) if right_hand_lm else False
-        
-        if is_left_fist and is_right_fist:
-            if self.both_hands_fist_time == 0:
-                self.both_hands_fist_time = time.time()
-        else:
-            # If we were fisting (?) and now opened both
-            if self.both_hands_fist_time > 0:
-                # If held for a bit? Or just event?
-                # "Both hands simultaneously Goo -> Par"
-                is_left_open = self.is_palm_open(left_hand_lm) if left_hand_lm else False
-                is_right_open = self.is_palm_open(right_hand_lm) if right_hand_lm else False
-                
-                if is_left_open and is_right_open:
-                    self.reset_trigger = True
-                
-                self.both_hands_fist_time = 0
-                
+        # Only fresh, unambiguous observations advance the one-shot reset.
+        # Hands/FaceMesh do not provide person ownership: one player at a time.
+        self.reset_trigger = self.reset_gesture.update(
+            reset_sample(results_hands, results_face), time.monotonic())
+
         # Left Hand: Rotation
         if left_hand_lm:
             # Center of palm
@@ -211,6 +214,10 @@ class GestureManager:
             }
             
         return gestures
+
+    def cancel_reset(self):
+        self.reset_gesture.cancel()
+        self.reset_trigger = False
 
     def is_pointing(self, landmarks):
         # Index straight, others folded
@@ -257,23 +264,47 @@ class GestureManager:
 
 
 class EffectParticle:
-    def __init__(self, pos, color, velocity):
+    def __init__(self, pos, color, velocity, *, geometry=None, life=1.0, spin=False):
         self.pos = np.array(pos, dtype=np.float32)
         self.velocity = np.array(velocity, dtype=np.float32)
         self.color = color
-        self.life = 1.0 # Seconds
+        self.life = min(life, RESET_SECONDS)
+        self.spin = spin
+        self.age = 0.0
         
         self.mesh = gfx.Mesh(
-            gfx.box_geometry(BLOCK_SIZE*0.3, BLOCK_SIZE*0.3, BLOCK_SIZE*0.3),
+            geometry if geometry is not None else gfx.box_geometry(BLOCK_SIZE*0.3, BLOCK_SIZE*0.3, BLOCK_SIZE*0.3),
             gfx.MeshBasicMaterial(color=color)
         )
         self.mesh.local.position = pos
 
 class MinecraftApp:
     def __init__(self):
+        self._resources = ExitStack()
+        self._frame_error = None
+        self._camera_failure_since = None
+        self._last_frame_id = None
+        self._last_fresh_at = time.monotonic()
+        try:
+            self._initialize()
+        except BaseException as error:
+            try:
+                self.cleanup()
+            except BaseException as cleanup_error:
+                error.add_note(f"Minecraft cleanup failed: {cleanup_error}")
+            raise
+
+    def _initialize(self):
+        if scene_control._child_control is not None:
+            import os
+            if not os.environ.get("HARUKAZE_CAMERA_SHM") or os.environ.get("HARUKAZE_SHARED_CAMERA_REQUIRED", "").lower() not in {"1", "true", "yes", "on"}:
+                raise RuntimeError("Minecraft requires Manager shared camera; physical fallback is forbidden")
         # Pygfx Setup
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="Hand Gesture Minecraft")
+        self._resources.callback(self.canvas.close)
+        self.canvas.add_event_handler(self.on_event, "close")
         display_utils.setup_rendercanvas_fullscreen(self.canvas)
+        self.verify_managed_display()
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         
@@ -288,6 +319,11 @@ class MinecraftApp:
         self.scene.add(light)
 
         self.cap = display_utils.open_camera()
+        if self.cap is None:
+            raise RuntimeError("Minecraft shared camera attach failed")
+        self._resources.callback(self.cap.release)
+        if not self.cap.isOpened():
+            raise RuntimeError("Minecraft shared camera is not open")
         self.camera_frame_width, self.camera_frame_height = display_utils.get_camera_frame_size(self.cap)
         
         # Camera Feed Background - using pygfx Background for guaranteed render order
@@ -305,7 +341,10 @@ class MinecraftApp:
         # Block Management
         self.blocks = {} # (idx_x, idx_y, idx_z) -> Mesh
         self.current_color_idx = 0
-        self.particles = [] # List of EffectParticle
+        self.particles = [] # List of EffectParticle; shared cap includes erase effects.
+        self._reset_remaining = 0.0
+        self._reset_finished_this_frame = False
+        self.grabbed_block_pos = None
         
         # Cursor (Box)
         self.cursor = gfx.Mesh(
@@ -319,12 +358,26 @@ class MinecraftApp:
         
         # Hand/Input
         self.gesture_manager = GestureManager()
+        self._resources.callback(self.gesture_manager.close)
+        from hand_focus_pygfx import PygfxHandOverlay
+        self.hand_overlay = PygfxHandOverlay(WINDOW_WIDTH, WINDOW_HEIGHT)
         
         # State
         self.camera_rot_x = 0
         self.camera_rot_y = 0
-        self.last_time = time.time()
+        self.last_time = time.monotonic()
         
+    def verify_managed_display(self):
+        if scene_control._child_control is None:
+            return
+        import glfw
+        window = getattr(self.canvas, "_window", None)
+        if window is None:
+            raise RuntimeError("Minecraft audience window cannot be verified")
+        width, height, x, y = display_utils.get_second_monitor_size()
+        if tuple(glfw.get_window_pos(window)) != (x, y) or tuple(glfw.get_window_size(window)) != (width, height):
+            raise RuntimeError("Minecraft audience window geometry mismatch")
+
     def setup_grid(self):
         # Grid removed for better AR transparency
         pass
@@ -336,6 +389,7 @@ class MinecraftApp:
     def setup_hud(self):
         # Create a HUD surface using Pygame for instructions
         pygame.font.init()
+        self._resources.callback(pygame.font.quit)
         hud_surface = pygame.Surface((1024, 512), pygame.SRCALPHA)
         hud_surface.fill((0, 0, 0, 100)) # Semi-transparent black
         
@@ -348,7 +402,7 @@ class MinecraftApp:
             # ("🤏 Right Pinch", "Move Block"), # Removed
             ("✋ Left Hand",  "Rotate View"),
             ("😮 Open Mouth", "Cycle Color"),
-            ("✊✊ -> 👋👋",   "Reset All")
+            ("Hold 2 fists", "Open to reset (1 player)")
         ]
         
         y_off = 30
@@ -407,8 +461,10 @@ class MinecraftApp:
         # In a real app we'd use unproject, but for simplicity with fixed depth:
         # Tan(FOV/2) * depth * aspectRatio
         fov = self.camera.fov * (math.pi / 180)
-        h_world = 2 * math.tan(fov / 2) * depth
-        w_world = h_world * (WINDOW_WIDTH / WINDOW_HEIGHT)
+        aspect = WINDOW_WIDTH / WINDOW_HEIGHT
+        # pygfx FOV describes mean extent, as in the Saturn projection.
+        h_world = 2 * math.tan(fov / 2) * depth * 2.0 / (1.0 + aspect)
+        w_world = h_world * aspect
         
         # Local camera space coordinates
         # Adjust for "hand pointing" feeling
@@ -455,7 +511,7 @@ class MinecraftApp:
             # Spawn delete particles (Crumbing effect)
             center_pos = mesh.local.position
             color = mesh.material.color
-            for _ in range(8):
+            for _ in range(min(8, MAX_PARTICLES - len(self.particles))):
                 # Random velocity slightly upwards then down
                 vel = (
                     (np.random.random() - 0.5) * 5,
@@ -477,45 +533,86 @@ class MinecraftApp:
     # move_grabbed_block removed as per request
 
     def clear_all(self):
-        # Explode all blocks
-        for mesh in self.blocks.values():
+        if self._reset_remaining > 0:
+            return  # Never overlap bursts or allocate another batch.
+        self._reset_remaining = RESET_SECONDS
+        self.gesture_manager.cancel_reset()
+        self.gesture_manager.color_cycle_trigger = False
+        self.grabbed_block_pos = None
+        self.cursor.visible = False
+        for particle in self.particles:
+            self.scene.remove(particle.mesh)
+        self.particles.clear()
+        meshes = tuple(self.blocks.values())
+        for mesh in meshes:
             self.scene.remove(mesh)
-            
-            # Spawn explosion particles
-            center_pos = mesh.local.position
-            color = mesh.material.color
-            for _ in range(2): # Fewer particles per block to save perf
-                # Explosion velocity outwards from center? Or just random
-                vel = (
-                    (np.random.random() - 0.5) * 20,
-                    (np.random.random() - 0.5) * 20 + 5,
-                    (np.random.random() - 0.5) * 20
-                )
-                p = EffectParticle(center_pos, color, vel)
-                self.scene.add(p.mesh)
-                self.particles.append(p)
-                
         self.blocks.clear()
-        
+        if not meshes:
+            return
+
+        # Share cube geometry. Sample the whole construction within a fixed budget
+        # instead of multiplying particles by an unbounded number of blocks.
+        geometry = gfx.box_geometry(BLOCK_SIZE * 0.3, BLOCK_SIZE * 0.3, BLOCK_SIZE * 0.3)
+        center = np.mean([mesh.local.position for mesh in meshes], axis=0)
+        count = min(MAX_PARTICLES, max(48, len(meshes) * 12))
+        for index in range(count):
+            mesh = meshes[index * len(meshes) // count]
+            position = np.asarray(mesh.local.position, dtype=np.float32)
+            outward = position - center + np.random.uniform(-BLOCK_SIZE, BLOCK_SIZE, 3)
+            length = np.linalg.norm(outward)
+            outward = outward / length if length > 1e-6 else np.array((0.0, 1.0, 0.0))
+            velocity = outward * np.random.uniform(24.0, 42.0)
+            velocity[1] += np.random.uniform(12.0, 22.0)
+            particle = EffectParticle(
+                position + np.random.uniform(-BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.4, 3),
+                mesh.material.color, velocity, geometry=geometry,
+                life=RESET_SECONDS, spin=True)
+            self.scene.add(particle.mesh)
+            self.particles.append(particle)
+
+    def finish_reset(self):
+        for particle in self.particles:
+            self.scene.remove(particle.mesh)
+        self.particles.clear()
+        self.grabbed_block_pos = None
+        self.current_color_idx = 0
+        self.cursor.visible = False
+        self.cursor.local.position = (0, 0, 0)
+        self.cursor.material.color = (1, 1, 1, 0.5)
+        self.camera_rot_x = self.camera_rot_y = 0
+        self.camera.local.position = (0, 0, 50)
+        self.camera.local.rotation = (0, 0, 0, 1)
+        self.update_hud_color()
+        self.gesture_manager.cancel_reset()
+        self.gesture_manager.color_cycle_trigger = False
+        self._reset_remaining = 0.0
+        self._reset_finished_this_frame = True
+
     def update_particles(self, dt):
-        dead_particles = []
-        for p in self.particles:
-            p.life -= dt
-            if p.life <= 0:
-                dead_particles.append(p)
+        # Expiry uses elapsed time; physics uses a bounded step after a stall.
+        dt = max(0.0, dt)
+        step = min(dt, 0.05)
+        survivors = []
+        for particle in self.particles:
+            particle.life -= dt
+            if particle.life <= 0:
+                self.scene.remove(particle.mesh)
                 continue
-                
-            # Physics
-            p.velocity[1] -= 20.0 * dt # Gravity
-            p.pos += p.velocity * dt
-            p.mesh.local.position = p.pos
-            
-            # Fade out alpha?
-            # p.mesh.material.opacity = p.life
-            
-        for p in dead_particles:
-            self.scene.remove(p.mesh)
-            self.particles.remove(p)
+            particle.velocity[1] -= 20.0 * step
+            particle.pos += particle.velocity * step
+            particle.mesh.local.position = particle.pos
+            particle.age += step
+            if particle.spin:
+                particle.mesh.local.rotation = la.quat_from_euler(
+                    tuple(particle.velocity * particle.age * 0.12))
+                shrink = min(1.0, particle.life / 0.35)
+                particle.mesh.local.scale = (shrink, shrink, shrink)
+            survivors.append(particle)
+        self.particles[:] = survivors
+        if self._reset_remaining > 0:
+            self._reset_remaining = max(0.0, self._reset_remaining - dt)
+            if self._reset_remaining == 0:
+                self.finish_reset()
 
     def update_camera(self, left_hand_data):
         if not left_hand_data: return
@@ -548,23 +645,59 @@ class MinecraftApp:
         self.camera.look_at((0, 0, 0))
 
 
+    def on_event(self, event):
+        if event.get("event_type") == "close":
+            scene_control.notify_exit_request("window_close")
+            loop.stop()
+
     def animate(self):
-        now = time.time()
+        try:
+            self._animate_frame()
+        except BaseException as error:
+            # RenderCanvas may log/swallow draw exceptions; make run() fail observably.
+            self._frame_error = error
+            loop.stop()
+
+    def _animate_frame(self):
+        now = time.monotonic()
         dt = now - self.last_time
         self.last_time = now
         
         self.update_particles(dt)
         
         ret, frame = self.cap.read()
-        if not ret: return
+        if not ret:
+            self.clear_hand_feedback()
+            self.gesture_manager.cancel_reset()
+            now = time.monotonic()
+            if self._camera_failure_since is None:
+                self._camera_failure_since = now
+            if now - self._camera_failure_since >= 3.0:
+                raise RuntimeError("Minecraft camera input stopped")
+            self.canvas.request_draw()
+            return
+        self._camera_failure_since = None
+        frame_id = getattr(self.cap, "last_read_frame_id", None)
+        if scene_control._child_control is not None:
+            if frame_id == self._last_frame_id:
+                if time.monotonic() - self._last_fresh_at >= 0.25:
+                    self.clear_hand_feedback()
+                if time.monotonic() - self._last_fresh_at >= 3.0:
+                    raise RuntimeError("Minecraft shared camera frames stopped advancing")
+                self.canvas.request_draw()
+                return
+            self._last_frame_id = frame_id
+            self._last_fresh_at = time.monotonic()
         
         # Flip and convert
         frame = cv2.flip(frame, 1) # Mirror for selfie
         # frame = cv2.flip(frame, 0) # Removed: don't flip analysis frame
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Process inputs
+        # Process inputs; an effect cannot pre-arm the next reset.
         inputs = self.gesture_manager.process(rgb)
+        if self._reset_remaining > 0 or self._reset_finished_this_frame:
+            self.gesture_manager.cancel_reset()
         
         # 1. Logic
         
@@ -573,6 +706,12 @@ class MinecraftApp:
             self.clear_all()
             self.gesture_manager.reset_trigger = False
         
+        input_locked = (self._reset_remaining > 0 or self._reset_finished_this_frame
+                        or self.gesture_manager.reset_gesture.armed)
+        if input_locked:
+            self.gesture_manager.color_cycle_trigger = False
+            self.cursor.visible = False
+
         # Color Cycle
         if self.gesture_manager.color_cycle_trigger:
             self.current_color_idx = (self.current_color_idx + 1) % len(COLORS)
@@ -590,10 +729,12 @@ class MinecraftApp:
         self.bg_tex.update_range((0,0,0), self.bg_tex.size)
         
         # Camera
-        self.update_camera(inputs["left_hand"])
+        if not input_locked:
+            self.update_camera(inputs["left_hand"])
         
         # Right Hand Interactions
-        rh = inputs["right_hand"]
+        rh = None if input_locked else inputs["right_hand"]
+        self.cursor.visible = rh is not None
         if rh:
             # Map hand position to 3D world cursor
             # Depth: adjust based on pinch or just fixed interaction plane?
@@ -619,28 +760,38 @@ class MinecraftApp:
                 
             # 'move' action removed
 
-        # Render
-        # Render
-        try:
-            try:
-                self.renderer.render(self.scene, self.camera)
-            except RuntimeError:
-                pass
-        except RuntimeError as exc:
-            print(f"[minecraft] Render skipped: {exc}")
-            # loop.stop() # Removed to prevent DX12 surface loss crash
-            return
+        # Background uses full-viewport normalized coordinates; keep the same
+        # mapping without mirroring again. Final pass stays visible above blocks.
+        self.hand_overlay.update(self.gesture_manager.detected_hands)
+        self.renderer.render(self.scene, self.camera, flush=False)
+        self.renderer.render(self.hand_overlay.scene, self.hand_overlay.camera, clear=False)
+        self._reset_finished_this_frame = False
+        scene_control.notify_first_frame(self.cap)
         self.canvas.request_draw()
 
+    def clear_hand_feedback(self):
+        """Remove stale marks without advancing gestures or FIRST_FRAME."""
+        self.hand_overlay.clear()
+        self.renderer.render(self.scene, self.camera, flush=False)
+        self.renderer.render(self.hand_overlay.scene, self.hand_overlay.camera, clear=False)
+
     def run(self):
-        self.canvas.request_draw(self.animate)
-        loop.run()
+        try:
+            self.canvas.request_draw(self.animate)
+            loop.run()
+            if self._frame_error is not None:
+                raise self._frame_error
+        finally:
+            self.cleanup()
         
     def cleanup(self):
-        self.gesture_manager.hands.close()
-        self.gesture_manager.face_mesh.close()
-        self.cap.release()
-        cv2.destroyAllWindows()
+        try:
+            self._resources.close()
+        finally:
+            # Release scene-owned GPU references; the shared device belongs to pygfx.
+            for name in ("blocks", "particles", "cursor", "hud_plane", "hud_data", "hud_tex", "bg_tex", "bg_plane", "scene", "renderer", "camera", "gesture_manager", "hand_overlay", "cap", "canvas"):
+                if hasattr(self, name):
+                    setattr(self, name, None)
 
 if __name__ == "__main__":
     app = MinecraftApp()

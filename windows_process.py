@@ -94,6 +94,7 @@ class WindowsSceneJob:
             raise ValueError("Launched process already has a scene job owner")
         self.kernel = _kernel()
         self._adopted_jobs = []
+        self.containment_complete = False
         self.handle = _check(self.kernel.CreateJobObjectW(None, None))
         self.root_pid = process.pid
         try:
@@ -108,14 +109,22 @@ class WindowsSceneJob:
             # Include interpreters already created by a fast native redirector,
             # before waiting for READY or risking a startup timeout.
             parents = _process_parents(self.kernel)
+            adoption_errors = []
             for pid in parents:
                 if pid != self.root_pid and _is_descendant(self.kernel, pid, self.root_pid, parents):
                     try:
                         self.adopt_scene_pid(pid)
                     except OSError as exc:
                         if getattr(exc, "winerror", None) != 87:  # Process already exited.
-                            raise
+                            adoption_errors.append(exc)
+            if adoption_errors:
+                raise adoption_errors[0]
+            self.containment_complete = True
         except BaseException as exc:
+            if get_scene_job(process) is self:
+                # The root is owned, but descendant adoption is incomplete.
+                # Retain every Job handle for Manager's bounded cleanup.
+                raise
             try:
                 self.close()
             except OSError as cleanup_error:

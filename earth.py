@@ -86,6 +86,7 @@ class EarthViewer3D:
 
     def _initialize(self):
         # 1. Setup pygfx
+        from hand_input_profile import tasks_options
         self.canvas = RenderCanvas(size=(WINDOW_WIDTH, WINDOW_HEIGHT), title="3D Earth Viewer")
         self._resources.callback(self.canvas.close)
         display_utils.setup_rendercanvas_fullscreen(self.canvas)
@@ -116,11 +117,7 @@ class EarthViewer3D:
             raise RuntimeError(f"Earth hand model missing or invalid: {model_path}")
         
         base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
-        options = vision.HandLandmarkerOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=2 # Need 2 hands now
-        )
+        options = vision.HandLandmarkerOptions(base_options=base_options, running_mode=vision.RunningMode.VIDEO, **tasks_options(2))
         self.detector = vision.HandLandmarker.create_from_options(options)
         self._resources.callback(self.detector.close)
         

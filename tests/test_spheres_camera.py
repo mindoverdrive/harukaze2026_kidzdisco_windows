@@ -622,7 +622,7 @@ class SpheresCameraTests(unittest.TestCase):
             native.hands.process.assert_called_once_with(native.camera_rgb)
             native.display.prepare_camera_frame.assert_called_once_with(frame, 100, 60)
             native.make_hands.assert_called_once_with(
-                model_complexity=1, max_num_hands=6,
+                static_image_mode=False, model_complexity=1, max_num_hands=6,
                 min_detection_confidence=0.7, min_tracking_confidence=0.5)
         finally:
             gate.set()

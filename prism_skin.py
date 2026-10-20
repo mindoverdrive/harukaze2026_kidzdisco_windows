@@ -11,6 +11,7 @@ from scene_control import notify_first_frame
 
 
 def main():
+    from hand_input_profile import solutions_options
     with ExitStack() as resources:
         pygame.init()
         resources.callback(pygame.quit)
@@ -22,9 +23,7 @@ def main():
         resources.callback(cap.release)
         if not cap.isOpened():
             raise RuntimeError('Prism Skin: shared camera could not attach')
-        hands = resources.enter_context(mp.solutions.hands.Hands(
-            max_num_hands=5, model_complexity=1,
-            min_detection_confidence=.5, min_tracking_confidence=.5))
+        hands = resources.enter_context(mp.solutions.hands.Hands(**solutions_options(5)))
         field = PrismSkin(320, max(90, round(320 * height / width)))
         clock = pygame.time.Clock()
         started = previous = time.monotonic()

@@ -72,7 +72,6 @@ class OtedamaMultiHandTests(unittest.TestCase):
             modern_otedama.mp.solutions.hands, "Hands", return_value=self.detector))
         self.game = modern_otedama.ModernOtedamaGame()
         self.addCleanup(self.game.cleanup)
-        self.game.state = modern_otedama.STATE_PLAYING
         self.hands = [hand_at(x, y) for x, y in CENTERS]
 
     def detect(self, hands):
@@ -122,21 +121,15 @@ class OtedamaMultiHandTests(unittest.TestCase):
                 self.assertEqual(len(self.game.particles), previous_particles + 20)
                 self.assertLessEqual(math.hypot(ball.vx, ball.vy), modern_otedama.MAX_SPEED)
 
-    def test_each_detection_position_including_sixth_can_start_the_game(self):
-        self.detect(self.hands)
-        self.assertFalse(self.game.start_button.check_collision(self.game.hand_colliders))
-        for index in range(6):
-            with self.subTest(hand=index + 1):
-                hands = list(self.hands)
-                hands[index] = hand_at(self.game.start_button.x, self.game.start_button.y)
-                self.detector.process.return_value = result_for(hands)
-                self.game.state = modern_otedama.STATE_TITLE
-                self.game.balls = []
+    def test_zero_through_six_hands_need_no_start_button(self):
+        for count in range(7):
+            with self.subTest(hands=count):
+                self.detector.process.return_value = result_for(self.hands[:count])
+                self.game.refill_balls()
                 self.game.update(1 / 60)
-                self.assertEqual(len(self.game.hand_colliders), 6)
-                self.assertEqual(self.game.state, modern_otedama.STATE_PLAYING)
+                self.assertFalse(hasattr(self.game, 'start_button'))
+                self.assertEqual(len(self.game.hand_colliders), count)
                 self.assertEqual(len(self.game.balls), 1)
-                self.assertEqual(self.game.play_elapsed_seconds, 0)
         self.open_camera.assert_called_once_with()
 
     def test_three_repeated_left_and_right_labels_do_not_overwrite_hands(self):
@@ -192,7 +185,7 @@ class OtedamaMultiHandTests(unittest.TestCase):
         self.detector.process.return_value = result_for([
             hand_at(640 + offset, 500) for offset in (-18, -12, -6, 6, 12, 18)
         ])
-        self.game.reset_game()
+        self.game.refill_balls()
         self.game._start_frame_pending = False
         ball = self.game.balls[0]
         ball.x, ball.y, ball.vx, ball.vy = 640., 450., 0., 6.

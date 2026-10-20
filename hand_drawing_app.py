@@ -1,9 +1,10 @@
-"""Standalone hand drawing with the same camera coordinates/feedback as stage scenes."""
+"""Eight-hand drawing with standalone preview and Manager stage presentation."""
 import argparse
 from contextlib import ExitStack
 from dataclasses import dataclass
 import json
 import math
+import os
 import socket
 import time
 
@@ -12,6 +13,7 @@ import mediapipe as mp
 import numpy as np
 
 import display_utils
+import scene_control
 from hand_drawing_effects import FadingInk
 from hand_drawing_feedback import draw_color_guidance
 from hand_drawing_tracking import HandTracks
@@ -49,6 +51,7 @@ class HandInput:
     point: tuple | None
     selected_count: int
     anchor: tuple
+    finger_mask: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -133,13 +136,17 @@ class DrawingInput:
                 self.previous_tips.pop(key, None)
             wrist = item.hand.landmark[0]
             inputs.append(HandInput(key, item.effect_id, item.handedness, drawing_point,
-                          color.selected_count, display_utils.normalized_to_stage(wrist.x, wrist.y, layout)))
+                          color.selected_count, display_utils.normalized_to_stage(wrist.x, wrist.y, layout),
+                          tuple(states)))
         return DrawingFrame(tuple(item.hand for item in tracked), tuple(active),
                             tuple(strokes), tuple(inputs))
 
 
-def setup_window(width, height, fullscreen=False, window_name=WINDOW_NAME):
-    """Standalone preview stays on the primary monitor, ignoring stage placement."""
+def setup_window(width, height, fullscreen=False, window_name=WINDOW_NAME, *, production=False):
+    """Manager uses the audience stage; standalone preview stays on the primary."""
+    if production:
+        display_utils.setup_cv2_fullscreen(window_name)
+        return
     x, y, view_w, view_h = 40, 40, width, height
     try:
         from screeninfo import get_monitors
@@ -175,14 +182,18 @@ def close_window(window_name=WINDOW_NAME):
 
 def run_app(*, width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT, stable_seconds=COLOR_STABLE_SECONDS,
             hold_seconds=3.5, fade_seconds=3.0, max_segments=DEFAULT_MAX_SEGMENTS, fullscreen=False,
-            controller=None, renderer=None, window_name=WINDOW_NAME):
+            controller=None, renderer=None, window_name=WINDOW_NAME, production=False):
     """Shared camera/window lifecycle for drawing and the separate shape scene."""
+    from hand_input_profile import solutions_options
+    if production and (not os.environ.get("HARUKAZE_CAMERA_SHM") or
+                       os.environ.get("HARUKAZE_SHARED_CAMERA_REQUIRED", "").lower() not in
+                       {"1", "true", "yes", "on"}):
+        raise RuntimeError("Managed hand scenes require Manager shared camera details")
     ink = FadingInk(width, height, hold_seconds, fade_seconds, max_segments)
     controller = controller if controller is not None else DrawingInput(width, height, stable_seconds)
     renderer = renderer or render_frame
     with ExitStack() as resources:
-        hands = mp.solutions.hands.Hands(model_complexity=1, max_num_hands=MAX_HANDS,
-                                        min_detection_confidence=.7, min_tracking_confidence=.7)
+        hands = mp.solutions.hands.Hands(**solutions_options(MAX_HANDS))
         resources.callback(hands.close)
         cap = display_utils.open_camera()
         if cap is not None:
@@ -190,7 +201,10 @@ def run_app(*, width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT, stable_seconds=COLOR_
         if cap is None or not cap.isOpened():
             raise RuntimeError("Camera unavailable. Check the shared camera or Windows DirectShow settings.")
         resources.callback(close_window, window_name)
-        setup_window(width, height, fullscreen, window_name)
+        if production:
+            setup_window(width, height, fullscreen, window_name, production=True)
+        else:
+            setup_window(width, height, fullscreen, window_name)
         stage = np.zeros((height, width, 3), np.uint8)
         feedback = DrawingFrame((), (), (), ())
         layout = None
@@ -259,9 +273,12 @@ def main(argv=None):
                         break
                 except (ValueError, UnicodeError):
                     continue
-    run_app(width=args.width, height=args.height, fullscreen=args.fullscreen,
+    production = scene_control._child_control is not None
+    width, height = display_utils.get_stage_size() if production else (args.width, args.height)
+    run_app(width=width, height=height, fullscreen=args.fullscreen,
             hold_seconds=args.hold_seconds, fade_seconds=args.fade_seconds,
-            max_segments=args.max_segments, stable_seconds=args.color_stable_ms / 1000)
+            max_segments=args.max_segments, stable_seconds=args.color_stable_ms / 1000,
+            production=production)
 
 
 if __name__ == "__main__":

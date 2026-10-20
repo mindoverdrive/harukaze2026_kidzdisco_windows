@@ -64,15 +64,16 @@ AIR_RESISTANCE = 0.995
 BOUNCE_FACTOR = 0.85
 HAND_BOUNCE_FACTOR = 1.3
 MAX_SPEED = 35.0
-SPEED_RAMP_SECONDS = 90.0
-MAX_SPEED_MULTIPLIER = 1.5
+START_SPEED_MULTIPLIER = 0.25
+SPEED_RAMP_SECONDS = 60.0
+MAX_SPEED_MULTIPLIER = 0.85
 MAX_ACTIVE_FRAME_SECONDS = 0.1
 PAUSED_FRAME_SECONDS = 0.5
 
-# Game States
-STATE_TITLE = 0
-STATE_PLAYING = 1
-STATE_GAMEOVER = 2
+# Endless flow: bound simultaneous work while play can continue indefinitely.
+BALL_DROP_INTERVAL_SECONDS = 4.0
+MAX_BALLS = 6
+MAX_PARTICLES = 480
 
 # Hidden Command (Konami Code)
 KONAMI_CODE = [
@@ -93,7 +94,7 @@ def hsv_to_rgb(h, s, v):
 
 def gameplay_speed_multiplier(play_seconds):
     progress = min(1.0, max(0.0, play_seconds) / SPEED_RAMP_SECONDS)
-    return 1.0 + (MAX_SPEED_MULTIPLIER - 1.0) * progress
+    return START_SPEED_MULTIPLIER + (MAX_SPEED_MULTIPLIER - START_SPEED_MULTIPLIER) * progress
 
 # -----------------------------------------------------------------------------
 # Classes
@@ -126,45 +127,6 @@ class Particle:
             g = int(self.color[1] * intensity)
             b = int(self.color[2] * intensity)
             pygame.draw.circle(surface, (r, g, b), (int(self.x), int(self.y)), int(self.size))
-
-class StartButton:
-    def __init__(self):
-        self.radius = 60
-        self.x = WINDOW_WIDTH - 80
-        self.y = 80
-        self.active = False
-        self.pulse = 0
-
-    def check_collision(self, hands):
-        for hand in hands:
-            hx, hy = hand['pos']
-            dist = math.hypot(self.x - hx, self.y - hy)
-            if dist < self.radius + hand['radius']:
-                return True
-        return False
-
-    def draw(self, surface, hue):
-        self.pulse += 0.1
-        scale = 1.0 + math.sin(self.pulse) * 0.1
-        
-        color = hsv_to_rgb((hue + 0.5) % 1.0, 1.0, 1.0)
-        draw_r = int(self.radius * scale)
-        
-        # Glow
-        for i in range(10):
-            alpha_c = hsv_to_rgb((hue + 0.5) % 1.0, 1.0, 0.2) # darker for glow
-            pygame.draw.circle(surface, alpha_c, (self.x, self.y), draw_r + i*2, 1)
-            
-        pygame.draw.circle(surface, color, (self.x, self.y), draw_r, 3)
-        
-        # Text "START"
-        font = pygame.font.SysFont("Courier New", 20, bold=True)
-        text = font.render("HIT", True, (255, 255, 255))
-        rect = text.get_rect(center=(self.x, self.y - 10))
-        surface.blit(text, rect)
-        text2 = font.render("ME", True, (255, 255, 255))
-        rect2 = text2.get_rect(center=(self.x, self.y + 10))
-        surface.blit(text2, rect2)
 
 class Otedama:
     def __init__(self, x, y, fever_mode=False):
@@ -227,6 +189,7 @@ class Otedama:
 # -----------------------------------------------------------------------------
 class ModernOtedamaGame:
     def __init__(self):
+        from hand_input_profile import solutions_options
         pygame.init()
         self.window_screen, self.screen, self.display_layout = display_utils.setup_pygame_scaled_fullscreen(
             WINDOW_WIDTH,
@@ -241,11 +204,7 @@ class ModernOtedamaGame:
 
         # MediaPipe
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(model_complexity=1, 
-            max_num_hands=MAX_HANDS,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5
-        )
+        self.hands = self.mp_hands.Hands(**solutions_options(MAX_HANDS))
         
         # Camera
         self.cap = display_utils.open_camera()
@@ -257,15 +216,15 @@ class ModernOtedamaGame:
         self.camera_last_frame_id = None
         self.camera_last_fresh_at = None
         self.frame_processed = False
+        self.camera_surface = None
+        self.camera_layout = None
 
         # Game Data
-        self.state = STATE_TITLE
         self.score = 0
         self.combo = 1
         self.balls = []
         self.particles = []
         self.hand_colliders = []
-        self.start_button = StartButton()
         
         # Psychedelic State
         self.global_hue = 0.0
@@ -276,21 +235,19 @@ class ModernOtedamaGame:
         self.fever_timer = 0
         self.play_elapsed_seconds = 0.0
         self._start_frame_pending = False
+        self.refill_balls()
         
-    def reset_game(self):
-        self.score = 0
+    def refill_balls(self):
+        """Automatically resume a gentle flow; the accumulated score survives."""
+        self.balls = [Otedama(WINDOW_WIDTH // 2, 0)]
         self.combo = 1
-        self.balls = []
-        self.particles = []
-        self.balls.append(Otedama(WINDOW_WIDTH // 2, 0))
-        self.state = STATE_PLAYING
         self.fever_mode = False
+        self.fever_timer = 0
         self.play_elapsed_seconds = 0.0
+        self.drop_elapsed_seconds = 0.0
         self._start_frame_pending = True
 
     def advance_play_time(self, frame_seconds):
-        if self.state != STATE_PLAYING:
-            return 0.0
         if self._start_frame_pending:
             self._start_frame_pending = False
             return 0.0
@@ -325,8 +282,9 @@ class ModernOtedamaGame:
             c = hsv_to_rgb(random.random(), 1, 1)
             self.particles.append(Particle(WINDOW_WIDTH/2, WINDOW_HEIGHT/2, c, 3.0, 2.0))
         self.balls = [Otedama(b.x, b.y, True) for b in self.balls] 
-        self.balls.append(Otedama(WINDOW_WIDTH * 0.3, 0, True))
-        self.balls.append(Otedama(WINDOW_WIDTH * 0.7, 0, True))
+        for x in (WINDOW_WIDTH * 0.3, WINDOW_WIDTH * 0.7):
+            if len(self.balls) < MAX_BALLS:
+                self.balls.append(Otedama(x, 0, True))
 
     def handle_input(self):
         for event in pygame.event.get():
@@ -347,9 +305,6 @@ class ModernOtedamaGame:
                     self.toggle_fever()
                     self.input_history.clear()
 
-                if self.state == STATE_GAMEOVER:
-                     if event.key == pygame.K_SPACE:
-                        self.reset_game()
                         
         return True
 
@@ -358,6 +313,9 @@ class ModernOtedamaGame:
         frame_rgb.flags.writeable = False 
         results = self.hands.process(frame_rgb)
         
+        height, width = frame.shape[:2]
+        self.camera_layout = display_utils.get_uniform_layout(width, height, WINDOW_WIDTH, WINDOW_HEIGHT)
+
         # Rebuild from this frame only. Each detected hand is independent: Left/
         # Right labels repeat across participants and detection order can change.
         # No per-index hand velocity/history is used to drive the ball response.
@@ -368,11 +326,12 @@ class ModernOtedamaGame:
                 wrist = hand_landmarks.landmark[0]
                 middle = hand_landmarks.landmark[9]
                 
-                cx = int((wrist.x + middle.x) / 2 * WINDOW_WIDTH)
-                cy = int((wrist.y + middle.y) / 2 * WINDOW_HEIGHT)
+                layout = self.camera_layout
+                cx = layout['offset_x'] + int((wrist.x + middle.x) / 2 * layout['scaled_width'])
+                cy = layout['offset_y'] + int((wrist.y + middle.y) / 2 * layout['scaled_height'])
                 
                 scale = math.hypot(wrist.x - middle.x, wrist.y - middle.y)
-                radius = int(scale * WINDOW_WIDTH * 0.6) 
+                radius = int(scale * layout['scaled_width'] * 0.6)
                 radius = max(40, min(120, radius))
                 
                 self.hand_colliders.append({'pos': (cx, cy), 'radius': radius, 'landmarks': hand_landmarks})
@@ -396,10 +355,15 @@ class ModernOtedamaGame:
             if self.camera_failure_since is not None:
                 self._start_frame_pending = True
             self.camera_failure_since = None
-            img = cv2.flip(img, 1) 
+            img, stage_frame, self.camera_layout = display_utils.prepare_camera_frame(
+                img, WINDOW_WIDTH, WINDOW_HEIGHT)
             self.process_hands(img)
+            # Display exactly the mirrored input used for detection, respecting opacity.
+            rgb = cv2.cvtColor(stage_frame, cv2.COLOR_BGR2RGB)
+            self.camera_surface = pygame.surfarray.make_surface(rgb.swapaxes(0, 1))
         else:
             self.hand_colliders.clear()
+            self.camera_surface = None
             if self.camera_failure_since is None:
                 self.camera_failure_since = time.monotonic()
             elif time.monotonic() - self.camera_failure_since >= 1.0:
@@ -407,45 +371,41 @@ class ModernOtedamaGame:
                 raise RuntimeError("Shared camera did not provide a frame for one second")
             return
 
-        # Start Button Logic
-        if self.state in [STATE_TITLE, STATE_GAMEOVER]:
-            if self.start_button.check_collision(self.hand_colliders):
-                self.reset_game()
+        previous_play_time = self.play_elapsed_seconds
+        active_seconds = self.advance_play_time(frame_seconds)
+        speed_multiplier = gameplay_speed_multiplier(self.play_elapsed_seconds)
 
-        # Game State Logic
-        if self.state == STATE_PLAYING:
-            active_seconds = self.advance_play_time(frame_seconds)
-            speed_multiplier = gameplay_speed_multiplier(self.play_elapsed_seconds)
-            if len(self.balls) < 1 + int(self.score / 500) and not self.fever_mode:
-                if random.randint(0, 300) == 0:
-                    self.balls.append(Otedama(random.randint(200, WINDOW_WIDTH-200), 0))
+        if self.fever_mode:
+            self.fever_timer -= 1
+            if self.fever_timer <= 0:
+                self.fever_mode = False
+                self.balls = [Otedama(b.x, b.y, False) for b in self.balls]
 
-            if self.fever_mode:
-                self.fever_timer -= 1
-                if self.fever_timer <= 0:
-                    self.fever_mode = False
-                    self.balls = [Otedama(b.x, b.y, False) for b in self.balls]
+        active_balls = []
+        for ball in self.balls:
+            hit = self.advance_ball(ball, active_seconds, speed_multiplier)
+            if hit:
+                self.combo += 1
+                self.score += 100 * self.combo * (2 if self.fever_mode else 1)
+            if not ball.is_dead:
+                active_balls.append(ball)
+            else:
+                self.combo = 1
+        self.balls = active_balls
 
-            active_balls = []
-            for ball in self.balls:
-                hit = self.advance_ball(ball, active_seconds, speed_multiplier)
-                if hit:
-                    self.combo += 1
-                    points = 100 * self.combo * (2 if self.fever_mode else 1)
-                    self.score += points
-                
-                if not ball.is_dead:
-                    active_balls.append(ball)
-                else:
-                    self.combo = 1 
-            self.balls = active_balls
-            
-            if len(self.balls) == 0 and not self.fever_mode:
-                 self.state = STATE_GAMEOVER
+        # Inspect survivors before spawning: a timed drop cannot mask an empty field.
+        if not self.balls:
+            self.refill_balls()
+        else:
+            self.drop_elapsed_seconds += self.play_elapsed_seconds - previous_play_time
+            if self.drop_elapsed_seconds + 1e-9 >= BALL_DROP_INTERVAL_SECONDS:
+                self.drop_elapsed_seconds = max(0.0, self.drop_elapsed_seconds - BALL_DROP_INTERVAL_SECONDS)
+                if len(self.balls) < MAX_BALLS:
+                    self.balls.append(Otedama(random.randint(200, WINDOW_WIDTH-200), 0, self.fever_mode))
 
         for p in self.particles:
             p.update()
-        self.particles = [p for p in self.particles if p.lifetime > 0]
+        self.particles = [p for p in self.particles if p.lifetime > 0][-MAX_PARTICLES:]
         
     def check_hand_collision(self, ball):
         hit_occurred = False
@@ -489,13 +449,10 @@ class ModernOtedamaGame:
             self.particles.append(Particle(x, y, color))
             
     def draw(self):
-        # Camera frames drive hand detection only; keep the stage background dark.
         self.screen.fill(COLOR_BG_DARK)
+        if self.camera_surface is not None:
+            self.screen.blit(self.camera_surface, (0, 0))
             
-        # 3. Start Button (if applicable)
-        if self.state in [STATE_TITLE, STATE_GAMEOVER]:
-            self.start_button.draw(self.screen, self.global_hue)
-
         # 4. Particles
         for p in self.particles:
             p.draw(self.screen)
@@ -510,7 +467,7 @@ class ModernOtedamaGame:
         # The entire palm collider is the input; keep its exact center/radius visible.
         draw_hand_overlay(
             self.screen, [hand['landmarks'] for hand in self.hand_colliders],
-            palm_focus=True,
+            layout=self.camera_layout, palm_focus=True,
             palm_circles=[(*hand['pos'], hand['radius']) for hand in self.hand_colliders])
 
         display_utils.present_pygame_scaled(self.window_screen, self.screen, self.display_layout)
@@ -538,28 +495,11 @@ class ModernOtedamaGame:
             
             self.screen.blit(surf, rect)
 
-        if self.state == STATE_TITLE:
-            draw_glitch_text("PSYCHEDELIC OTEDAMA", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, self.font_main, (255, 255, 255))
-            draw_glitch_text("HIT THE BUTTON ->", WINDOW_WIDTH//2, WINDOW_HEIGHT//2, self.font_sub, (200, 200, 200))
-            
-            # Hints
-            if int(self.global_hue * 50) % 2 == 0:
-                 hint_col = hsv_to_rgb(self.global_hue, 0.5, 1)
-                 draw_glitch_text("SECRET CODE: \u2191 \u2191 \u2193 \u2193 \u2190 \u2192 \u2190 \u2192 B A", WINDOW_WIDTH//2, WINDOW_HEIGHT - 50, self.font_sub, hint_col)
-
-        elif self.state == STATE_PLAYING:
-            draw_glitch_text(f"SCORE: {self.score}", 50, 30, self.font_sub, (255, 255, 255), center=False)
-            
-            combo_col = hsv_to_rgb(self.global_hue * 2 % 1.0, 1, 1)
-            draw_glitch_text(f"COMBO x{self.combo}", 50, 70, self.font_sub, combo_col, center=False)
-            
-            if self.fever_mode:
-                draw_glitch_text("FEVER TIME!!!", WINDOW_WIDTH//2, 100, self.font_main, hsv_to_rgb(random.random(), 1, 1))
-
-        elif self.state == STATE_GAMEOVER:
-            draw_glitch_text("GAME OVER", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, self.font_main, (255, 50, 50))
-            draw_glitch_text(f"SCORE: {self.score}", WINDOW_WIDTH//2, WINDOW_HEIGHT//2, self.font_sub, (255, 255, 255))
-            draw_glitch_text("HIT BUTTON TO RESTART", WINDOW_WIDTH//2, WINDOW_HEIGHT*2//3, self.font_sub, (200, 200, 200))
+        draw_glitch_text(f"SCORE: {self.score}", 50, 30, self.font_sub, (255, 255, 255), center=False)
+        combo_col = hsv_to_rgb(self.global_hue * 2 % 1.0, 1, 1)
+        draw_glitch_text(f"COMBO x{self.combo}", 50, 70, self.font_sub, combo_col, center=False)
+        if self.fever_mode:
+            draw_glitch_text("FEVER TIME!!!", WINDOW_WIDTH//2, 100, self.font_main, hsv_to_rgb(random.random(), 1, 1))
 
     def run(self):
         previous_frame_at = time.monotonic()
@@ -575,6 +515,7 @@ class ModernOtedamaGame:
             self.cleanup()
 
     def cleanup(self):
+        self.camera_surface = None
         try:
             self.hands.close()
         finally:

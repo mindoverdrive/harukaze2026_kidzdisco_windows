@@ -22,6 +22,7 @@ class OperatorPanel:
         self.token = secrets.token_urlsafe(24)
         self.actions = queue.Queue(maxsize=1)
         self.safe_event = threading.Event()
+        self.quit_event = threading.Event()
         self.state_lock = threading.Lock()
         self.scene_state = {"scenes": [], "current": None, "next": None, "busy": True}
         self.html = Path(__file__).with_suffix(".html").read_bytes()
@@ -100,6 +101,18 @@ class OperatorPanel:
                             raise ValueError("適用済みの設定番号を指定してください")
                         saved = save_controls(panel.config_path, panel.relay.controls, data["sequence"])
                         self.reply(200, {"saved": saved})
+                    elif (self.path == "/api/action" and data.get("action") in {"next", "back", "restart", "select"}
+                          and set(data) == ({"action", "revision", "scene"} if data["action"] == "select" else {"action", "revision"})
+                          and type(data.get("revision")) is int
+                          and (data["action"] != "select" or isinstance(data.get("scene"), str))):
+                        panel.actions.put_nowait(data)
+                        self.reply(202, {"action": data["action"]})
+                    elif (self.path == "/api/action" and data.get("action") in {"staff_start", "staff_return"}
+                          and set(data) == ({"action", "revision", "scene"} if data["action"] == "staff_start" else {"action", "revision"})
+                          and type(data.get("revision")) is int
+                          and (data["action"] != "staff_start" or isinstance(data.get("scene"), str))):
+                        panel.actions.put_nowait(data)
+                        self.reply(202, {"action": data["action"]})
                     elif self.path == "/api/action" and data in tuple({"action": name} for name in ("next", "back", "restart", "safe", "resume", "quit")):
                         if data["action"] == "safe":
                             panel.safe_event.set()
@@ -152,7 +165,23 @@ class OperatorPanel:
         print(f"[Operator] http://{self.host}:{self.port}/#token={self.token}")
         return self
 
+    def discard_actions(self, revision=None):
+        # Atomically discard stale clicks, retaining requests from the newly
+        # published mode and preserving emergency Safe/Quit requests.
+        with self.actions.mutex:
+            if self.actions.queue:
+                action = self.actions.queue[0]
+                if isinstance(action, dict) and revision is not None and action.get("revision") == revision:
+                    return
+                self.actions.queue.popleft()
+                self.actions.not_full.notify()
+                if action == "quit":
+                    self.quit_event.set()
+
     def consume_action(self):
+        if self.quit_event.is_set():
+            self.quit_event.clear()
+            return "quit"
         if self.safe_event.is_set():
             self.safe_event.clear()
             try:

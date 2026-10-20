@@ -160,7 +160,7 @@ class WindowsLauncherTests(unittest.TestCase):
         job.kernel.CloseHandle.assert_any_call(20)
         job.kernel.CloseHandle.assert_any_call(100)
 
-    def test_constructor_double_failure_keeps_job_on_launched_process(self):
+    def test_constructor_adoption_failure_retains_all_known_jobs_for_cleanup(self):
         from types import SimpleNamespace
         import windows_process
 
@@ -190,7 +190,8 @@ class WindowsLauncherTests(unittest.TestCase):
                     WindowsSceneJob(proc)
             self.assertIs(raised.exception, failure)
             self.assertIs(proc._scene_job, retained[0])
-            self.assertEqual(proc._scene_job._job_handles(), [20])
+            self.assertFalse(proc._scene_job.containment_complete)
+            self.assertEqual(proc._scene_job._job_handles(), [10, 20])
         finally:
             kernel.CloseHandle.side_effect = None
             kernel.CloseHandle.return_value = 1
